@@ -1,5 +1,6 @@
 package dev.thedocruby.resounding.tag;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,21 +23,31 @@ public record Resolution(
         List<Diagnostic> diagnostics
 ) {
     public Resolution {
-        throw new UnsupportedOperationException("P2");
+        byTag = byTag == null ? Map.of() : copyOfSetMap(byTag);
+        byBlock = byBlock == null ? Map.of() : copyOfSetMap(byBlock);
+        diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
+    }
+
+    private static Map<Ident, Set<Ident>> copyOfSetMap(Map<Ident, Set<Ident>> source) {
+        Map<Ident, Set<Ident>> copy = new HashMap<>();
+        for (var entry : source.entrySet()) {
+            copy.put(entry.getKey(), Set.copyOf(entry.getValue()));
+        }
+        return Map.copyOf(copy);
     }
 
     /** Blocks in a tag; empty (never null) for an unknown tag. */
     public Set<Ident> blocksOf(Ident tag) {
-        throw new UnsupportedOperationException("P2");
+        return byTag.getOrDefault(tag, Set.of());
     }
 
     /** Tags of a block; empty (never null) for an unknown block. */
     public Set<Ident> tagsOf(Ident block) {
-        throw new UnsupportedOperationException("P2");
+        return byBlock.getOrDefault(block, Set.of());
     }
 
     /** True if any diagnostic is {@link Diagnostic.Severity#ERROR}. */
     public boolean hasErrors() {
-        throw new UnsupportedOperationException("P2");
+        return diagnostics.stream().anyMatch(d -> d.severity() == Diagnostic.Severity.ERROR);
     }
 }

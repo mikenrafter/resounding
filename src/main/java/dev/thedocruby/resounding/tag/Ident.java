@@ -21,7 +21,18 @@ public record Ident(String namespace, String path) implements Comparable<Ident> 
      * @throws IllegalArgumentException if either part is empty or contains a separator
      */
     public Ident {
-        throw new UnsupportedOperationException("P2");
+        if (namespace == null || namespace.isEmpty()) {
+            throw new IllegalArgumentException("namespace must not be empty");
+        }
+        if (path == null || path.isEmpty()) {
+            throw new IllegalArgumentException("path must not be empty");
+        }
+        if (namespace.indexOf(':') >= 0) {
+            throw new IllegalArgumentException("namespace must not contain ':': " + namespace);
+        }
+        if (path.indexOf(':') >= 0) {
+            throw new IllegalArgumentException("path must not contain ':': " + path);
+        }
     }
 
     /**
@@ -32,18 +43,32 @@ public record Ident(String namespace, String path) implements Comparable<Ident> 
      *         {@link Diagnostic.ParseError} rather than letting it escape
      */
     public static Ident parse(String raw) {
-        throw new UnsupportedOperationException("P2");
+        if (raw == null) {
+            throw new IllegalArgumentException("identifier must not be null");
+        }
+        int first = raw.indexOf(':');
+        if (first < 0) {
+            return new Ident(DEFAULT_NAMESPACE, raw);
+        }
+        if (raw.indexOf(':', first + 1) >= 0) {
+            throw new IllegalArgumentException("identifier must contain at most one ':': " + raw);
+        }
+        return new Ident(raw.substring(0, first), raw.substring(first + 1));
     }
 
     /** {@code namespace:path}. Round-trips through {@link #parse}. */
     @Override
     public String toString() {
-        throw new UnsupportedOperationException("P2");
+        return namespace + ":" + path;
     }
 
     /** Orders by namespace, then path, so diagnostic output is stable across runs. */
     @Override
     public int compareTo(Ident other) {
-        throw new UnsupportedOperationException("P2");
+        int byNamespace = namespace.compareTo(other.namespace);
+        if (byNamespace != 0) {
+            return byNamespace;
+        }
+        return path.compareTo(other.path);
     }
 }

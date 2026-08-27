@@ -1,5 +1,6 @@
 package dev.thedocruby.resounding.tag;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -33,16 +34,19 @@ public record RawTagDef(
 ) {
     /** Normalizes nulls to empty and takes defensive immutable copies. */
     public RawTagDef {
-        throw new UnsupportedOperationException("P2");
+        patterns = patterns == null ? List.of() : List.copyOf(patterns);
+        blocks = blocks == null ? Set.of() : Set.copyOf(blocks);
+        tagPatterns = tagPatterns == null ? List.of() : List.copyOf(tagPatterns);
+        tags = tags == null ? Set.of() : Set.copyOf(tags);
     }
 
     public static RawTagDef empty() {
-        throw new UnsupportedOperationException("P2");
+        return new RawTagDef(null, null, null, null, false);
     }
 
     /** True when this definition contributes nothing — used to drop no-op registry entries. */
     public boolean isEmpty() {
-        throw new UnsupportedOperationException("P2");
+        return patterns.isEmpty() && blocks.isEmpty() && tagPatterns.isEmpty() && tags.isEmpty();
     }
 
     /**
@@ -59,6 +63,27 @@ public record RawTagDef(
      * @return the merged definition; never mutates either operand
      */
     public RawTagDef mergeUnder(RawTagDef higher) {
-        throw new UnsupportedOperationException("P2");
+        if (higher.replace()) {
+            return new RawTagDef(
+                    higher.patterns(), higher.blocks(), higher.tagPatterns(), higher.tags(), true);
+        }
+        return new RawTagDef(
+                union(patterns, higher.patterns()),
+                union(blocks, higher.blocks()),
+                union(tagPatterns, higher.tagPatterns()),
+                union(tags, higher.tags()),
+                false);
+    }
+
+    private static <T> List<T> union(List<T> lower, List<T> higher) {
+        Set<T> merged = new LinkedHashSet<>(lower);
+        merged.addAll(higher);
+        return List.copyOf(merged);
+    }
+
+    private static <T> Set<T> union(Set<T> lower, Set<T> higher) {
+        Set<T> merged = new LinkedHashSet<>(lower);
+        merged.addAll(higher);
+        return Set.copyOf(merged);
     }
 }

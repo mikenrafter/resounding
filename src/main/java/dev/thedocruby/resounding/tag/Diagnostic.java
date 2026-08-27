@@ -23,8 +23,15 @@ public sealed interface Diagnostic {
 
     /** A tag or material reference cycle. {@code path} is the cycle in traversal order. */
     record Cycle(List<Ident> path) implements Diagnostic {
-        @Override public Severity severity() { throw new UnsupportedOperationException("P2"); }
-        @Override public String message() { throw new UnsupportedOperationException("P2"); }
+        @Override public Severity severity() { return Severity.ERROR; }
+        @Override public String message() {
+            StringBuilder sb = new StringBuilder("reference cycle: ");
+            for (int i = 0; i < path.size(); i++) {
+                if (i > 0) sb.append(" -> ");
+                sb.append(path.get(i));
+            }
+            return sb.toString();
+        }
     }
 
     /**
@@ -35,14 +42,18 @@ public sealed interface Diagnostic {
      * tag" idiom relies on unresolved references being survivable.
      */
     record MissingReference(Ident from, Ident to) implements Diagnostic {
-        @Override public Severity severity() { throw new UnsupportedOperationException("P2"); }
-        @Override public String message() { throw new UnsupportedOperationException("P2"); }
+        @Override public Severity severity() { return Severity.WARN; }
+        @Override public String message() {
+            return from + " references " + to + ", which does not exist";
+        }
     }
 
     /** A regex in a tag definition failed to compile. Previously an escaping {@code PatternSyntaxException}. */
     record BadPattern(Ident owner, String pattern, String error) implements Diagnostic {
-        @Override public Severity severity() { throw new UnsupportedOperationException("P2"); }
-        @Override public String message() { throw new UnsupportedOperationException("P2"); }
+        @Override public Severity severity() { return Severity.ERROR; }
+        @Override public String message() {
+            return owner + " has an invalid pattern '" + pattern + "': " + error;
+        }
     }
 
     /**
@@ -50,8 +61,10 @@ public sealed interface Diagnostic {
      * resource-pack parsing, i.e. out of chunk loading.
      */
     record ParseError(String source, String detail) implements Diagnostic {
-        @Override public Severity severity() { throw new UnsupportedOperationException("P2"); }
-        @Override public String message() { throw new UnsupportedOperationException("P2"); }
+        @Override public Severity severity() { return Severity.ERROR; }
+        @Override public String message() {
+            return "failed to parse " + source + ": " + detail;
+        }
     }
 
     /**
@@ -64,13 +77,17 @@ public sealed interface Diagnostic {
      * @param missing names of the absent properties, for a message a pack author can act on
      */
     record Incomplete(Ident subject, List<String> missing) implements Diagnostic {
-        @Override public Severity severity() { throw new UnsupportedOperationException("P2"); }
-        @Override public String message() { throw new UnsupportedOperationException("P2"); }
+        @Override public Severity severity() { return Severity.WARN; }
+        @Override public String message() {
+            return subject + " is incomplete, missing: " + String.join(", ", missing);
+        }
     }
 
     /** A higher layer declared {@code "replace": true} and discarded content from a lower one. */
     record Shadowed(Ident subject, String lowerLayer, String higherLayer) implements Diagnostic {
-        @Override public Severity severity() { throw new UnsupportedOperationException("P2"); }
-        @Override public String message() { throw new UnsupportedOperationException("P2"); }
+        @Override public Severity severity() { return Severity.WARN; }
+        @Override public String message() {
+            return subject + " in layer '" + higherLayer + "' replaced (discarded) layer '" + lowerLayer + "'";
+        }
     }
 }

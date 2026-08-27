@@ -1,5 +1,8 @@
 package dev.thedocruby.resounding.tag;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -17,47 +20,65 @@ import java.util.Set;
  */
 public final class BlockIndex {
 
-    private BlockIndex() {
-        throw new UnsupportedOperationException("P2");
+    private final Map<Ident, Set<Ident>> blockToTags;
+    private final Map<Ident, Set<Ident>> tagToBlocks;
+
+    private BlockIndex(Map<Ident, Set<Ident>> blockToTags, Map<Ident, Set<Ident>> tagToBlocks) {
+        this.blockToTags = blockToTags;
+        this.tagToBlocks = tagToBlocks;
     }
 
     public static Builder builder() {
-        throw new UnsupportedOperationException("P2");
+        return new Builder();
     }
 
     /** Every known block, tagged or not. */
     public Set<Ident> blocks() {
-        throw new UnsupportedOperationException("P2");
+        return blockToTags.keySet();
     }
 
     /** Every tag mentioned by any block. */
     public Set<Ident> tags() {
-        throw new UnsupportedOperationException("P2");
+        return tagToBlocks.keySet();
     }
 
     /** Tags of a block; empty (never null) for an untagged or unknown block. */
     public Set<Ident> tagsOf(Ident block) {
-        throw new UnsupportedOperationException("P2");
+        return blockToTags.getOrDefault(block, Set.of());
     }
 
     /** Blocks carrying a tag; empty (never null) for an unknown tag. */
     public Set<Ident> blocksOf(Ident tag) {
-        throw new UnsupportedOperationException("P2");
+        return tagToBlocks.getOrDefault(tag, Set.of());
     }
 
     public static final class Builder {
+        private final Map<Ident, Set<Ident>> blockToTags = new HashMap<>();
+        private final Map<Ident, Set<Ident>> tagToBlocks = new HashMap<>();
+
         /** Records a block, with no tag. Idempotent. */
         public Builder block(Ident block) {
-            throw new UnsupportedOperationException("P2");
+            blockToTags.computeIfAbsent(block, b -> new HashSet<>());
+            return this;
         }
 
         /** Records a block carrying a tag. Idempotent in both directions. */
         public Builder tagged(Ident block, Ident tag) {
-            throw new UnsupportedOperationException("P2");
+            blockToTags.computeIfAbsent(block, b -> new HashSet<>()).add(tag);
+            tagToBlocks.computeIfAbsent(tag, t -> new HashSet<>()).add(block);
+            return this;
         }
 
         public BlockIndex build() {
-            throw new UnsupportedOperationException("P2");
+            Map<Ident, Set<Ident>> blockToTagsCopy = new HashMap<>();
+            for (var entry : blockToTags.entrySet()) {
+                blockToTagsCopy.put(entry.getKey(), Set.copyOf(entry.getValue()));
+            }
+            Map<Ident, Set<Ident>> tagToBlocksCopy = new HashMap<>();
+            for (var entry : tagToBlocks.entrySet()) {
+                tagToBlocksCopy.put(entry.getKey(), Set.copyOf(entry.getValue()));
+            }
+            return new BlockIndex(Map.copyOf(blockToTagsCopy), Map.copyOf(tagToBlocksCopy));
         }
     }
 }
