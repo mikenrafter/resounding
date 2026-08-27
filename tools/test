@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Run the Resounding test suite, or one component of it.
+#
+# This is a thin wrapper around Gradle, not a second build system: it exports
+# JAVA_HOME (there is no `java` on PATH in this environment) and forwards a
+# --tests filter. All build logic lives in the two build.gradle files.
+#
+#   tools/test                 every core test, fast lane, no Minecraft
+#   tools/test tag             only tests whose class name contains "Tag"
+#   tools/test material        only tests whose class name contains "Material"
+#   tools/test --lane2         full build lane, Minecraft on the classpath
+#   tools/test --lane2 tag     ...filtered
+#
+# Lane 1 (default) is the fast one: seconds, no Loom, no Minecraft download.
+# Lane 2 is the real Fabric build; use it to cover the adapters.
+set -euo pipefail
+
+: "${JAVA_HOME:=/nix/store/qqngq35hqpiqm5g5w4wgjj2aam09qxif-openjdk-21.0.12+8}"
+export JAVA_HOME
+
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo"
+
+lane=1
+filters=()
+for arg in "$@"; do
+    case "$arg" in
+        --lane2|--loom) lane=2 ;;
+        --lane1|--core) lane=1 ;;
+        -*) printf 'unknown option: %s\n' "$arg" >&2; exit 2 ;;
+        *)  filters+=(--tests "*${arg}*") ;;
+    esac
+done
+
+if [[ $lane -eq 1 ]]; then
+    exec ./core-tests/gradlew -p core-tests canary test "${filters[@]+"${filters[@]}"}"
+else
+    exec ./gradlew test "${filters[@]+"${filters[@]}"}"
+fi

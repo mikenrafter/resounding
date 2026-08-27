@@ -1,0 +1,68 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+}
+
+// Lane 1 mounts the SAME files as the real build — no copies, no drift.
+// The include filters are what enforce the architectural boundary: if anything
+// under tag/ material/ data/ ever imports net.minecraft.*, this build stops compiling.
+sourceSets {
+    main {
+        java {
+            srcDirs = ['../src/main/java']
+            include 'dev/thedocruby/resounding/tag/**'
+            include 'dev/thedocruby/resounding/material/**'
+            include 'dev/thedocruby/resounding/data/**'
+        }
+        resources.srcDirs = []
+    }
+    test {
+        java.srcDirs = ['../src/test/java']
+        resources.srcDirs = ['../src/test/resources']
+    }
+}
+
+dependencies {
+    // data/ is the only package allowed to see Gson.
+    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'org.jetbrains:annotations:24.1.0'
+
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+test {
+    useJUnitPlatform()
+    systemProperty 'resounding.lane', '1'
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
+}
+
+// An include-filter typo would otherwise be silent: zero core classes compile,
+// every test still passes, and nothing is actually being verified.
+tasks.register('canary') {
+    dependsOn tasks.named('compileJava')
+    doLast {
+        def dirs = sourceSets.main.output.classesDirs
+        def count = dirs.findAll { it.exists() }
+                        .collect { fileTree(it).matching { include '**/*.class' }.files.size() }
+                        .sum() ?: 0
+        if (count == 0) {
+            throw new GradleException(
+                'Lane 1 canary: the core source filters matched no classes. ' +
+                'Either the tag/material/data packages are missing or an include filter is wrong.')
+        }
+        logger.lifecycle("Lane 1 canary: ${count} core classes compiled without Minecraft on the classpath.")
+    }
+}

@@ -44,6 +44,13 @@ dependencies {
     }
     // PSA: Some older mods, compiled on Loom 0.2.1, might have outdated Maven POMs.
     // You may need to force-disable transitiveness on them.
+
+    // Lane 2 of the test harness: runs the same tests as core-tests/, but with
+    // Minecraft on the classpath, so the adapters can be covered too.
+    // See residual/research/tagging-plan.md for why there are two lanes.
+    testImplementation platform("org.junit:junit-bom:5.11.4")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
 processResources {
@@ -65,6 +72,15 @@ tasks.withType(JavaCompile).configureEach {
     // Minecraft 1.17 (21w19a) upwards uses Java 16.
     //noinspection GroovyAssignabilityCheck, GroovyAccessibility
     it.options.release = 21
+}
+
+test {
+    useJUnitPlatform()
+    systemProperty "resounding.lane", "2"
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
 }
 
 java {

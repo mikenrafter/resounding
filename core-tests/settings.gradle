@@ -1,0 +1,5 @@
+// Standalone build, deliberately NOT included from the root settings.gradle.
+// Gradle's settings search stops at the start directory, so `gradlew -p core-tests`
+// makes this the build root and Fabric Loom is never configured — which is the whole
+// point: the pure core must be compilable and testable without Minecraft.
+rootProject.name = 'resounding-core-tests'
