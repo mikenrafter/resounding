@@ -1,1 +1,7 @@
 name,description,status,architecture_set
+core-tests,Standalone Minecraft-free Gradle build mounting the pure pipeline sources; Lane 1 of the test harness,implemented,tagging
+tag/Ident,Namespaced identifier value type - the single key domain for the pipeline,implemented,tagging
+tag/Diagnostic,Sealed typed resolution-failure hierarchy replacing null-as-error,implemented,tagging
+tag/TagResolver,Pure tag expansion over immutable inputs,proposed,tagging
+material/Blend,Property accumulator with double-precision averaging weight,proposed,tagging
+data/LayeredSource,Ordered layer merge for shipped defaults and resource packs,proposed,tagging
