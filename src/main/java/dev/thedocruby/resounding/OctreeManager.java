@@ -1,5 +1,7 @@
 package dev.thedocruby.resounding;
 
+import dev.thedocruby.resounding.material.Material;
+
 import dev.thedocruby.resounding.raycast.Branch;
 import dev.thedocruby.resounding.toolbox.ChunkChain;
 import net.minecraft.block.BlockState;

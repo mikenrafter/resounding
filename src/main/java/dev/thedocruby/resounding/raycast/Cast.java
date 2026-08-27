@@ -1,6 +1,6 @@
 package dev.thedocruby.resounding.raycast;
 
-import dev.thedocruby.resounding.Material;
+import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.Physics;
 import dev.thedocruby.resounding.toolbox.ChunkChain;
 import net.fabricmc.api.EnvType;

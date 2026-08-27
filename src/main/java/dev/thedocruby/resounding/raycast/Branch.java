@@ -1,7 +1,7 @@
 package dev.thedocruby.resounding.raycast;
 
 import dev.thedocruby.resounding.OctreeManager;
-import dev.thedocruby.resounding.Material;
+import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.toolbox.MaterialData;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;

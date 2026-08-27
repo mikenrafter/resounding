@@ -1,5 +1,6 @@
 package dev.thedocruby.resounding;
 
+import dev.thedocruby.resounding.material.Acoustics;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Vec3i;
 import org.jetbrains.annotations.Contract;
@@ -34,8 +35,8 @@ public class Physics {
         // */
     }
 
+    /** @see Acoustics#reflection - delegated so the formula has exactly one definition */
     public static @NotNull Double reflection(@NotNull Double impedanceA, @NotNull Double impedanceB) {
-        // difference of squares
-        return Math.pow( (impedanceA - impedanceB) / (impedanceA + impedanceB), 2);
+        return Acoustics.reflection(impedanceA, impedanceB);
     }
 }

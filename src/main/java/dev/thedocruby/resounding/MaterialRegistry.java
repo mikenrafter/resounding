@@ -1,5 +1,7 @@
 package dev.thedocruby.resounding;
 
+import dev.thedocruby.resounding.material.Material;
+
 import com.google.gson.Gson;
 import com.google.gson.internal.LinkedTreeMap;
 import net.fabricmc.api.EnvType;

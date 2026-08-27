@@ -1,7 +1,7 @@
 package dev.thedocruby.resounding.mixin;
 
 import dev.thedocruby.resounding.Cache;
-import dev.thedocruby.resounding.Material;
+import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.OctreeManager;
 import dev.thedocruby.resounding.raycast.Branch;
 import dev.thedocruby.resounding.toolbox.ChunkChain;
