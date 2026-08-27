@@ -23,6 +23,23 @@ public class Property {
         return sum + added;
     }
 
+    /**
+     * Adds a value to this property accumulator.
+     *
+     * Operates in three modes based on count and weight:
+     * - Override  (count == 0): Clears all previous values, sets a new base.
+     *                           Also updates ratio behavior if ratioUpdate is non-null.
+     * - Adjust   (weight == 0, count != 0): Adds an offset to the accumulated total
+     *                                       without affecting averaging weight.
+     * - Weighted  (default): Adds a weighted value contribution to the accumulation.
+     *                        If ratio mode is off, the value is further scaled by weight.
+     *
+     * @param value       The value to add, or null to skip (returns false)
+     * @param weight      The weight coefficient applied when ratio mode is off (0 = adjust mode)
+     * @param count       The contribution count for averaging (0 = override mode)
+     * @param ratioUpdate When non-null in override mode, switches between ratio/weight averaging
+     * @return true if the value was successfully added
+     */
     public boolean add(@Nullable Double value, double weight, double count, @Nullable Boolean ratioUpdate) {
         // only update ratio status if override is set
         if (count == 0) this.ratio = ratioUpdate == null ? this.ratio : ratioUpdate;

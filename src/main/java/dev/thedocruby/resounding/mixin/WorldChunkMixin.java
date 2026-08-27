@@ -2,6 +2,7 @@ package dev.thedocruby.resounding.mixin;
 
 import dev.thedocruby.resounding.Cache;
 import dev.thedocruby.resounding.Material;
+import dev.thedocruby.resounding.OctreeManager;
 import dev.thedocruby.resounding.raycast.Branch;
 import dev.thedocruby.resounding.toolbox.ChunkChain;
 import net.fabricmc.api.EnvType;
@@ -39,7 +40,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
-import static dev.thedocruby.resounding.Cache.material;
+import static dev.thedocruby.resounding.MaterialRegistry.material;
 import static dev.thedocruby.resounding.Engine.hasLoaded;
 
 @Environment(EnvType.CLIENT)
@@ -166,8 +167,8 @@ public abstract class WorldChunkMixin extends Chunk implements ChunkChain {
 			}
 			// only calculate if necessary
 			if (empty) {
-				Cache.counter++;
-				Cache.octreePool.execute(() -> Cache.plantOctree(this, index, blank));
+				OctreeManager.counter++;
+				OctreeManager.octreePool.execute(() -> OctreeManager.plantOctree(this, index, blank));
 			}
 		});
 

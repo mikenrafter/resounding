@@ -7,7 +7,7 @@ import net.fabricmc.api.EnvType;
 public class ModServer implements DedicatedServerModInitializer {
 	@Override
 	public void onInitializeServer() {
-		Engine.env = EnvType.SERVER;
+		Engine.envType = EnvType.SERVER;
 		ConfigManager.registerAutoConfig();
 	}
 }

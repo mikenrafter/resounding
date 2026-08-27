@@ -13,24 +13,24 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import static dev.thedocruby.resounding.Utils.LOGGER;
-import static dev.thedocruby.resounding.config.PrecomputedConfig.pC;
+import static dev.thedocruby.resounding.config.PrecomputedConfig.pConfig;
 
 @Environment(EnvType.CLIENT)
 @Mixin(SoundEngine.class)
 public class SoundEngineMixin {
 	@Inject(method = "init", at = @At(value = "INVOKE_ASSIGN", target = "Lnet/minecraft/client/sound/AlUtil;checkErrors(Ljava/lang/String;)Z", ordinal = 0))
 	private void resoundingStartInjector(CallbackInfo ci){
-		assert !Engine.on;
-		if (!pC.enabled) {
+		assert !Engine.isActive;
+		if (!pConfig.enabled) {
 			LOGGER.info("Resounding disabled.");
-			Engine.on = false;
+			Engine.isActive = false;
 			return;
 		}
 		LOGGER.info("Starting Resounding engine...");
 		Engine.setRoot(new Context());
 		if (!Engine.root.setup("Base Game")) {
 			LOGGER.info("Failed to prime OpenAL EFX for Resounding effects. Resounding disabled.");
-			Engine.on = false;
+			Engine.isActive = false;
 			return;
 		}
 		LOGGER.info("OpenAL EFX successfully primed for Resounding effects");
@@ -40,15 +40,15 @@ public class SoundEngineMixin {
 		}
 		Engine.mc = MinecraftClient.getInstance();
 		Engine.updateRays();
-		Engine.on = true;
+		Engine.isActive = true;
 	}
 
 	@Inject(method = "close", at = @At(value = "INVOKE", target = "Lorg/lwjgl/openal/ALC10;alcDestroyContext(J)V", ordinal = 0))
 	private void resoundingStopInjector(CallbackInfo ci){
-		if (!Engine.on) return;
+		if (!Engine.isActive) return;
 		LOGGER.info("Stopping Resounding engine...");
 		if (!Engine.root.clean(false)) LOGGER.info("Failed to (fully) clean OpenAL Context(s).");
 		Engine.mc = null;
-		Engine.on = false;
+		Engine.isActive = false;
 	}
 }

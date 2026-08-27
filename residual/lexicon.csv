@@ -1,0 +1,6 @@
+term,definition,domain,aliases
+tag,"A named set of block identifiers, expandable by regex pattern, by explicit list, or by reference to other tags.",material-resolution,
+material,"Baked acoustic properties (impedance, permeation, state) derived from blended raw physical properties.",material-resolution,
+shell material,A skeletal RawMaterial generated per block whose solutes are that block's tags; carries no physical properties of its own.,material-resolution,
+flatten,"Recursive resolution of references (tag->tag, material->solute) into concrete values.",material-resolution,
+bake,Final conversion of resolved raw physical properties into a runtime Material.,material-resolution,

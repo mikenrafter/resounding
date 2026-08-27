@@ -24,7 +24,7 @@ public class PrecomputedConfig {
     public static final double minEnergy = Math.exp(-9.21);
     @Environment(EnvType.CLIENT)
     public double maxDecayTime = 4.142; // TODO: add config setting for this
-    public static PrecomputedConfig pC = null;
+    public static PrecomputedConfig pConfig = null;
 
     public boolean enabled;
     public int soundSimulationDistance;
@@ -122,10 +122,10 @@ public class PrecomputedConfig {
     private boolean active = true;
 
     public PrecomputedConfig(ResoundingConfig c) throws CloneNotSupportedException { // TODO: Rework this
-        if (pC != null && pC.active) throw new CloneNotSupportedException("Tried creating second instance of precomputedConfig");
+        if (pConfig != null && pConfig.active) throw new CloneNotSupportedException("Tried creating second instance of precomputedConfig");
         enabled = c.enabled;
 
-        if(Engine.env == EnvType.CLIENT) { // TODO: organize
+        if(Engine.envType == EnvType.CLIENT) { // TODO: organize
             globalRvrbGain = MathHelper.clamp(c.general.globalReverbGain/100d, 0.0d, 1.0d);
             energyFix = 1 / Math.max(c.general.globalReverbStrength, Double.MIN_NORMAL);
             resolution = c.quality.reverbResolution;

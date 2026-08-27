@@ -22,7 +22,7 @@ public class ConfigChanger {
     ) {
         if (enabled != null) config.enabled = enabled;
         // setGeneral(config.general, attenuationFactor, globalReverbGain, globalReverbBrightness, globalBlockAbsorption, globalBlockReflectance, soundSimulationDistance, airAbsorption, humidityAbsorption, rainAbsorption, underwaterFilter);
-        if(Engine.env == EnvType.SERVER) return;
+        if(Engine.envType == EnvType.SERVER) return;
         // setPerformance(config.Performance, skipRainOcclusionTracing, environmentEvaluationRays, environmentEvaluationRayBounces, simplerSharedAirspaceSimulation);
         setMaterialProperties(config.materials, materialProperties);
         // setMisc(config.misc, continuousRefreshRate, maxDirectOcclusionFromBlocks, _9RayDirectOcclusion, soundDirectionEvaluation, directRaysDirEvalMultiplier, notOccludedNoRedirect);

@@ -1,6 +1,6 @@
 package dev.thedocruby.resounding.toolbox;
 
-import static dev.thedocruby.resounding.config.PrecomputedConfig.pC;
+import static dev.thedocruby.resounding.config.PrecomputedConfig.pConfig;
 
 public record MaterialData
 	( String example
@@ -12,8 +12,8 @@ public record MaterialData
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
 		MaterialData data = (MaterialData) o;
-		return (   Math.abs(this.reflectivity() - data.reflectivity()) <= pC.threshold
-				&& Math.abs(this.permeability() - data.permeability()) <= pC.threshold
+		return (   Math.abs(this.reflectivity() - data.reflectivity()) <= pConfig.threshold
+				&& Math.abs(this.permeability() - data.permeability()) <= pConfig.threshold
 				);
 	}
 }

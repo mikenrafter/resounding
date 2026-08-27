@@ -176,11 +176,11 @@ public class Utils {
 
 // }
 
-	// specialized tuple type for effects using float
-	public record SIF
-		( String f // first
-		, int    s // second
-		, float  t  // third
+	/** Tuple that binds a human-readable name, an OpenAL enum constant, and a float value for a single effect parameter. */
+	public record EffectParameter
+		( String name    // human-readable label (e.g. "density")
+		, int    alEnum  // OpenAL EXTEfx parameter constant
+		, float  value   // parameter value to apply
 	) {}
 
     // returns Tokenized Type for use in serialization, based on target type

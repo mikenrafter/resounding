@@ -1,6 +1,6 @@
 package dev.thedocruby.resounding.raycast;
 
-import dev.thedocruby.resounding.Cache;
+import dev.thedocruby.resounding.OctreeManager;
 import dev.thedocruby.resounding.Material;
 import dev.thedocruby.resounding.toolbox.MaterialData;
 import net.fabricmc.api.EnvType;
@@ -19,7 +19,7 @@ import java.util.HashMap;
 public class Branch {
     public BlockPos start;
     public int size;
-    public @NotNull VoxelShape shape = Cache.CUBE;
+    public @NotNull VoxelShape shape = OctreeManager.CUBE;
     public @Nullable Material material; // TODO: use!
 
     public @NotNull HashMap<Long, Branch> leaves;

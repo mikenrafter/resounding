@@ -1,8 +1,11 @@
 package dev.thedocruby.resounding.openal;
 
-// class containing AL context information
-// global*
-// TODO - determine effect of making instances
+/**
+ * Holds per-effect OpenAL object IDs (slots, effects, filters).
+ *
+ * Each Effect instance owns one ALset, so these are instance fields —
+ * not static — to prevent separate effects from overwriting each other's state.
+ */
 public class ALset {
 	public ALset() {
 		slots   = new int[0];
@@ -10,11 +13,11 @@ public class ALset {
 		filters = new int[0];
 	}
 	// AL objects
-	public static long  old = -1; // context id
-	public static long  self    ; // context id
-	public static int   direct  ; // directFilter
-	public static int[] slots   ;
-	public static int[] effects ;
-	public static int[] filters ;
+	public long  old = -1; // prior context id for save/restore
+	public long  self    ; // owning context id
+	public int   direct  ; // direct low-pass filter
+	public int[] slots   ; // auxiliary effect slots
+	public int[] effects ; // effect objects
+	public int[] filters ; // send filters
 }
 

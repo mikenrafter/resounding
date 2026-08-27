@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
-import static dev.thedocruby.resounding.config.PrecomputedConfig.pC;
+import static dev.thedocruby.resounding.config.PrecomputedConfig.pConfig;
 
 @Mixin(ServerWorld.class)
 public class ServerWorldMixin {
@@ -19,7 +19,7 @@ public class ServerWorldMixin {
 
 	@ModifyArg(method = {"playSound","playSoundFromEntity"}, at = @At(value = "INVOKE", target = "net/minecraft/server/PlayerManager.sendToAround (Lnet/minecraft/entity/player/PlayerEntity;DDDDLnet/minecraft/registry/RegistryKey;Lnet/minecraft/network/packet/Packet;)V"),index = 4)
 	private double SoundDistanceModifierInjector(double distance){
-		if ((Engine.env == EnvType.CLIENT && !Engine.on) || (Engine.env == EnvType.SERVER && !pC.enabled)) return distance;
-		return Math.min(distance * pC.soundSimulationDistance, 16 * Math.min(this.server.getPlayerManager().getViewDistance(), this.server.getPlayerManager().getSimulationDistance()) );
+		if ((Engine.envType == EnvType.CLIENT && !Engine.isActive) || (Engine.envType == EnvType.SERVER && !pConfig.enabled)) return distance;
+		return Math.min(distance * pConfig.soundSimulationDistance, 16 * Math.min(this.server.getPlayerManager().getViewDistance(), this.server.getPlayerManager().getSimulationDistance()) );
 	}
 }

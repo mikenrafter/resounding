@@ -1,0 +1,7 @@
+id,shortname,description,naive_change,outcomes,components,attractor_id
+P-01,stable-identifier,"A block identifier is stable, single-domain, and round-trips: the id used to build the registry is the same id used to query it at runtime.","keying by whatever object happens to be on hand at each call site (Text, translation key, or tag id) instead of a single canonical id type",,,A-01
+P-02,pure-tag-resolution,"Tag resolution is a pure function of (raw tag definitions, block->tag index) -- same input, same output, no mutation of the input.",memoizing by mutating the shared input map in place during resolution,,,A-01
+P-03,distinguishable-diagnostics,"Tag reference cycles and missing references are reported as distinguishable, inspectable diagnostics, not as null.",collapsing every failure mode into a null return plus a log line,,,A-01
+P-04,exact-composition-weights,Material property blending preserves fractional composition weights exactly.,accumulating weighted composition counts in an int counter,,,A-01
+P-05,shipped-defaults,The mod ships default tag and material data sufficient for vanilla blocks; resource packs override and extend it rather than being the sole source.,deferring all material data to user resource packs with no shipped defaults,,,A-01
+P-06,minecraft-free-testability,Every stage of the pipeline is executable and assertable without Minecraft on the classpath.,"importing Registries, BlockState, ResourcePack, and FabricLoader directly into the pure data-transformation classes",,,A-01

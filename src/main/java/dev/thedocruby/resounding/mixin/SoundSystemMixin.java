@@ -22,7 +22,7 @@ import java.util.Iterator;
 import java.util.Map;
 
 import static dev.thedocruby.resounding.Engine.mc;
-import static dev.thedocruby.resounding.config.PrecomputedConfig.pC;
+import static dev.thedocruby.resounding.config.PrecomputedConfig.pConfig;
 
 @Environment(EnvType.CLIENT)
 @Mixin(SoundSystem.class)
@@ -32,7 +32,7 @@ public class SoundSystemMixin {
 
 	@Inject(method = "play(Lnet/minecraft/client/sound/SoundInstance;)V", at = @At(value = "FIELD", target = "net/minecraft/client/sound/SoundSystem.sounds : Lcom/google/common/collect/Multimap;"), locals = LocalCapture.CAPTURE_FAILHARD)
 	private void soundInfoYeeter(SoundInstance sound, CallbackInfo ci, WeightedSoundSet weightedSoundSet, Identifier identifier, Sound sound2, float f, float g, SoundCategory soundCategory){
-		if (!Engine.on) return;
+		if (!Engine.isActive) return;
 		Engine.recordLastSound(sound, this.listener); // TODO: do this better maybe
 	}
 
@@ -40,13 +40,13 @@ public class SoundSystemMixin {
 //  private void ticker(CallbackInfo ci){ Air.updateSmoothedRain(); }
 
 	@ModifyArg(method = "getAdjustedVolume(FLnet/minecraft/sound/SoundCategory;)F", at = @At(value = "INVOKE", target = "net/minecraft/util/math/MathHelper.clamp (FFF)F"), index = 0)
-	private float volumeMultiplierInjector(float vol){ if (!Engine.on) return vol; return vol * PrecomputedConfig.globalVolumeMultiplier; }
+	private float volumeMultiplierInjector(float vol){ if (!Engine.isActive) return vol; return vol * PrecomputedConfig.globalVolumeMultiplier; }
 
 	@SuppressWarnings("InvalidInjectorMethodSignature")
 	@Inject(method = "tick()V", at = @At(value = "JUMP", opcode = Opcodes.IFEQ, ordinal = 3), locals = LocalCapture.CAPTURE_FAILHARD)
 	private void recalculate(CallbackInfo ci, Iterator<?> iterator, Map.Entry<?, ?> entry, Channel.SourceManager f, SoundInstance g, float vec3d){
-		if (!Engine.on) return;
-		if (mc.world != null && mc.world.getTime()%pC.srcRefrRate ==0){
+		if (!Engine.isActive) return;
+		if (mc.world != null && mc.world.getTime()%pConfig.srcRefrRate ==0){
 			f.run((s) -> ((SourceAccessor)s).calculateReverb(g, this.listener));
 			/*mc.world.getRegistryManager().get(Registry.BLOCK_KEY).streamTags().forEachOrdered(
 					(tagKey) -> {

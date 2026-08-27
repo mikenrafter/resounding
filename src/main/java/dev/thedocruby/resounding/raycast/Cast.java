@@ -1,6 +1,5 @@
 package dev.thedocruby.resounding.raycast;
 
-import dev.thedocruby.resounding.Cache;
 import dev.thedocruby.resounding.Material;
 import dev.thedocruby.resounding.Physics;
 import dev.thedocruby.resounding.toolbox.ChunkChain;
@@ -23,7 +22,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Map;
 import java.util.function.BiFunction;
 
-import static dev.thedocruby.resounding.Cache.*;
+import static dev.thedocruby.resounding.MaterialRegistry.material;
+import static dev.thedocruby.resounding.OctreeManager.CUBE;
+import static dev.thedocruby.resounding.OctreeManager.EMPTY;
 import static dev.thedocruby.resounding.Utils.LOGGER;
 
 @Environment(EnvType.CLIENT)
@@ -233,7 +234,7 @@ public class Cast {
         VoxelShape shape = shapes.get(posl);
         // TODO evaluate actual benefit for shape cache
         if (shape == null) {
-            // if (pC.dRays) world.addParticle(ParticleTypes.END_ROD, false, branch.start.getX() + 0.5d, branch.start.getY() + 1d, branch.start.getZ() + 0.5d, vector.x, vector.y, vector.z);
+            // if (pConfig.dRays) world.addParticle(ParticleTypes.END_ROD, false, branch.start.getX() + 0.5d, branch.start.getY() + 1d, branch.start.getZ() + 0.5d, vector.x, vector.y, vector.z);
             shape = branch.shape;
             if (shape == null) return null;
             shapes.put(posl, shape);

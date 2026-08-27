@@ -16,11 +16,11 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
 
-import static dev.thedocruby.resounding.config.PrecomputedConfig.pC;
+import static dev.thedocruby.resounding.config.PrecomputedConfig.pConfig;
 
 
 @Environment(EnvType.CLIENT)
-public class Context extends Utils { // TODO: Create separate debug toggle for OpenAl EFX instead of using pC.dLog
+public class Context extends Utils { // TODO: Create separate debug toggle for OpenAl EFX instead of using pConfig.dLog
 
 	// default values
 	private ALset[] contexts;
@@ -107,7 +107,7 @@ public class Context extends Utils { // TODO: Create separate debug toggle for O
 		activate();
 		garbage = force || success;
 		active = false;
-		if (pC.dLog) {
+		if (pConfig.dLog) {
 			if (success) Utils.LOGGER.info ("Cleaned context: {}.", id);
 			else         Utils.LOGGER.error("Context remains: {}.", id);
 		}
@@ -126,13 +126,13 @@ public class Context extends Utils { // TODO: Create separate debug toggle for O
 	}
 	// it's a pun! General function for cleaning slots/effects/filters
 	private int[]   deleteAL(final String type, int[] set, Consumer<int[]> delete, IntPredicate verify) {
-		if (pC.dLog) Utils.LOGGER.info("Removing {}[{}]", type, set.length);
+		if (pConfig.dLog) Utils.LOGGER.info("Removing {}[{}]", type, set.length);
 		delete.accept(set.clone());
 		// loop through slots
 		for (int bit : set) {
 			if (verify.test(bit)) { Utils.LOGGER.error("Failed to delete {}.{}", type, bit); continue; }
 			set = ArrayUtils.removeElement(set, bit);
-			if (pC.dLog) Utils.LOGGER.info("Deleting {}.{}", type, bit);
+			if (pConfig.dLog) Utils.LOGGER.info("Deleting {}.{}", type, bit);
 		}
 		return set;
 	}
@@ -164,7 +164,7 @@ public class Context extends Utils { // TODO: Create separate debug toggle for O
 		EXTEfx.alDeleteFilters(context.direct);
 		if (EXTEfx.alIsFilter(context.direct)) {
 			Utils.LOGGER.error("Failed to delete direct filter object!"); return false;
-		} else if (pC.dLog) {
+		} else if (pConfig.dLog) {
 			Utils.LOGGER.info("Direct filter object deleted with ID {}", context.direct);
 		}
 		return true;

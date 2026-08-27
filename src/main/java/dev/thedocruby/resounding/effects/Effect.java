@@ -10,7 +10,7 @@ import java.util.function.IntPredicate;
 import java.util.function.IntConsumer;
 import java.util.function.Consumer;
 
-import static dev.thedocruby.resounding.config.PrecomputedConfig.pC;
+import static dev.thedocruby.resounding.config.PrecomputedConfig.pConfig;
 
 // TODO fill in later
 public class Effect extends Utils {
@@ -23,7 +23,7 @@ public class Effect extends Utils {
 
 	public  ALset   setup(final long id) {
 		// TODO check if this just returns "loading effect Effect"
-		if (pC.dLog) Utils.LOGGER.info("loading effect {}", name);
+		if (pConfig.dLog) Utils.LOGGER.info("loading effect {}", name);
 		context = new ALset();
 		context.self = id;
 
@@ -35,7 +35,7 @@ public class Effect extends Utils {
 			setupDirect () )) {
 			Utils.LOGGER.error("Failed to setup effect: {}", name);
 		} else {
-			if (pC.dLog) Utils.LOGGER.info("Setup effect: {}", name);
+			if (pConfig.dLog) Utils.LOGGER.info("Setup effect: {}", name);
 			//active = true;
 		}
 		return context;
@@ -45,9 +45,9 @@ public class Effect extends Utils {
 
 	// it's a pun! General function for setup of slots/effects/filters
 	private int[]   generAL(final String type, Consumer<int[]> generate, IntPredicate verify, IntConsumer init) {
-			if (pC.dLog) Utils.LOGGER.info("Creating {}[{}]", type, pC.resolution);
+			if (pConfig.dLog) Utils.LOGGER.info("Creating {}[{}]", type, pConfig.resolution);
 			// create array
-			int[] set = new int[pC.resolution];
+			int[] set = new int[pConfig.resolution];
 			generate.accept(set);      // generate   set
 			for(int bit : set) {       // loop over  set
 				if(verify.test(bit)) { // verify     bit
@@ -57,7 +57,7 @@ public class Effect extends Utils {
 						s -> Utils.LOGGER.info(s+"Failed to create {}.{}", type, bit)
 						)) {
 						// log
-						if (pC.dLog) Utils.LOGGER.info("Created {}.{}", type, bit); continue;
+						if (pConfig.dLog) Utils.LOGGER.info("Created {}.{}", type, bit); continue;
 					} active = false; continue; // fail gracefully ← & ↓
 				} Utils.LOGGER.error("Failed create {}.{}", type, bit); active = false;
 			}
@@ -94,7 +94,7 @@ public class Effect extends Utils {
 		context.direct = EXTEfx.alGenFilters();
 		if (!EXTEfx.alIsFilter(context.direct)) {
 			Utils.LOGGER.error("Failed to create direct filter object!"); return false;
-		} else if (pC.dLog) {
+		} else if (pConfig.dLog) {
 			Utils.LOGGER.info("Direct filter object created with ID {}", context.direct);
 		}
 		return true;

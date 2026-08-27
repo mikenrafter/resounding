@@ -1,0 +1,2 @@
+id,name,description,positive_state,negative_state
+A-01,material-resolution,Every block the raycaster touches resolves to a definite acoustic Material derived from its tags.,Block state -> stable identifier -> tag set -> blended physical properties -> baked Material; unknown blocks fall back to a defined default; the mapping is deterministic and reproducible across launches.,"Lookups silently miss and every block collapses to the air fallback (or null); the world is acoustically uniform; failures are invisible because they surface as a log line, not an error."

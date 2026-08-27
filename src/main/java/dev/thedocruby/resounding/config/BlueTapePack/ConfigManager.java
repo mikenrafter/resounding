@@ -31,13 +31,13 @@ public class ConfigManager {
     public static final String configVersion = "1.0.0-bc.8";
 
     @Environment(EnvType.CLIENT)
-    public static final ResoundingConfig DEFAULT = Engine.env == EnvType.CLIENT ? new ResoundingConfig() : null;
+    public static final ResoundingConfig DEFAULT = Engine.envType == EnvType.CLIENT ? new ResoundingConfig() : null;
 
     public static void registerAutoConfig() {
         if (holder != null) {throw new IllegalStateException("Configuration already registered");}
         holder = AutoConfig.register(ResoundingConfig.class, JanksonConfigSerializer::new);
 
-        if (Engine.env == EnvType.CLIENT) try {GuiRegistryinit.register();} catch (Throwable ignored){
+        if (Engine.envType == EnvType.CLIENT) try {GuiRegistryinit.register();} catch (Throwable ignored){
             Utils.LOGGER.error("Failed to register config menu unwrappers. Edit config that isn't working in the config file");}
 
         holder.registerSaveListener((holder, config) -> onSave(config));
@@ -78,11 +78,11 @@ public class ConfigManager {
     }
 
     public static ActionResult onSave(ResoundingConfig c) {
-        if (Engine.env == EnvType.CLIENT && c.preset != ConfigPresets.LOAD_SUCCESS) c.preset.configChanger.accept(c);
+        if (Engine.envType == EnvType.CLIENT && c.preset != ConfigPresets.LOAD_SUCCESS) c.preset.configChanger.accept(c);
         if ((c.version == null || !Objects.equals(c.version, configVersion)) && !resetOnReload) handleUnstableConfig(c);
-        if (PrecomputedConfig.pC != null) PrecomputedConfig.pC.deactivate();
-        try {PrecomputedConfig.pC = new PrecomputedConfig(c);} catch (CloneNotSupportedException e) {e.printStackTrace(); return ActionResult.FAIL;}
-        if (Engine.env == EnvType.CLIENT && Engine.on) {
+        if (PrecomputedConfig.pConfig != null) PrecomputedConfig.pConfig.deactivate();
+        try {PrecomputedConfig.pConfig = new PrecomputedConfig(c);} catch (CloneNotSupportedException e) {e.printStackTrace(); return ActionResult.FAIL;}
+        if (Engine.envType == EnvType.CLIENT && Engine.isActive) {
             Engine.updateRays();
             Engine.mc.getSoundManager().reloadSounds();
         }

@@ -3,7 +3,7 @@ package dev.thedocruby.resounding.effects;
 import dev.thedocruby.resounding.toolbox.*;
 import dev.thedocruby.resounding.openal.*;
 
-import static dev.thedocruby.resounding.config.PrecomputedConfig.pC;
+import static dev.thedocruby.resounding.config.PrecomputedConfig.pConfig;
 import net.minecraft.util.math.MathHelper;
 
 import org.lwjgl.openal.AL10;
@@ -31,28 +31,28 @@ public class Reverb extends Effect {
 			// }
 	)  {
 		// define effects to be applied
-		SIF[] effects = {
-		new SIF("density"            , EXTEfx.AL_EAXREVERB_DENSITY              , density         ),
-		new SIF("diffusion"          , EXTEfx.AL_EAXREVERB_DIFFUSION            , diffusion       ),
-		new SIF("air_absorption_gain", EXTEfx.AL_EAXREVERB_AIR_ABSORPTION_GAINHF, 1f              ),
-		new SIF("late_delay"         , EXTEfx.AL_EAXREVERB_LATE_REVERB_DELAY    , lateReverbDelay ),
-		new SIF("late_gain"          , EXTEfx.AL_EAXREVERB_LATE_REVERB_GAIN     , lateReverbGain  ),
-		new SIF("reflections_delay"  , EXTEfx.AL_EAXREVERB_REFLECTIONS_DELAY    , reflectionsDelay),
-		new SIF("reflections_gain"   , EXTEfx.AL_EAXREVERB_REFLECTIONS_GAIN     , reflectionsGain ),
-		new SIF("HF_decay_ratio"     , EXTEfx.AL_EAXREVERB_DECAY_HFRATIO        , decayHFRatio    ),
-		new SIF("decay_time"         , EXTEfx.AL_EAXREVERB_DECAY_TIME           , decayTime       ),
-		new SIF("HF_gain"            , EXTEfx.AL_EAXREVERB_GAINHF               , gainHF          )
+		EffectParameter[] effects = {
+		new EffectParameter("density"            , EXTEfx.AL_EAXREVERB_DENSITY              , density         ),
+		new EffectParameter("diffusion"          , EXTEfx.AL_EAXREVERB_DIFFUSION            , diffusion       ),
+		new EffectParameter("air_absorption_gain", EXTEfx.AL_EAXREVERB_AIR_ABSORPTION_GAINHF, 1f              ),
+		new EffectParameter("late_delay"         , EXTEfx.AL_EAXREVERB_LATE_REVERB_DELAY    , lateReverbDelay ),
+		new EffectParameter("late_gain"          , EXTEfx.AL_EAXREVERB_LATE_REVERB_GAIN     , lateReverbGain  ),
+		new EffectParameter("reflections_delay"  , EXTEfx.AL_EAXREVERB_REFLECTIONS_DELAY    , reflectionsDelay),
+		new EffectParameter("reflections_gain"   , EXTEfx.AL_EAXREVERB_REFLECTIONS_GAIN     , reflectionsGain ),
+		new EffectParameter("HF_decay_ratio"     , EXTEfx.AL_EAXREVERB_DECAY_HFRATIO        , decayHFRatio    ),
+		new EffectParameter("decay_time"         , EXTEfx.AL_EAXREVERB_DECAY_TIME           , decayTime       ),
+		new EffectParameter("HF_gain"            , EXTEfx.AL_EAXREVERB_GAINHF               , gainHF          )
 		};
 		final int effect = context.effects[id];
 		// iterate and apply them
-		for (SIF options : effects) {
-			EXTEfx.alEffectf(effect, options.s(), options.t());
-			ALUtils.errorSet("effect", options.f(), effect, options.t());
+		for (EffectParameter options : effects) {
+			EXTEfx.alEffectf(effect, options.alEnum(), options.value());
+			ALUtils.errorSet("effect", options.name(), effect, options.value());
 		}
 		final int slot   = context.slots  [id];
 		//Attach updated effect object
 		EXTEfx.alAuxiliaryEffectSloti(slot, EXTEfx.AL_EFFECTSLOT_EFFECT, effect);
-		if (pC.dLog && !ALUtils.errorApply("effect", effect, "slot", slot)) {
+		if (pConfig.dLog && !ALUtils.errorApply("effect", effect, "slot", slot)) {
 			LOGGER.info("Initialized effect.{}", effect);
 		}
 	}
@@ -97,12 +97,12 @@ public class Reverb extends Effect {
 
 @Override
 	public boolean init() {
-		for(int i = 1; i <= pC.resolution; i++){
-			double t = (double) i / pC.resolution;
+		for(int i = 1; i <= pConfig.resolution; i++){
+			double t = (double) i / pConfig.resolution;
 			apply(i - 1,
-					(float) Math.max(t * pC.maxDecayTime, 0.1),             // decayTime
+					(float) Math.max(t * pConfig.maxDecayTime, 0.1),             // decayTime
 					(float) (t * 0.5 + 0.5),                                // density
-					(float) MathHelper.lerp(pC.rvrbDiff, 1-t, 1), // diffusion
+					(float) MathHelper.lerp(pConfig.rvrbDiff, 1-t, 1), // diffusion
 					(float) (0.95 - (0.75 * t)),                            // gainHF
 					(float) Math.max(0.95 - (0.3 * t), 0.1),                // decayHFRatio
 					(float) Math.max(Math.pow(1 - t, 0.5) + 0.618, 0.1),    // reflectionsGain
@@ -113,7 +113,7 @@ public class Reverb extends Effect {
 		}
 		EXTEfx.alFilteri(context.direct, EXTEfx.AL_FILTER_TYPE, EXTEfx.AL_FILTER_LOWPASS);
 		final boolean success = !ALUtils.checkErrors("Failed to properly initialize OpenAL Auxiliary Effect slots. Aborting");
-		if (success && pC.dLog) LOGGER.info("Finished initializing OpenAL Auxiliary Effect slots!");
+		if (success && pConfig.dLog) LOGGER.info("Finished initializing OpenAL Auxiliary Effect slots!");
 		// TODO ? what ?
 		// efxEnabled = false;
 		return success;
