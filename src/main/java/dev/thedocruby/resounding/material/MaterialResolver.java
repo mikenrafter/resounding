@@ -27,6 +27,11 @@ public final class MaterialResolver {
      * carry no physical properties of their own — they exist so a block inherits from whatever its
      * tags describe.
      *
+     * <p><b>Solutes are ordered by {@link Ident#compareTo}.</b> A block's tags arrive as an
+     * unordered set, so without a defined order "the first tag is the base" would pick a different
+     * base between launches and bake a different material each time — the cache on disk would churn
+     * and two clients would not agree. Sorting is what makes the result reproducible.
+     *
      * <p>Every block in {@code index} gets a shell, including untagged ones, which previously fell
      * out of the pipeline entirely and ended up with no material at all.
      */
