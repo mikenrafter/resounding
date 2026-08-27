@@ -23,10 +23,12 @@ public record Layer(
         List<Diagnostic> diagnostics
 ) {
     public Layer {
-        throw new UnsupportedOperationException("P5");
+        tags = tags == null ? Map.of() : Map.copyOf(tags);
+        materials = materials == null ? Map.of() : Map.copyOf(materials);
+        diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
     }
 
     public static Layer empty(String name) {
-        throw new UnsupportedOperationException("P5");
+        return new Layer(name, Map.of(), Map.of(), List.of());
     }
 }

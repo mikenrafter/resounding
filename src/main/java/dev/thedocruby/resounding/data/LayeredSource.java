@@ -1,6 +1,15 @@
 package dev.thedocruby.resounding.data;
 
+import dev.thedocruby.resounding.material.RawMaterialDef;
+import dev.thedocruby.resounding.tag.Diagnostic;
+import dev.thedocruby.resounding.tag.Ident;
+import dev.thedocruby.resounding.tag.RawTagDef;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Collapses ordered layers into one set of definitions.
@@ -30,7 +39,7 @@ public final class LayeredSource {
      * @return a single layer named for the merge, carrying the union of all diagnostics
      */
     public static Layer merge(List<Layer> authoredLowestFirst) {
-        throw new UnsupportedOperationException("P5");
+        return merge(null, authoredLowestFirst);
     }
 
     /**
@@ -46,6 +55,49 @@ public final class LayeredSource {
      * @param authoredLowestFirst mod defaults, then resource packs, in ascending precedence
      */
     public static Layer merge(Layer shells, List<Layer> authoredLowestFirst) {
-        throw new UnsupportedOperationException("P5");
+        List<Layer> allLayers = new ArrayList<>();
+        if (shells != null) {
+            allLayers.add(shells);
+        }
+        if (authoredLowestFirst != null) {
+            allLayers.addAll(authoredLowestFirst);
+        }
+
+        Map<Ident, RawTagDef> mergedTags = new LinkedHashMap<>();
+        Map<Ident, String> tagOrigins = new HashMap<>();
+        Map<Ident, RawMaterialDef> mergedMaterials = new LinkedHashMap<>();
+        List<Diagnostic> allDiagnostics = new ArrayList<>();
+
+        for (Layer layer : allLayers) {
+            allDiagnostics.addAll(layer.diagnostics());
+
+            for (Map.Entry<Ident, RawTagDef> entry : layer.tags().entrySet()) {
+                Ident tagId = entry.getKey();
+                RawTagDef newDef = entry.getValue();
+                if (mergedTags.containsKey(tagId)) {
+                    RawTagDef oldDef = mergedTags.get(tagId);
+                    if (newDef.replace()) {
+                        allDiagnostics.add(new Diagnostic.Shadowed(tagId, tagOrigins.get(tagId), layer.name()));
+                    }
+                    mergedTags.put(tagId, oldDef.mergeUnder(newDef));
+                } else {
+                    mergedTags.put(tagId, newDef);
+                }
+                tagOrigins.put(tagId, layer.name());
+            }
+
+            for (Map.Entry<Ident, RawMaterialDef> entry : layer.materials().entrySet()) {
+                Ident matId = entry.getKey();
+                RawMaterialDef newDef = entry.getValue();
+                if (mergedMaterials.containsKey(matId)) {
+                    RawMaterialDef oldDef = mergedMaterials.get(matId);
+                    mergedMaterials.put(matId, oldDef.overlay(newDef));
+                } else {
+                    mergedMaterials.put(matId, newDef);
+                }
+            }
+        }
+
+        return new Layer("merged", mergedTags, mergedMaterials, allDiagnostics);
     }
 }
