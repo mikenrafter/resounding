@@ -1,0 +1,99 @@
+{
+  "resounding:stone": {
+    "density": 2600.0,
+    "swave": 3500.0,
+    "lwave": 5000.0,
+    "melt": 1523.0,
+    "boil": 2503.0,
+    "granularity": 8.0
+  },
+  "resounding:wood": {
+    "density": 700.0,
+    "swave": 1200.0,
+    "lwave": 3800.0,
+    "melt": 590.0,
+    "boil": 700.0,
+    "granularity": 4.0
+  },
+  "resounding:wool": {
+    "density": 80.0,
+    "swave": 50.0,
+    "lwave": 150.0,
+    "melt": 500.0,
+    "boil": 600.0,
+    "granularity": 1.0
+  },
+  "resounding:glass": {
+    "density": 2500.0,
+    "swave": 3400.0,
+    "lwave": 5900.0,
+    "melt": 1450.0,
+    "boil": 2503.0,
+    "granularity": 7.0
+  },
+  "resounding:metal": {
+    "density": 7870.0,
+    "swave": 3200.0,
+    "lwave": 5900.0,
+    "melt": 1811.0,
+    "boil": 3134.0,
+    "granularity": 10.0
+  },
+  "resounding:sand": {
+    "density": 1600.0,
+    "swave": 150.0,
+    "lwave": 500.0,
+    "melt": 1986.0,
+    "boil": 2503.0,
+    "granularity": 3.0
+  },
+  "resounding:dirt": {
+    "density": 1300.0,
+    "swave": 150.0,
+    "lwave": 400.0,
+    "melt": 1373.0,
+    "boil": 2503.0,
+    "granularity": 3.0
+  },
+  "resounding:snow": {
+    "density": 500.0,
+    "swave": 700.0,
+    "lwave": 1500.0,
+    "melt": 273.15,
+    "boil": 373.15,
+    "granularity": 2.0
+  },
+  "resounding:leaves": {
+    "density": 200.0,
+    "swave": 50.0,
+    "lwave": 500.0,
+    "melt": 273.15,
+    "boil": 373.15,
+    "granularity": 1.0
+  },
+  "resounding:water": {
+    "density": 1000.0,
+    "swave": 0.0,
+    "lwave": 1480.0,
+    "melt": 273.15,
+    "boil": 373.15,
+    "granularity": 2.0
+  },
+  "resounding:lava": {
+    "density": 3100.0,
+    "swave": 0.0,
+    "lwave": 2200.0,
+    "melt": 1473.0,
+    "boil": 2503.0,
+    "temperature": 1473.0,
+    "granularity": 4.0
+  },
+  "resounding:air": {
+    "density": 1.225,
+    "swave": 0.0,
+    "lwave": 343.0,
+    "melt": 63.15,
+    "boil": 77.15,
+    "granularity": 0.0
+  }
+}

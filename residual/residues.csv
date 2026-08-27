@@ -1,7 +1,8 @@
-force,core-tests,data/LayeredSource,material/Blend,tag/Diagnostic,tag/Ident,tag/TagResolver
-S-01,,,,,implemented|Ident value type replaces String keys across the pipeline; adapter derives it from BlockState so per-state acoustics stays an adapter concern. Runtime lookup moves to an identity map published by volatile swap (P6).,
-S-02,,,,,,implemented|TagResolver is pure Tarjan SCC with all state local to the call; purity asserted by test.
-S-03,"implemented|Two-lane harness: core-tests/ is a standalone Gradle build excluded from root settings so Loom never configures it; mounts the same sources via srcDir filters. Pure pipeline compiles and runs without Minecraft (22 classes, ~1s). Include filters double as the architectural boundary.",,,,,
-S-04,,implemented|Layering implemented and tested; shipped default JSON files still outstanding in P6.,,,,
-S-05,,,implemented|Blend accumulates in double; RawMaterialDef normalizes solute/composition length. Fractional compositions verified exact by test.,,,
-S-06,,,,implemented|Sealed Diagnostic hierarchy (Cycle/MissingReference/BadPattern/ParseError/Shadowed) replaces null-as-error; Resolution carries diagnostics alongside both mapping directions.,,
+force,core-tests,data/LayeredSource,material/Blend,material/MaterialResolver,tag/Diagnostic,tag/Ident,tag/TagResolver
+S-01,,,,,,"implemented|material(BlockState) now keys an IdentityHashMap by Block instance, published by volatile swap. Verified 622/1062 vanilla blocks resolve to a material.",
+S-02,,,,,,,implemented|TagResolver is pure Tarjan SCC with all state local to the call; purity asserted by test.
+S-03,"implemented|Two-lane harness: core-tests/ is a standalone Gradle build excluded from root settings so Loom never configures it; mounts the same sources via srcDir filters. Pure pipeline compiles and runs without Minecraft (22 classes, ~1s). Include filters double as the architectural boundary.",,,,,,
+S-04,,implemented|Layering implemented and tested; shipped default JSON files still outstanding in P6.,,,,,
+S-05,,,implemented|Blend accumulates in double; RawMaterialDef normalizes solute/composition length. Fractional compositions verified exact by test.,,,,
+S-06,,,,,implemented|Sealed Diagnostic hierarchy (Cycle/MissingReference/BadPattern/ParseError/Shadowed) replaces null-as-error; Resolution carries diagnostics alongside both mapping directions.,,
+S-07,,,,"proposed|Confirmed against shipped default data over all 1062 vanilla 1.21 block ids: air declares nitrogen's real phase points (63.15K/77.15K), so at ambient 287.15K state=16, velocity extrapolates to -5145 m/s and impedance to -6303 - NEGATIVE, for the most common block in the world. Recorded as a disabled test (ShippedDefaultsTest.everyBakedMaterialHasPositiveImpedanceAndPermeationAtMostOne) that will pass once S-07 is fixed.",,,

@@ -1,0 +1,79 @@
+{
+  "resounding:stone": {
+    "patterns": [
+      "(?:^|[:_])stone(?:$|_)",
+      "(?:^|[:_])cobblestone(?:$|_)",
+      "(?:^|[:_])(?:granite|diorite|andesite)(?:$|_)",
+      "(?:^|[:_])deepslate(?:$|_)",
+      "(?:^|[:_])tuff(?:$|_)",
+      "(?:^|[:_])calcite(?:$|_)",
+      "(?:^|[:_])basalt(?:$|_)",
+      "(?:^|[:_])blackstone(?:$|_)",
+      "(?:^|[:_])sandstone(?:$|_)",
+      "(?:^|[:_])dripstone(?:$|_)"
+    ]
+  },
+  "resounding:wood": {
+    "patterns": [
+      "(?:^|[:_])(?<!petrified_)(?:oak|spruce|birch|jungle|acacia|mangrove|cherry|crimson|warped|bamboo)_(?:log|wood|hyphae|stem|planks|block|mosaic(?:_slab|_stairs)?|fence(?:_gate)?|door|trapdoor|stairs|slab|button|pressure_plate|hanging_sign|wall_hanging_sign|wall_sign|sign)(?:$|_)"
+    ]
+  },
+  "resounding:wool": {
+    "patterns": [
+      "(?:^|[:_])wool(?:$|_)",
+      "(?:^|[:_])(?<!moss_)carpet(?:$|_)"
+    ]
+  },
+  "resounding:glass": {
+    "patterns": [
+      "(?:^|[:_])glass(?:$|_)"
+    ]
+  },
+  "resounding:metal": {
+    "patterns": [
+      "(?:^|[:_])iron_(?:block|bars|door|trapdoor)(?:$|_)",
+      "(?:^|[:_])gold_block(?:$|_)",
+      "(?:^|[:_])copper(?!_ore)(?:$|_)",
+      "(?:^|[:_])netherite_block(?:$|_)",
+      "(?:^|[:_])anvil(?:$|_)",
+      "(?:^|[:_])chain(?!_command)(?:$|_)",
+      "(?:^|[:_])rail(?:$|_)"
+    ]
+  },
+  "resounding:sand": {
+    "patterns": [
+      "(?:^|[:_])(?<!soul_)sand(?:$|_)",
+      "(?:^|[:_])gravel(?:$|_)"
+    ]
+  },
+  "resounding:dirt": {
+    "patterns": [
+      "(?:^|[:_])dirt(?:$|_)",
+      "(?:^|[:_])grass(?:$|_)",
+      "(?:^|[:_])mud(?:$|_)",
+      "(?:^|[:_])farmland(?:$|_)",
+      "(?:^|[:_])mycelium(?:$|_)",
+      "(?:^|[:_])podzol(?:$|_)"
+    ]
+  },
+  "resounding:snow": {
+    "patterns": [
+      "(?:^|[:_])snow(?:$|_)",
+      "(?:^|[:_])ice(?:$|_)"
+    ]
+  },
+  "resounding:leaves": {
+    "patterns": [
+      "(?:^|[:_])(?:leaves|sapling|fern|vines?|kelp|seagrass|lily_pad|sugar_cane|cactus|mushroom|fungus|roots|bush|moss|flower|cornflower|sunflower|torchflower|pitcher|beetroots|sprouts|azalea|potted)(?:$|_)"
+    ]
+  },
+  "resounding:water": {
+    "blocks": ["minecraft:water", "minecraft:water_cauldron"]
+  },
+  "resounding:lava": {
+    "blocks": ["minecraft:lava", "minecraft:lava_cauldron"]
+  },
+  "resounding:air": {
+    "blocks": ["minecraft:air", "minecraft:cave_air", "minecraft:void_air"]
+  }
+}

@@ -5,3 +5,4 @@ tag/Diagnostic,Sealed typed resolution-failure hierarchy replacing null-as-error
 tag/TagResolver,Pure tag expansion over immutable inputs,proposed,tagging
 material/Blend,Property accumulator with double-precision averaging weight,proposed,tagging
 data/LayeredSource,Ordered layer merge for shipped defaults and resource packs,proposed,tagging
+material/MaterialResolver,Pure flatten-refine-bake pipeline for material definitions,implemented,tagging

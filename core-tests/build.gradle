@@ -17,7 +17,8 @@ sourceSets {
             include 'dev/thedocruby/resounding/material/**'
             include 'dev/thedocruby/resounding/data/**'
         }
-        resources.srcDirs = []
+        // the shipped default data is part of what Lane 1 verifies
+        resources.srcDirs = ['../src/main/resources']
     }
     test {
         java.srcDirs = ['../src/test/java']
