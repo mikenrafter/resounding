@@ -54,6 +54,20 @@ public sealed interface Diagnostic {
         @Override public String message() { throw new UnsupportedOperationException("P2"); }
     }
 
+    /**
+     * A definition was dropped because it still lacked properties needed to bake after flattening.
+     *
+     * <p>Distinct from {@link MissingReference}: nothing was missing from the graph, the material
+     * simply never acquired a density, a wave velocity, or similar. Previously this was a bare
+     * {@code LOGGER.warn} with no structured trace of which property was absent.
+     *
+     * @param missing names of the absent properties, for a message a pack author can act on
+     */
+    record Incomplete(Ident subject, List<String> missing) implements Diagnostic {
+        @Override public Severity severity() { throw new UnsupportedOperationException("P2"); }
+        @Override public String message() { throw new UnsupportedOperationException("P2"); }
+    }
+
     /** A higher layer declared {@code "replace": true} and discarded content from a lower one. */
     record Shadowed(Ident subject, String lowerLayer, String higherLayer) implements Diagnostic {
         @Override public Severity severity() { throw new UnsupportedOperationException("P2"); }

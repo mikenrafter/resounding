@@ -17,7 +17,9 @@ import java.util.List;
  * {@code ArrayIndexOutOfBoundsException} on the first iteration.
  *
  * @param weight      relative importance of this material when blended into another
- * @param solvent     the material this one is dissolved in; drives the permeation calculation
+ * @param solvent     the material this one is dissolved in; drives the permeation calculation.
+ *                    Null means "no distinct solvent", in which case the bake uses 80% of the
+ *                    material's own impedance, preserving the previous behaviour.
  * @param solute      constituents whose properties blend into this material
  * @param composition per-solute blend weight, parallel to {@code solute}
  * @param ratio       average by composition alone rather than by constituent weight

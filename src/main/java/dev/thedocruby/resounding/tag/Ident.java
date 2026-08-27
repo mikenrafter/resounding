@@ -41,6 +41,7 @@ public record Ident(String namespace, String path) implements Comparable<Ident> 
         throw new UnsupportedOperationException("P2");
     }
 
+    /** Orders by namespace, then path, so diagnostic output is stable across runs. */
     @Override
     public int compareTo(Ident other) {
         throw new UnsupportedOperationException("P2");

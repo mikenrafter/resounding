@@ -24,10 +24,28 @@ public final class LayeredSource {
     private LayeredSource() {}
 
     /**
-     * @param lowestFirst layers in ascending precedence
+     * Merges authored layers only.
+     *
+     * @param authoredLowestFirst layers in ascending precedence
      * @return a single layer named for the merge, carrying the union of all diagnostics
      */
-    public static Layer merge(List<Layer> lowestFirst) {
+    public static Layer merge(List<Layer> authoredLowestFirst) {
+        throw new UnsupportedOperationException("P5");
+    }
+
+    /**
+     * Merges authored layers and lays them over generated shells.
+     *
+     * <p>Shells are a separate parameter rather than the first element of the list on purpose. The
+     * guarantee that a generated shell never replaces an authored material is worth nothing if it
+     * depends on every caller remembering to put shells first — that is the same class of mistake
+     * as the original defect, where shell generation simply ran {@code putAll} last. Taking them
+     * as a distinct argument makes the ordering impossible to get wrong.
+     *
+     * @param shells              generated skeletons, always lowest precedence
+     * @param authoredLowestFirst mod defaults, then resource packs, in ascending precedence
+     */
+    public static Layer merge(Layer shells, List<Layer> authoredLowestFirst) {
         throw new UnsupportedOperationException("P5");
     }
 }

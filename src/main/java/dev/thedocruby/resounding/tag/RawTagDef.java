@@ -52,6 +52,10 @@ public record RawTagDef(
      * wins outright. This is Minecraft's own datapack model, so pack authors already know it, and it
      * preserves the documented idiom of a pack self-referencing a tag in order to extend it.
      *
+     * <p>The merged definition carries {@code higher.replace()}: the flag describes how this
+     * definition combines with anything layered <em>below</em> it, and after merging that role
+     * belongs to the higher operand.
+     *
      * @return the merged definition; never mutates either operand
      */
     public RawTagDef mergeUnder(RawTagDef higher) {
