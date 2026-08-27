@@ -47,6 +47,21 @@ class BlendTest {
     }
 
     @Test
+    void overrideAlsoDiscardsAnEarlierAdjustOffset() {
+        // Property left its `added` offset intact across an override, so an adjustment made before
+        // the override silently survived into the new base. Nothing pinned that behaviour, which is
+        // how the divergence went unnoticed. Override means "discard what came before"; an offset
+        // against a total that no longer exists is not meaningful, so it goes too.
+        Blend blend = new Blend(false);
+        blend.add(10.0, 1.0, 1.0, null);
+        blend.add(3.0, 0.0, 1.0, null);   // adjust: +3
+        blend.add(2.0, 1.0, 0.0, null);   // override
+
+        assertEquals(2.0, blend.get(), 1e-12,
+                "override must discard the earlier adjust offset, not carry it into the new base");
+    }
+
+    @Test
     void adjustModeOffsetsTheTotalWithoutChangingTheAveragingWeight() {
         Blend blend = new Blend(false);
         blend.add(10.0, 1.0, 1.0, null); // weighted base: sum=10, count=1

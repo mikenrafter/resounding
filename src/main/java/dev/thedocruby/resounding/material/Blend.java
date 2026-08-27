@@ -20,12 +20,22 @@ package dev.thedocruby.resounding.material;
  */
 public final class Blend {
 
+    private boolean ratio;
+    private double sum;
+    private double count;
+    private double added;
+    private boolean valid;
+
     /**
      * @param ratio true to average by stated composition alone; false to also scale each
      *              contribution by its constituent's weight
      */
     public Blend(boolean ratio) {
-        throw new UnsupportedOperationException("P4");
+        this.ratio = ratio;
+        this.sum = 0.0;
+        this.count = 0.0;
+        this.added = 0.0;
+        this.valid = false;
     }
 
     /**
@@ -36,11 +46,40 @@ public final class Blend {
      * @return true if a value was recorded
      */
     public boolean add(Double value, double weight, double count, Boolean ratioUpdate) {
-        throw new UnsupportedOperationException("P4");
+        if (count == 0.0 && ratioUpdate != null) {
+            this.ratio = ratioUpdate;
+        }
+        if (value == null) {
+            return false;
+        }
+        valid = true;
+        double next = value * count;
+        if (count == 0.0) {
+            sum = 0.0;
+            added = 0.0;
+            this.count = 0.0;
+            next = value;
+        } else if (weight == 0.0) {
+            added += next;
+            return true;
+        }
+        if (!ratio) {
+            next *= weight;
+        }
+        sum += next;
+        this.count += count;
+        return true;
     }
 
     /** The blended value, or null if nothing valid was ever added. */
     public Double get() {
-        throw new UnsupportedOperationException("P4");
+        if (!valid) {
+            return null;
+        }
+        double result = sum;
+        if (count > 0.0) {
+            result /= count;
+        }
+        return result + added;
     }
 }

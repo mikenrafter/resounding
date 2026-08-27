@@ -17,16 +17,23 @@ public final class Acoustics {
      * <p>{@code ((a - b) / (a + b))^2}
      */
     public static double reflection(double impedanceA, double impedanceB) {
-        throw new UnsupportedOperationException("P4");
+        double diff = impedanceA - impedanceB;
+        double sum = impedanceA + impedanceB;
+        double ratio = diff / sum;
+        return ratio * ratio;
     }
 
     /** Position of {@code value} within {@code [start, end]}, unclamped; 0 when the range is empty. */
     public static double lerpProgress(double value, double start, double end) {
-        throw new UnsupportedOperationException("P4");
+        double range = end - start;
+        if (range == 0.0) {
+            return 0.0;
+        }
+        return (value - start) / range;
     }
 
     /** Linear interpolation from {@code start} to {@code end}, unclamped. */
     public static double lerp(double delta, double start, double end) {
-        throw new UnsupportedOperationException("P4");
+        return start + delta * (end - start);
     }
 }

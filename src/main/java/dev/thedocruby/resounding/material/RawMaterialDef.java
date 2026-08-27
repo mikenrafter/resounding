@@ -2,6 +2,8 @@ package dev.thedocruby.resounding.material;
 
 import dev.thedocruby.resounding.tag.Ident;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -47,11 +49,26 @@ public record RawMaterialDef(
 ) {
     /** Normalizes {@code solute}/{@code composition} to equal length and takes immutable copies. */
     public RawMaterialDef {
-        throw new UnsupportedOperationException("P4");
+        if (solute != null) {
+            List<Ident> soluteCopy = List.copyOf(solute);
+            int n = soluteCopy.size();
+            Double[] compArray = new Double[n];
+            if (composition != null) {
+                int limit = Math.min(composition.size(), n);
+                for (int i = 0; i < limit; i++) {
+                    compArray[i] = composition.get(i);
+                }
+            }
+            solute = soluteCopy;
+            composition = Collections.unmodifiableList(Arrays.asList(compArray));
+        } else {
+            solute = null;
+            composition = null;
+        }
     }
 
     public static RawMaterialDef empty() {
-        throw new UnsupportedOperationException("P4");
+        return new RawMaterialDef(null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -67,11 +84,37 @@ public record RawMaterialDef(
      * constructor exists to prevent.
      */
     public RawMaterialDef overlay(RawMaterialDef higher) {
-        throw new UnsupportedOperationException("P4");
+        Double w = higher.weight() != null ? higher.weight() : this.weight();
+        Ident s = higher.solvent() != null ? higher.solvent() : this.solvent();
+        List<Ident> sol;
+        List<Double> comp;
+        if (higher.solute() != null) {
+            sol = higher.solute();
+            comp = higher.composition();
+        } else {
+            sol = this.solute();
+            comp = this.composition();
+        }
+        Boolean r = higher.ratio() != null ? higher.ratio() : this.ratio();
+        Double g = higher.granularity() != null ? higher.granularity() : this.granularity();
+        Double m = higher.melt() != null ? higher.melt() : this.melt();
+        Double b = higher.boil() != null ? higher.boil() : this.boil();
+        Double t = higher.temperature() != null ? higher.temperature() : this.temperature();
+        Double d = higher.density() != null ? higher.density() : this.density();
+        Double sw = higher.swave() != null ? higher.swave() : this.swave();
+        Double lw = higher.lwave() != null ? higher.lwave() : this.lwave();
+
+        return new RawMaterialDef(w, s, sol, comp, r, g, m, b, t, d, sw, lw);
     }
 
     /** True when every property needed to bake is present. */
     public boolean isComplete() {
-        throw new UnsupportedOperationException("P4");
+        return granularity != null
+                && melt != null
+                && boil != null
+                && temperature != null
+                && density != null
+                && swave != null
+                && lwave != null;
     }
 }
