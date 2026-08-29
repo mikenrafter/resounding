@@ -7,7 +7,6 @@ import net.fabricmc.api.Environment;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.VertexBuffer;
 import net.minecraft.client.render.*;
-import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.profiler.Profiler;
 import org.joml.Matrix4f;
@@ -79,13 +78,10 @@ public final class GpuLineBuffer implements AutoCloseable {
 		}
 	}
 
-	public void draw(MatrixStack matrices, Vec3d cameraPos) {
+	public void draw(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
 		if (!hasGeometry) {
 			return;
 		}
-
-		matrices.push();
-		matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
 
 		if (depthTest) {
 			RenderSystem.enableDepthTest();
@@ -96,14 +92,22 @@ public final class GpuLineBuffer implements AutoCloseable {
 		RenderSystem.lineWidth(lineWidth);
 		RenderSystem.setShader(GameRenderer::getPositionColorProgram);
 
-		Matrix4f modelView = new Matrix4f(matrices.peek().getPositionMatrix());
+		Matrix4f modelView = worldToView(positionMatrix, cameraPos);
 		vertexBuffer.bind();
-		vertexBuffer.draw(modelView, RenderSystem.getProjectionMatrix(), GameRenderer.getPositionColorProgram());
-
-		matrices.pop();
+		vertexBuffer.draw(modelView, projectionMatrix, GameRenderer.getPositionColorProgram());
 
 		RenderSystem.lineWidth(2F);
 		RenderSystem.enableBlend();
+	}
+
+	/**
+	 * World-space vertices are transformed by camera rotation ({@code positionMatrix}) and
+	 * translation relative to the camera position, matching vanilla debug rendering.
+	 */
+	static Matrix4f worldToView(Matrix4f positionMatrix, Vec3d cameraPos) {
+		Matrix4f modelView = new Matrix4f(positionMatrix);
+		modelView.translate((float) -cameraPos.x, (float) -cameraPos.y, (float) -cameraPos.z);
+		return modelView;
 	}
 
 	static int red(int argb) {

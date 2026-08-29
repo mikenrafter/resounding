@@ -5,9 +5,9 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
-import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.profiler.Profiler;
+import org.joml.Matrix4f;
 
 @Environment(EnvType.CLIENT)
 public final class DebugRenderDispatcher {
@@ -45,12 +45,9 @@ public final class DebugRenderDispatcher {
 			return;
 		}
 
-		MatrixStack matrices = context.matrixStack();
-		if (matrices == null) {
-			return;
-		}
-
 		Vec3d cameraPos = context.camera().getPos();
+		Matrix4f positionMatrix = context.positionMatrix();
+		Matrix4f projectionMatrix = context.projectionMatrix();
 		Profiler profiler = context.profiler();
 		profiler.push("resounding_debug");
 		try {
@@ -62,7 +59,7 @@ public final class DebugRenderDispatcher {
 				profiler.push(LAYER_NAMES[i]);
 				try {
 					layer.update();
-					layer.render(matrices, cameraPos);
+					layer.render(positionMatrix, projectionMatrix, cameraPos);
 				} finally {
 					profiler.pop();
 				}

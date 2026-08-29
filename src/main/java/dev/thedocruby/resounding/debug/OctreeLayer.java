@@ -8,8 +8,8 @@ import net.fabricmc.api.Environment;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.VertexBuffer;
 import net.minecraft.client.render.BufferBuilder;
-import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.BlockPos;
+import org.joml.Matrix4f;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.Vec3d;
@@ -73,9 +73,9 @@ public final class OctreeLayer implements DebugLayer {
 	}
 
 	@Override
-	public void render(MatrixStack matrices, Vec3d cameraPos) {
+	public void render(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
 		buffer.rebuild(this::populate);
-		buffer.draw(matrices, cameraPos);
+		buffer.draw(positionMatrix, projectionMatrix, cameraPos);
 	}
 
 	private static List<Box> collectSectionBoxes(World world, BlockPos playerPos) {

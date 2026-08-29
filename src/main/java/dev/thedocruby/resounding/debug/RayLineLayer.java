@@ -5,8 +5,8 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.gl.VertexBuffer;
 import net.minecraft.client.render.BufferBuilder;
-import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.Vec3d;
+import org.joml.Matrix4f;
 
 import java.util.List;
 
@@ -50,9 +50,9 @@ abstract class RayLineLayer implements DebugLayer {
 	}
 
 	@Override
-	public void render(MatrixStack matrices, Vec3d cameraPos) {
+	public void render(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
 		buffer.rebuild(this::populate);
-		buffer.draw(matrices, cameraPos);
+		buffer.draw(positionMatrix, projectionMatrix, cameraPos);
 	}
 
 	private void populate(BufferBuilder builder) {
