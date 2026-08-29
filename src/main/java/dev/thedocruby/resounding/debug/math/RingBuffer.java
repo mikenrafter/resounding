@@ -1,6 +1,6 @@
 package dev.thedocruby.resounding.debug.math;
 
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -9,21 +9,39 @@ import java.util.List;
 public final class RingBuffer<T> {
 
     private final int capacity;
+    private final Object[] buffer;
+    private int head;
+    private int size;
 
     public RingBuffer(int capacity) {
         this.capacity = capacity;
+        this.buffer = new Object[capacity];
     }
 
     public void offer(T element) {
-        // intentionally wrong: drops nothing, stores nothing
+        if (capacity == 0) {
+            return;
+        }
+        if (size < capacity) {
+            buffer[(head + size) % capacity] = element;
+            size++;
+        } else {
+            buffer[head] = element;
+            head = (head + 1) % capacity;
+        }
     }
 
+    @SuppressWarnings("unchecked")
     public List<T> asList() {
-        return Collections.emptyList();
+        List<T> result = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            result.add((T) buffer[(head + i) % capacity]);
+        }
+        return List.copyOf(result);
     }
 
     public int size() {
-        return 0;
+        return size;
     }
 
     public int capacity() {
