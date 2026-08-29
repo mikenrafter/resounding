@@ -1,0 +1,22 @@
+<timestamp>Saturday, Aug 29, 2026, 12:29 AM (UTC-6)</timestamp>
+
+TDD GREEN PHASE 2 of the debug-renderer implementation (plan: /home/v0id/.claude/plans/soft-purring-haven.md). For code search/navigation, start with the `agentgrep` CLI (grep/find/outline/trace subcommands) before falling back to plain grep/rg.
+
+Prior context: Phase 1 (RED, already committed as 04ef966) added skeleton classes that compile but fail 10 tests on real assertions:
+- src/main/java/dev/thedocruby/resounding/debug/math/{Segment3,RingBuffer,DepthColor}.java (Lane 1, no Minecraft imports) + their tests under src/test/java/.../debug/math/
+- src/main/java/dev/thedocruby/resounding/debug/OctreeOverlay.java (Lane 2, uses Branch/BlockPos/Box) + src/test/java/.../debug/OctreeOverlayTest.java
+
+Locked-in design choices from phase 1 that you must match exactly (the tests already encode these, do not change test expectations):
+- DepthColor: throws IllegalArgumentException (message contains the bad size) for any size not in {16,8,4,2,1}; palette is 16→0xFFFF0000, 8→0xFF00FF00, 4→0xFF0000FF, 2→0xFFFFFF00, 1→0xFFFF00FF
+- RingBuffer: has an asList() method returning contents in insertion order; capacity 0 never stores anything; overflow drops the oldest element first
+- OctreeOverlay.collectOctants(Branch root): one Box per octree node (root + every node in Branch.leaves, recursively) — the existing test expects exactly 4 boxes for its hand-built 2-level tree (root + 3 children)
+
+This phase's scope — ONLY make the existing 10 red tests go green with the minimal correct implementation. Do not touch any file outside src/main/java/dev/thedocruby/resounding/debug/ (and do not touch the test files themselves — they're the spec, fixing a test to match a wrong implementation is not allowed). Do not create GpuLineBuffer, DebugRenderDispatcher, CaptureBuffer, DebugKeybinds, DebugPicker, DebugLayer, or touch Renderer.java/Engine.java/Cast.java/ModClient.java/RendererMixin.java — those are later phases, out of scope here.
+
+Implement:
+1. Segment3.closestDistanceTo / closestDistanceToPoint — real 3D segment-to-segment and point-to-segment closest-distance math (standard clamped-parametric approach), correct for parallel, skew, coincident/overlapping, and degenerate zero-length-segment cases.
+2. RingBuffer<T> — real bounded FIFO with drop-oldest-on-overflow, backing asList()/size()/capacity()/offer(T) correctly, including the capacity=0 and capacity=1 edges.
+3. DepthColor.colorForSize(int) — the exact palette and exception above.
+4. OctreeOverlay.collectOctants(Branch root) — real recursive walk per the plan's A4 section: emit one net.minecraft.util.math.Box per node using Branch.start (BlockPos, absolute) and Branch.size (edge length) as [start, start+size) on all three axes, then recurse into Branch.leaves.values() when non-empty (read Branch.java yourself to confirm exact field/method names, do not guess).
+
+Do NOT run `./gradlew runClient`. Do NOT git commit or git add anything. When done, run `./core-tests/gradlew -p core-tests canary test` and `./gradlew build` yourself and report: pass/fail summary for both, confirmation all 10 previously-red tests now pass, confirmation the previously-passing 93 tests still pass (no regressions), and confirmation you touched no file outside the 4 implementation files listed above.
