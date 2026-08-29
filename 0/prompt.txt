@@ -1,0 +1,39 @@
+<timestamp>Saturday, Aug 29, 2026, 12:49 AM (UTC-6)</timestamp>
+
+TDD GREEN PHASE 5 (final) of the debug-renderer implementation (plan: /home/v0id/.claude/plans/soft-purring-haven.md, section A5, plus the remaining resounding_debug_pick profiler point from B2). For code search/navigation, start with the `agentgrep` CLI (grep/find/outline/trace) before falling back to plain grep/rg.
+
+Prior context: Phases 1-4 (committed 04ef966, e61b38c, 9742f26, 447f9b7) built the full renderer/capture/keybind stack. Read these yourself before starting: debug/CaptureBuffer.java, debug/CaptureLayer.java, debug/OctreeLayer.java, debug/DebugRenderDispatcher.java, debug/math/Segment3.java, raycast/Renderer.java, raycast/Cast.java, Engine.java (the addSoundBounceRay call site inside the bounce-loop).
+
+### Part 0 — one more small plumbing increment (needed for the peek to show real numbers)
+
+The plan's A5 section wants a captured ray's peek display to include reflectivity/transmission ratio and current power, but CaptureBuffer.CapturedRay currently only carries (start,end,color,soundEventId,bounceIndex,material) — reflectivity/transmission/power never made it into the record in phase 4. Cast already exposes lastReflectivity/lastTransmission (added phase 4), and the bounce loop in Engine.java already has `ray.power()` in scope at the addSoundBounceRay call site (read the loop to confirm the exact local variable name, it may not be literally 'ray'). Extend:
+- Renderer.addSoundBounceRay(...) signature: add `double reflectivity, double transmission, double power` params.
+- CaptureBuffer.CapturedRay record: add the same three fields.
+- The one call site in Engine.java: pass `cast.lastReflectivity == null ? 0.0 : cast.lastReflectivity`, `cast.lastTransmission == null ? 0.0 : cast.lastTransmission`, and the in-scope ray's current power.
+- Update BounceRayLayer.addSoundBounceRay(...) and Renderer's CapturedRay construction accordingly (BounceRayLayer can keep ignoring the extra fields for the live-render path, same as it already ignores bounceIndex/sourceID/material — only CaptureBuffer needs them).
+This is additive, small, and mechanical — do not restructure anything else.
+
+### Part 1 — DebugPicker (plan A5)
+
+Create debug/DebugPicker.java. Goal: once per game tick (not once per render frame — an actionbar readout doesn't need 60Hz, poll via `net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK` like DebugKeybinds does, gated on `Engine.isActive`), and ONLY when there's something peekable enabled (`DebugRenderDispatcher.INSTANCE` — you'll need public accessors if they don't exist; `octree()` already exists from phase 3, check whether a similar accessor exists for the capture layer or whether you should just check `CaptureBuffer.INSTANCE.isCapturing() || !CaptureBuffer.INSTANCE.asCapturedList().isEmpty()` directly), find the closest captured-ray-segment or octree-box-edge to the crosshair and show its numeric fields on the actionbar.
+
+Picking approach (world-space, not screen-space, per the plan — simpler, adequate for a debug tool): from `MinecraftClient.getInstance().player` get eye position (`player.getEyePos()` or `player.getCameraPosVec(1.0f)`, check what's actually available) and look direction (`player.getRotationVec(1.0f)`), build a bounded picking segment (eye, eye + lookVec * 64) using debug.math.Segment3 (read its actual method signatures first, do not guess), then for each candidate compute closest distance via Segment3.closestDistanceTo(...) (ray-vs-ray) — for captured rays each CapturedRay's (start,end) is one Segment3; for octree boxes, you'll need each box's 12 edges as 12 Segment3s (you can reuse the same edge-enumeration logic conceptually as GpuLineBuffer.boxEdges, or add a small shared helper — your call, keep it simple, avoid duplicating the 12-edge math if you can factor it cleanly, but don't over-engineer). Keep the closest match under a fixed threshold (e.g. 0.2 blocks) and closest along the ray (smallest distance from eye to the closest point) if multiple candidates qualify. Wrap the whole per-tick scan in `profiler.push("resounding_debug_pick")`/`pop()` (get the profiler via `MinecraftClient.getInstance().getProfiler()`).
+
+For OctreeLayer, you'll likely need a small public accessor exposing its current box list (it's currently a private `List<Box> boxes` field per phase 3 — read the file to confirm) so DebugPicker can iterate it; add the minimal accessor needed, don't restructure OctreeLayer otherwise.
+
+### Part 2 — display
+
+On a pick hit, send an actionbar message (`player.sendMessage(Text.literal(...), true)` — same channel CaptureLayer already uses for its truncation warning from phase 4, read that for the exact idiom) once per tick while a pick is active, showing:
+- Captured ray hit: bounce index, sound/source id, reflectivity, transmission, power, and material fields if non-null (impedance/permeation/state from the Material record — read material/Material.java if you need the exact field names, should already be familiar from earlier phases).
+- Octree box hit: the box's size (derived the same way OctreeLayer.populate() already does, `(int)(box.maxX - box.minX)`) and its world-space origin (minX,minY,minZ).
+Format it as a single reasonably compact line (actionbar space is limited) — your call on exact formatting, prioritize the numbers being legible over completeness.
+
+When nothing is under the crosshair (or nothing peekable is enabled), do not spam the actionbar — just don't send a message that tick (Minecraft's actionbar already fades on its own, no need to explicitly clear it).
+
+Wire DebugPicker.register() into ModClient.java's onInitializeClient() alongside the existing DebugRenderDispatcher/DebugKeybinds registrations.
+
+Do NOT run `./gradlew runClient`. Do NOT git commit or git add anything.
+
+No new dedicated automated test is required for DebugPicker itself per the plan (it needs a live MinecraftClient/player, same accepted-no-coverage status as GpuLineBuffer/DebugRenderDispatcher) — but if you introduce any new pure math (e.g. a box-to-12-edges helper with no Minecraft types), consider whether it belongs in debug/math with a quick test; use your judgment, don't force it if it's not meaningfully separable from Box/Vec3d.
+
+When done, run `./core-tests/gradlew -p core-tests canary test` and `./gradlew build` yourself and report: pass/fail for both, confirmation the existing suite (both lanes, including the CaptureBufferTest and OctreeOverlayTest from earlier phases) still passes with no regressions given the CapturedRay record shape changed, exact list of files created/modified, and a short description of exactly what the actionbar text looks like for each of the two pick types (paste an example formatted string).
