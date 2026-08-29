@@ -8,7 +8,6 @@
     "server.ServerWorldMixin"
   ],
   "client": [
-    "RendererMixin",
     "SoundSystemMixin",
     "SoundEngineMixin",
     "SourceMixin",
