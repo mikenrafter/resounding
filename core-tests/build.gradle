@@ -16,12 +16,16 @@ sourceSets {
             include 'dev/thedocruby/resounding/tag/**'
             include 'dev/thedocruby/resounding/material/**'
             include 'dev/thedocruby/resounding/data/**'
+            include 'dev/thedocruby/resounding/debug/math/**'
         }
         // the shipped default data is part of what Lane 1 verifies
         resources.srcDirs = ['../src/main/resources']
     }
     test {
-        java.srcDirs = ['../src/test/java']
+        java {
+            srcDirs = ['../src/test/java']
+            exclude 'dev/thedocruby/resounding/debug/OctreeOverlayTest.java'
+        }
         resources.srcDirs = ['../src/test/resources']
     }
 }
