@@ -137,23 +137,23 @@ public final class DebugPicker {
 	private record OctreeHit(OctreeOverlay.OctantView octant) implements PickHit {
 		@Override
 		public String format() {
-			StringBuilder builder = new StringBuilder(96);
+			String materialName = octant.label() != null && !octant.label().isBlank()
+					? octant.label()
+					: "?";
+			StringBuilder builder = new StringBuilder(48);
 			builder.append(String.format(
 					Locale.ROOT,
-					"Octant size=%d @ (%.0f,%.0f,%.0f)",
-					octant.size(),
-					octant.box().minX,
-					octant.box().minY,
-					octant.box().minZ
+					"%s %d³",
+					materialName,
+					octant.size()
 			));
 			Material material = octant.material();
 			if (material != null) {
 				builder.append(String.format(
 						Locale.ROOT,
-						" Z=%.2f P=%.2f S=%.2f",
+						" Z=%.0f P=%.2f",
 						material.impedance(),
-						material.permeation(),
-						material.state()
+						material.permeation()
 				));
 			}
 			return builder.toString();

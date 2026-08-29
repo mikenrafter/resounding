@@ -31,5 +31,7 @@ public interface ChunkChain {
 
     void initStorage();
 
+	void replantOctrees();
+
 	public Branch layer(Branch root);
 }

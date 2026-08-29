@@ -9,8 +9,11 @@ import org.jetbrains.annotations.Nullable;
 @Environment(EnvType.CLIENT)
 public final class BounceRayLayer extends RayLineLayer {
 
+	private static final float BASE_LINE_WIDTH = 4.0F;
+	private static final double REFERENCE_POWER = 128.0D;
+
 	public BounceRayLayer() {
-		super(true, 0.25F);
+		super(true, BASE_LINE_WIDTH);
 	}
 
 	public void addSoundBounceRay(
@@ -24,6 +27,11 @@ public final class BounceRayLayer extends RayLineLayer {
 			double transmission,
 			double power
 	) {
-		addSegment(start, end, color);
+		addSegment(start, end, color, lineWidthFor(power, bounceIndex));
+	}
+
+	static float lineWidthFor(double power, int bounceIndex) {
+		float scaled = (float) (BASE_LINE_WIDTH * power / REFERENCE_POWER);
+		return Math.max(1.0F, scaled - bounceIndex);
 	}
 }

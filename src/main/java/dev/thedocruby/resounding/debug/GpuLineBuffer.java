@@ -79,6 +79,10 @@ public final class GpuLineBuffer implements AutoCloseable {
 	}
 
 	public void draw(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
+		draw(positionMatrix, projectionMatrix, cameraPos, lineWidth);
+	}
+
+	public void draw(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos, float width) {
 		if (!hasGeometry) {
 			return;
 		}
@@ -89,7 +93,7 @@ public final class GpuLineBuffer implements AutoCloseable {
 			RenderSystem.disableDepthTest();
 		}
 		RenderSystem.disableBlend();
-		RenderSystem.lineWidth(lineWidth);
+		RenderSystem.lineWidth(width);
 		RenderSystem.setShader(GameRenderer::getPositionColorProgram);
 
 		Matrix4f modelView = worldToView(positionMatrix, cameraPos);

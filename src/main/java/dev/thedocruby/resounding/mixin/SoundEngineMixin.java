@@ -1,5 +1,6 @@
 package dev.thedocruby.resounding.mixin;
 
+import dev.thedocruby.resounding.Cache;
 import dev.thedocruby.resounding.Engine;
 import dev.thedocruby.resounding.config.BlueTapePack.ConfigManager;
 import dev.thedocruby.resounding.openal.Context;
@@ -39,6 +40,9 @@ public class SoundEngineMixin {
 			ConfigManager.resetOnReload = false;
 		}
 		Engine.mc = MinecraftClient.getInstance();
+		if (Engine.mc.world != null) {
+			Cache.generate();
+		}
 		Engine.updateRays();
 		Engine.isActive = true;
 	}

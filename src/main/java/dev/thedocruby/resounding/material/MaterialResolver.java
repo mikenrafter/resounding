@@ -41,6 +41,16 @@ public final class MaterialResolver {
      * out of the pipeline entirely and ended up with no material at all.
      */
     public static Map<Ident, RawMaterialDef> shells(BlockIndex index) {
+        return shells(index, null);
+    }
+
+    /**
+     * @param materialDefinitionKeys when non-null, shell solutes are limited to tags that have
+     *                               authored material definitions. Vanilla-only tags such as
+     *                               {@code minecraft:mineable/shovel} are omitted so a single
+     *                               missing reference does not fail the whole block shell.
+     */
+    public static Map<Ident, RawMaterialDef> shells(BlockIndex index, Set<Ident> materialDefinitionKeys) {
         Map<Ident, RawMaterialDef> result = new LinkedHashMap<>();
         for (Ident block : index.blocks()) {
             Set<Ident> tags = index.tagsOf(block);
@@ -52,11 +62,21 @@ public final class MaterialResolver {
             } else {
                 List<Ident> sortedTags = new ArrayList<>(tags);
                 sortedTags.sort(Ident::compareTo);
-                List<Double> comp = List.of(0.0);
-                result.put(block, new RawMaterialDef(
-                        1.0, null, sortedTags, comp, false,
-                        null, null, null, null, null, null, null
-                ));
+                if (materialDefinitionKeys != null && !materialDefinitionKeys.isEmpty()) {
+                    sortedTags.removeIf(tag -> !materialDefinitionKeys.contains(tag));
+                }
+                if (sortedTags.isEmpty()) {
+                    result.put(block, new RawMaterialDef(
+                            1.0, null, List.of(), List.of(), false,
+                            null, null, null, null, null, null, null
+                    ));
+                } else {
+                    List<Double> comp = List.of(0.0);
+                    result.put(block, new RawMaterialDef(
+                            1.0, null, sortedTags, comp, false,
+                            null, null, null, null, null, null, null
+                    ));
+                }
             }
         }
         return Collections.unmodifiableMap(result);

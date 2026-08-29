@@ -1,8 +1,9 @@
 package dev.thedocruby.resounding.mixin;
 
-import dev.thedocruby.resounding.Cache;
-import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.OctreeManager;
+import dev.thedocruby.resounding.Cache;
+import dev.thedocruby.resounding.MaterialRegistry;
+import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.raycast.Branch;
 import dev.thedocruby.resounding.toolbox.ChunkChain;
 import net.fabricmc.api.EnvType;
@@ -135,9 +136,8 @@ public abstract class WorldChunkMixin extends Chunk implements ChunkChain {
 	public void initStorage() {
 		if (world == null || !world.isClient) return;
 		//* TODO remove
-		if (!hasLoaded) {
+		if (!hasLoaded || !MaterialRegistry.isPopulated()) {
 			hasLoaded = Cache.generate();
-//			return;
 		}
 		// */
 
@@ -165,14 +165,31 @@ public abstract class WorldChunkMixin extends Chunk implements ChunkChain {
 			synchronized (branches) {
 				branches[index] = empty ? air : blank;
 			}
-			// only calculate if necessary
-			if (!empty) {
-				OctreeManager.counter++;
-				OctreeManager.octreePool.execute(() -> OctreeManager.plantOctree(this, index, blank));
-			}
 		});
 
 		this.branches = branches;
+
+		IntStream.range(0, chunkSections.length).parallel().forEach((i) -> {
+			ChunkSection chunkSection = chunkSections[i];
+			if (chunkSection.isEmpty()) {
+				return;
+			}
+			int y = heightLimitView.sectionIndexToCoord(i) << 4;
+			final int index = this.yOffset + (y >> 4);
+			Branch blank = branches[index];
+			if (MaterialRegistry.isPopulated()) {
+				OctreeManager.counter++;
+				OctreeManager.octreePool.execute(() -> OctreeManager.plantOctree(this, index, blank));
+			} else {
+				LOGGER.warn(
+						"Resounding: skipped octree build for section {} at {}; materials not ready",
+						index,
+						BlockPos.ofFloored(x, y, z)
+				);
+			}
+		});
+
+		// branches array is published before async planting so plantOctree cannot update a discarded array
 
 		ChunkChain[] adj = new ChunkChain[4];
 		// retrieve & save locally
@@ -190,6 +207,32 @@ public abstract class WorldChunkMixin extends Chunk implements ChunkChain {
 
 	public void set(int index, Branch branch) {
 		this.branches[index] = branch;
+	}
+
+	@Override
+	public void replantOctrees() {
+		if (!MaterialRegistry.isPopulated()) {
+			return;
+		}
+		ChunkSection[] chunkSections = getSectionArray();
+		final ChunkPos pos = this.getPos();
+		final double x = pos.x << 4;
+		final double z = pos.z << 4;
+		for (int i = 0; i < chunkSections.length; i++) {
+			if (chunkSections[i].isEmpty()) {
+				continue;
+			}
+			int y = heightLimitView.sectionIndexToCoord(i) << 4;
+			final int index = this.yOffset + (y >> 4);
+			Branch root = new Branch(BlockPos.ofFloored(x, y, z), 16);
+			int generation = OctreeManager.materialGeneration;
+			OctreeManager.octreePool.execute(() -> {
+				if (generation != OctreeManager.materialGeneration) {
+					return;
+				}
+				OctreeManager.plantOctree(this, index, root);
+			});
+		}
 	}
 
 
@@ -234,17 +277,10 @@ public abstract class WorldChunkMixin extends Chunk implements ChunkChain {
 
 
 	private void updateBlock(BlockPos pos, BlockState state, boolean moved) {
-		// get smallest branch at position
-		final Branch branch = this.getBranch(pos.getY() >> 4).get(pos);
-
-		Material material = material(state);
-		// if block is homogenous with branch
-		//* TODO remove
-		if (material.equals(branch.material)) return;
-		// */
-
-		// will get optimized on reload, must keep this function quick
-		branch.material = null;
+		Branch section = this.getBranch(pos.getY() >> 4);
+		if (section != null) {
+			OctreeManager.invalidateBlock((WorldChunk) (Object) this, section, pos);
+		}
 		this.shapes.remove(pos.asLong());
 	}
 }

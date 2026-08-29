@@ -6,9 +6,7 @@ import dev.thedocruby.resounding.toolbox.MaterialData;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.block.BlockState;
-import net.minecraft.util.Pair;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.shape.VoxelShape;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -21,6 +19,7 @@ public class Branch {
     public int size;
     public @NotNull VoxelShape shape = OctreeManager.CUBE;
     public @Nullable Material material; // TODO: use!
+    public @Nullable String materialLabel;
 
     public @NotNull HashMap<Long, Branch> leaves;
 
@@ -62,25 +61,23 @@ public class Branch {
         return this;
     }
 
-    public @NotNull Branch get(BlockPos pos) { return this.get(pos, 3); }
+    public @NotNull Branch get(BlockPos pos) {
+        if (leaves.isEmpty()) return this;
+        int half = size >> 1;
+        if (half == 0) return this;
+        int dx = pos.getX() >= start.getX() + half ? half : 0;
+        int dy = pos.getY() >= start.getY() + half ? half : 0;
+        int dz = pos.getZ() >= start.getZ() + half ? half : 0;
+        BlockPos childOrigin = start.add(dx, dy, dz);
+        @Nullable Branch leaf = leaves.get(childOrigin.asLong());
+        return leaf == null ? this : leaf.get(pos);
+    }
 
     // recursively search tree for corresponding branch
     // positions are normalized by section (16³)
+    @Deprecated
     public @NotNull Branch get(BlockPos pos, int layer) {
-        // if branch isn't subdivided, return self
-        if (leaves.isEmpty()) return this;
-        @Nullable Branch leaf = leaves.get(
-                // round position for node
-                shift(pos, layer).asLong());
-        return leaf == null ? this : leaf.get(pos, layer-1);
-    }
-
-    private static BlockPos shift(BlockPos pos, int n) {
-        return new BlockPos(pos.getX() >> n, pos.getY() >> n, pos.getZ() >> n);
-    }
-
-    private static Vec3d shift(Vec3d pos, int n) {
-        return new Vec3d((int) pos.x >> n, (int) pos.y >> n, (int) pos.z >> n);
+        return get(pos);
     }
 
 //    private static BlockPos sub(BlockPos pos, BlockPos octo, int n) {

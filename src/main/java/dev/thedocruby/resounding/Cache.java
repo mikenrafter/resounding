@@ -60,7 +60,7 @@ public final class Cache {
      */
     @Environment(EnvType.CLIENT)
     public static boolean generate() {
-        if (mc.world == null) return false;
+        if (mc == null || mc.world == null) return false;
 
         List<Layer> authored = new ArrayList<>();
         // Layer 0: the mod's own defaults, read from its container rather than by hoping the mod
@@ -80,7 +80,7 @@ public final class Cache {
         // Shells come from the resolved mapping, not the raw registry scan: a block picked up by a
         // pattern in resounding.tags.json only carries that tag after resolution, and the tag is
         // exactly what supplies its physical properties.
-        Map<Ident, RawMaterialDef> shells = MaterialResolver.shells(indexOf(tags));
+        Map<Ident, RawMaterialDef> shells = MaterialResolver.shells(indexOf(tags), merged.materials().keySet());
         Layer full = LayeredSource.merge(new Layer("shells", Map.of(), shells, List.of()), authored);
 
         MaterialResolver.Baked baked = MaterialResolver.resolve(full.materials());
@@ -90,6 +90,7 @@ public final class Cache {
 
         MaterialRegistry.publish(baked.materials());
         MaterialRegistry.save(baked.materials());
+        OctreeManager.onMaterialsPublished();
         return true;
     }
 

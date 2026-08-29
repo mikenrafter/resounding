@@ -83,39 +83,66 @@ public class Cast {
         Vec3d  pposition, rposition;
         double pdistance, rdistance;
 
-        //* true voxel handling {
-        // obtain coefficient for vector to reach nearest boundary
-        step = getStep(blockToVec(branch.start), branch.size, position, vector);
-        // permeation distance, position
-        pdistance = step.step().length();
-        pposition = position.add(step.step());
+        VoxelShape shape = branch.shape;
+        if (shape == null) {
+            shape = ((WorldChunk) this.chunk).getBlockState(branch.start).getCollisionShape(world, branch.start);
+        }
 
-        // truncate to 5 decimals -> to prevent floating-point rounding errors
-        // wish this didn't have to be done. Yet, this solves critical errors
-        pposition = new Vec3d(
-                ((long) (pposition.x * 1e5)) / 1e5,
-                ((long) (pposition.y * 1e5)) / 1e5,
-                ((long) (pposition.z * 1e5)) / 1e5);
-        // } */
-        // defaults
-        rstep = stood == null ? step : stood;
-        // additional distance traveled on sub-geometry bounces
-        rdistance = 0;
-        rposition = position;
-        //* reflection w/ sub-voxel geometry (irony) {
-        if (branch.size == 1) {
-            Step next = bounce(branch,position,vector);
-            if (next != null) {
-                rstep = next;
-                rdistance = rstep.step().subtract(position).length();
-                rposition = rstep.step();
+        ShapeTraversal.Result geometry = ShapeTraversal.resolve(
+                branch.start, branch.size, position, vector, shape, this::getStep
+        );
+
+        if (geometry.mode() == ShapeTraversal.Mode.AIR_CELL) {
+            transmit(power, geometry.transmitPosition(), vector, geometry.permeationDistance());
+            reflect(0, position, null, 0);
+            stood = geometry.step();
+            this.lastReflectivity = 0.0;
+            this.lastTransmission = 1.0;
+            this.lastMaterial = null;
+            return;
+        }
+
+        if (geometry.mode() == ShapeTraversal.Mode.SHAPE) {
+            step = geometry.step();
+            rstep = geometry.reflectStep();
+            pdistance = geometry.permeationDistance();
+            pposition = geometry.transmitPosition();
+            rdistance = geometry.reflectDistance();
+            rposition = geometry.reflectPosition();
+        } else {
+            //* true voxel handling {
+            step = getStep(blockToVec(branch.start), branch.size, position, vector);
+            pdistance = step.step().length();
+            pposition = ShapeTraversal.truncate(position.add(step.step()));
+            // } */
+            rstep = step;
+            rdistance = 0;
+            rposition = position;
+            if (branch.size == 1) {
+                Step next = bounce(branch, position, vector);
+                if (next != null) {
+                    rstep = next;
+                    rdistance = rstep.step().subtract(position).length();
+                    rposition = rstep.step();
+                }
             }
         }
-        // } */
         //* amplitude and vector {
-        // material properties
-        // TODO abstract out one-time branch
-        double reflectivity = impeded == null ? 0 : Physics.reflection(impeded, branch.material.impedance());
+        // material properties — skip attenuation when passing through open cell space
+        if (branch.material == null) {
+            transmit(power, pposition, vector, pdistance);
+            reflect(0, rposition, null, rdistance);
+            stood = step;
+            this.lastReflectivity = 0.0;
+            this.lastTransmission = 1.0;
+            this.lastMaterial = null;
+            return;
+        }
+
+        double priorImpedance = impeded == null
+                ? material(Blocks.AIR.getDefaultState()).impedance()
+                : impeded;
+        double reflectivity = Physics.reflection(priorImpedance, branch.material.impedance());
         double transmission = (1-reflectivity) * Math.pow(branch.material.permeation(), pdistance);
 
         // if reflection / permeation -> calculate -> bounce / refract
@@ -123,7 +150,12 @@ public class Cast {
         // use single-surface refraction here, unpredictable effects with larger objects & permeation coefficients
         // TODO: remove fresnel in favor of atmospheric effects
         // TODO: branch here to avoid calculations on last raycast
-        @Nullable Vec3d transmitted = Physics.pseudoReflect(vector, step.plane(), transmission / 5);
+        @Nullable Vec3d transmitted = transmission > 0
+                ? Physics.pseudoReflect(vector, step.plane(), transmission / 5)
+                : null;
+        if (transmitted == null) {
+            transmitted = vector;
+        }
         // } */
         // apply movement
         reflect (reflectivity*power, rposition, reflected, rdistance);
@@ -147,20 +179,22 @@ public class Cast {
     }
     public Branch getBlock(Vec3d pos) {
         if (this.chunk == null || this.tree == null) return null;
-        // round position
         final BlockPos block = BlockPos.ofFloored(pos);
-        // obtain tree for layer within section
-        // { [ ... ] _ _ _ _ _ _ _ }
-        //           ^ ^ ^ ^ ^ ^ ^ state=null
-        //      ^ state=e.g. air ...
-        // a branch has either 0 or 8 children
-        // therefore, tree.get will always return the smallest branch at a given location
+        BlockState state = ((WorldChunk) this.chunk).getBlockState(block);
+        VoxelShape shape = state.getCollisionShape(world, block);
+        Material mat = material(state);
+
         final Branch branch = this.tree.get(block);
-        // when null, simply fall through and get the underlying block
-        if (branch.material == null) {
-            BlockState state = ((WorldChunk) this.chunk).getBlockState(block);
-            return new Branch(block, 1, state.getCollisionShape(world, block), material(state));
-        } else return branch;
+        // Fall through to live block data only at 1³ leaves; null material on a large node
+        // means heterogeneous — tree.get() should have descended, or siblings still use coarse cells.
+        if (branch.material == null && branch.size == 1) {
+            return new Branch(block, 1, shape, mat);
+        }
+        if (branch.size > 1) {
+            return branch;
+        }
+        // 1³ cached leaf — always use live collision geometry for ray/shape tests.
+        return new Branch(block, 1, shape, mat);
     }
     public static Vec3d blockToVec(BlockPos pos) { return new Vec3d(pos.getX(), pos.getY(), pos.getZ()); }
     // } */

@@ -167,8 +167,11 @@ public class Engine {
 		final EnvData env = evalEnv(evalCtx);
 
 		// CORE PIPELINE
-		try { setEnv(context, processEnv(env, evalCtx), isGentle); }
-		catch (Exception e) { e.printStackTrace(); }
+		try {
+			setEnv(context, processEnv(env, evalCtx), isGentle);
+		} catch (Exception e) {
+			Utils.LOGGER.error("Resounding: failed to apply sound profile", e);
+		}
 
 		if (pConfig.pLog) Utils.LOGGER.info("Total calculation time for sound {}: {} milliseconds",
 				currentTag, (System.nanoTime() - startTime) / 10e5D);
@@ -206,6 +209,9 @@ public class Engine {
 		Cast cast = new Cast(mc.world, null, ctx.soundChunk(), targetPosition);
 		// launch initial ray & always permeate first
 		cast.raycast(ctx.soundPos(), vector, amplitude);
+		if (cast.transmitted == null || cast.transmitted.vector() == null) {
+			return results;
+		}
 		Ray ray = new Ray(amplitude, cast.transmitted.position(), cast.transmitted.vector(), cast.transmitted.length());
 
 		double length = cast.transmitted.length();
@@ -228,6 +234,20 @@ public class Engine {
 
 			// cast ray
 			cast.raycast(ray.position(), ray.vector(), ray.power());
+			if (cast.transmitted == null) {
+				break;
+			}
+
+			if (pConfig.dLog && cast.lastMaterial != null) {
+				Utils.LOGGER.info(
+						"Resounding: bounce #{} material Z={} R={} T={} power={}",
+						results.size(),
+						String.format("%.1f", cast.lastMaterial.impedance()),
+						String.format("%.3f", cast.lastReflectivity == null ? 0.0 : cast.lastReflectivity),
+						String.format("%.3f", cast.lastTransmission == null ? 0.0 : cast.lastTransmission),
+						String.format("%.1f", ray.power())
+				);
+			}
 
 			//* handle properties {
 			// TODO handle splits & replace:
@@ -248,11 +268,21 @@ public class Engine {
 						));
 
 				ray = cast.reflected;
+				if (ray == null || ray.vector() == null) {
+					break;
+				}
 				length = 0;
 				continue;
 			}
+			if (cast.transmitted.vector() == null) {
+				break;
+			}
+			double advance = cast.transmitted.length();
+			if (advance < 1e-6) {
+				break;
+			}
 			ray = cast.transmitted;
-			length += ray.length();
+			length += advance;
 			reflected = 0;
 			// } */
 		}
@@ -260,10 +290,73 @@ public class Engine {
 	}
 
 	@Environment(EnvType.CLIENT)
-	private static @NotNull Set<OccludedRayData> throwOcclRay(@NotNull Vec3d sourcePos, @NotNull Vec3d sinkPos) { //Direct sound occlusion
-		assert Engine.isActive;
-		// TODO replace
-		return Collections.emptySet();
+	private static @NotNull Set<OccludedRayData> throwOcclRay(
+			@NotNull Vec3d sourcePos,
+			@NotNull Vec3d sinkPos,
+			ChunkChain chunk
+	) {
+		if (mc == null || mc.world == null || chunk == null) {
+			return Collections.emptySet();
+		}
+
+		double totalDistance = sourcePos.distanceTo(sinkPos);
+		if (totalDistance < 1e-4) {
+			return Collections.emptySet();
+		}
+
+		Vec3d direction = sinkPos.subtract(sourcePos).multiply(1.0 / totalDistance);
+		Cast cast = new Cast(mc.world, null, chunk, sinkPos);
+
+		double power = 128.0;
+		Vec3d position = sourcePos;
+		double traveled = 0.0;
+		double blocked = 0.0;
+		int legs = 0;
+		int guard = 512;
+
+		while (power > 1.0 && traveled < totalDistance - 1e-4 && guard-- > 0) {
+			cast.raycast(position, direction, power);
+			if (cast.transmitted == null || cast.transmitted.vector() == null) {
+				break;
+			}
+
+			double step = Math.min(cast.transmitted.length(), totalDistance - traveled);
+			if (step < 1e-6) {
+				break;
+			}
+
+			if (cast.lastReflectivity != null && cast.lastReflectivity > 0.001) {
+				blocked += cast.lastReflectivity * (power / 128.0);
+				legs++;
+			}
+
+			traveled += step;
+			power = cast.transmitted.power();
+			position = cast.transmitted.position();
+		}
+
+		double permeation = MathHelper.clamp(power / 128.0, 0.0, 1.0);
+		double occlusion = 1.0 - permeation;
+
+		if (pConfig.oLog) {
+			Utils.LOGGER.info(
+					"Resounding: direct occlusion legs={} dist={} permeation={} blocked={}",
+					legs,
+					String.format("%.1f", totalDistance),
+					String.format("%.3f", permeation),
+					String.format("%.3f", blocked)
+			);
+		}
+
+		return Set.of(new OccludedRayData(
+				legs,
+				totalDistance,
+				occlusion,
+				new double[]{totalDistance},
+				new double[]{totalDistance},
+				new double[]{blocked},
+				new double[]{occlusion}
+		));
 	}
 
 	@Environment(EnvType.CLIENT)
@@ -286,7 +379,7 @@ public class Engine {
 
 		// TODO: Occlusion. Also, add occlusion profiles.
 		// Step rays from sound to listener
-		Set<OccludedRayData> occlRays = throwOcclRay(ctx.soundPos(), ctx.listenerPos());
+		Set<OccludedRayData> occlRays = throwOcclRay(ctx.soundPos(), ctx.listenerPos(), ctx.soundChunk());
 
 		// Pass data to post
 		EnvData data = new EnvData(reflRays, occlRays);
@@ -300,23 +393,38 @@ public class Engine {
 	@Contract("_, _ -> new")
 	@Environment(EnvType.CLIENT)
 	private static @NotNull SoundProfile processEnv(final EnvData data, SoundEvalContext ctx) {
-		// TODO: DirEval is on hold while I rewrite, will be re-added later
-		// NOTE, removed pConfig.waterFilt logic, as it's superseded by new occlusion method
-		// TODO properly implement, move to atmospherics
-		final double airAbsorptionHF = 1.0; // Air.getAbsorptionHF();
+		final double airAbsorptionHF = 1.0;
 		double directGain = (ctx.auxOnly() ? 0 : 1) * Math.pow(airAbsorptionHF, ctx.listenerPos().distanceTo(ctx.soundPos()));
 
+		double directPermeation = 1.0;
+		for (OccludedRayData occl : data.occlRays()) {
+			directPermeation *= (1.0 - MathHelper.clamp(occl.totalOcclusion(), 0.0, 1.0));
+		}
+		directGain *= directPermeation;
+		double directCutoff = Math.pow(directPermeation, pConfig.globalAbsHFRcp);
+
 		if (data.reflRays().isEmpty()) {
-			return new SoundProfile(ctx.sourceID(), directGain, Math.pow(directGain, pConfig.globalAbsHFRcp), new double[pConfig.resolution + 1], new double[pConfig.resolution + 1]);
+			return new SoundProfile(
+					ctx.sourceID(),
+					MathHelper.clamp(directGain, 0.0, 1.0),
+					MathHelper.clamp(directCutoff, 0.0, 1.0),
+					new double[pConfig.resolution + 1],
+					new double[pConfig.resolution + 1]
+			);
 		}
 
 		double bounces = 0.0D;
 		double missed = 0.0D;
 		for (LinkedList<Hit> ray : data.reflRays()) {
 			bounces += ray.size();
-			if (ray.getLast().amplitude() < 1) missed++;
+			if (!ray.isEmpty() && ray.getLast().amplitude() < 1) {
+				missed++;
+			}
 		}
 		missed /= pConfig.nRays;
+		if (bounces < 1e-6) {
+			bounces = 1.0;
+		}
 
 		// TODO: Does this perform better in parallel? (test using Spark)
 		double sharedSum = 0.0D;
@@ -345,9 +453,8 @@ public class Engine {
 					// TODO use a better method to identify where occlusion / airspace rays should go
 					// halfway through each ray, send occlusion ray
 					if (++iterations == size / 2) {
-						// TODO account for difference in angle in amplitude
 						LinkedList<Hit> occlusion = airspace(new Pair<>(hit.position(), -1), hit.amplitude(), playerPos, ctx);
-						double permeation = occlusion.getLast().amplitude();
+						double permeation = occlusion.isEmpty() ? hit.amplitude() : occlusion.getLast().amplitude();
 						amplitude = Math.max(permeation, amplitude);
 						// TODO determine accuracy of this method
 						if (permeation > 1) sharedSum += size;
@@ -402,9 +509,15 @@ public class Engine {
 		directGain *= Math.pow(airAbsorptionHF, ctx.listenerPos().distanceTo(ctx.soundPos()))
 				/ Math.pow(ctx.listenerPos().distanceTo(ctx.soundPos()), 2 * missed)
 				* MathHelper.lerp(permeation, 1, sharedSum);
-		double directCutoff = Math.pow(directGain, pConfig.globalAbsHFRcp); // TODO: make sure this actually works.
+		directCutoff = Math.pow(MathHelper.clamp(directGain, 1e-6, 1.0), pConfig.globalAbsHFRcp);
 
-		SoundProfile profile = new SoundProfile(ctx.sourceID(), directGain, directCutoff, sendGain, sendCutoff);
+		SoundProfile profile = new SoundProfile(
+				ctx.sourceID(),
+				MathHelper.clamp(directGain, 0.0, 1.0),
+				MathHelper.clamp(directCutoff, 0.0, 1.0),
+				sendGain,
+				sendCutoff
+		);
 
 		if (pConfig.log) Utils.LOGGER.info("Processed sound profile:\n{}", profile);
 

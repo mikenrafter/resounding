@@ -8,7 +8,10 @@ import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static dev.thedocruby.resounding.config.PrecomputedConfig.pConfig;
 
@@ -26,12 +29,12 @@ abstract class RayLineLayer implements DebugLayer {
 		this.buffer = new GpuLineBuffer(VertexBuffer.Usage.DYNAMIC, depthTest, lineWidth);
 	}
 
-	void addSegment(Vec3d start, Vec3d end, int color) {
+	void addSegment(Vec3d start, Vec3d end, int color, float width) {
 		if (!pConfig.dRays) {
 			return;
 		}
 		synchronized (segments) {
-			segments.offer(new LineSegment(start, end, color));
+			segments.offer(new LineSegment(start, end, color, width));
 		}
 		buffer.markDirty();
 	}
@@ -51,24 +54,36 @@ abstract class RayLineLayer implements DebugLayer {
 
 	@Override
 	public void render(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
-		buffer.rebuild(this::populate);
-		buffer.draw(positionMatrix, projectionMatrix, cameraPos);
-	}
-
-	private void populate(BufferBuilder builder) {
 		List<LineSegment> snapshot;
 		synchronized (segments) {
 			snapshot = segments.asList();
 		}
+		if (snapshot.isEmpty()) {
+			return;
+		}
+
+		Map<Float, List<LineSegment>> byWidth = new LinkedHashMap<>();
 		for (LineSegment segment : snapshot) {
-			GpuLineBuffer.line(
-					builder,
-					segment.start.x, segment.start.y, segment.start.z,
-					segment.end.x, segment.end.y, segment.end.z,
-					segment.color
-			);
+			byWidth.computeIfAbsent(segment.width, ignored -> new ArrayList<>()).add(segment);
+		}
+
+		for (Map.Entry<Float, List<LineSegment>> entry : byWidth.entrySet()) {
+			float width = entry.getKey();
+			List<LineSegment> group = entry.getValue();
+			buffer.markDirty();
+			buffer.rebuild(builder -> {
+				for (LineSegment segment : group) {
+					GpuLineBuffer.line(
+							builder,
+							segment.start.x, segment.start.y, segment.start.z,
+							segment.end.x, segment.end.y, segment.end.z,
+							segment.color
+					);
+				}
+			});
+			buffer.draw(positionMatrix, projectionMatrix, cameraPos, width);
 		}
 	}
 
-	private record LineSegment(Vec3d start, Vec3d end, int color) {}
+	private record LineSegment(Vec3d start, Vec3d end, int color, float width) {}
 }

@@ -5,8 +5,11 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import org.lwjgl.glfw.GLFW;
 
 @Environment(EnvType.CLIENT)
@@ -66,6 +69,15 @@ public final class DebugKeybinds {
 			while (TOGGLE_OCTREE.wasPressed()) {
 				var layer = DebugRenderDispatcher.INSTANCE.octree();
 				layer.setEnabled(!layer.isEnabled());
+				if (layer.isEnabled()) {
+					layer.update();
+					if (client.player != null) {
+						client.player.sendMessage(Text.literal(String.format(
+								"Octree overlay: %d octants (7-cell neighborhood)",
+								layer.octantCount()
+						)).formatted(Formatting.AQUA), true);
+					}
+				}
 			}
 			while (TOGGLE_CAPTURE.wasPressed()) {
 				// Default: capture exactly the next sound event.

@@ -12,6 +12,6 @@ public final class OcclusionRayLayer extends RayLineLayer {
 	}
 
 	public void addOcclusionRay(Vec3d start, Vec3d end, int color) {
-		addSegment(start, end, color);
+		addSegment(start, end, color, 3F);
 	}
 }
