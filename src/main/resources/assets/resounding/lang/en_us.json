@@ -46,5 +46,11 @@
   "text.autoconfig.resounding.option.debug.performanceLogging": "Performance logging",
   "text.autoconfig.resounding.option.debug.raytraceParticles": "Raytracing Particles",
 
-  "text.autoconfig.resounding.option.preset": "Config Preset"
+  "text.autoconfig.resounding.option.preset": "Config Preset",
+
+  "key.categories.resounding.debug": "Resounding Debug",
+  "key.resounding.debug.toggle_bounce_rays": "Toggle Bounce Rays",
+  "key.resounding.debug.toggle_occlusion_rays": "Toggle Occlusion Rays",
+  "key.resounding.debug.toggle_octree": "Toggle Octree Overlay",
+  "key.resounding.debug.toggle_capture": "Toggle Ray Capture"
 }
