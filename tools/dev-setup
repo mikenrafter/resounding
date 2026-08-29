@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# One-shot setup: decompile Minecraft sources and generate IntelliJ run configs.
+set -euo pipefail
+
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ -z "${JAVA_HOME:-}" ]]; then
+    if command -v nix >/dev/null 2>&1 && [[ -f "$repo/flake.nix" ]]; then
+        exec nix develop "$repo" -c "${BASH_SOURCE[0]}" "$@"
+    fi
+    echo "JAVA_HOME is unset; enter the nix shell first: nix develop $repo" >&2
+    exit 1
+fi
+
+cd "$repo"
+./gradlew --no-daemon genSources genIdeaWorkspace "$@"

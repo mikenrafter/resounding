@@ -26,8 +26,8 @@ import java.util.List;
  * @param composition per-solute blend weight, parallel to {@code solute}
  * @param ratio       average by composition alone rather than by constituent weight
  * @param granularity boundary count between solvent and solute; infinity means fully opaque
- * @param melt        melting point, kelvin
- * @param boil        boiling point, kelvin
+ * @param melt        melting point, degrees Celsius
+ * @param boil        boiling point, degrees Celsius
  * @param temperature overrides ambient temperature
  * @param density     kg/m³
  * @param swave       shear-wave velocity, used for solids

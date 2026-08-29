@@ -1,99 +1,2574 @@
 {
-  "resounding:stone": {
-    "density": 2600.0,
-    "swave": 3500.0,
-    "lwave": 5000.0,
-    "melt": 1523.0,
-    "boil": 2503.0,
-    "granularity": 8.0
+  "default": {
+    "weight": 0,
+    "solvent": "air",
+    "granularity": 0.6,
+    "melt": 120,
+    "boil": 140,
+    "swave": 18350,
+    "lwave": 18350,
+    "density": 2.26
   },
-  "resounding:wood": {
-    "density": 700.0,
-    "swave": 1200.0,
-    "lwave": 3800.0,
-    "melt": 590.0,
-    "boil": 700.0,
-    "granularity": 4.0
+  "base": {
+    "solute": [
+      "default"
+    ],
+    "composition": [
+      1
+    ],
+    "children": {
+      "diesel": {
+        "solute": [
+          "crude_oil"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "mycelium": {
+        "solute": [
+          "farmland"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "mushroom": {
+        "solute": [
+          "farmland"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "pollen": {
+        "solute": [
+          "sand",
+          "farmland"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "purpur": {
+        "solute": [
+          "terracotta",
+          "mud"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "mythril": {},
+      "banglum": {},
+      "univite": {},
+      "tantalite": {},
+      "sphalerite": {},
+      "sheldonite": {},
+      "runite": {},
+      "quadrillium": {},
+      "crude_oil": {
+        "solute": [
+          "gasoline"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "gregoryite": {
+        "solute": [
+          "sodiumCarbonate"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "sodiumCarbonate": {
+        "solute": [
+          "Na",
+          "C",
+          "O"
+        ],
+        "composition": [
+          2,
+          1,
+          3
+        ]
+      },
+      "aragonite": {
+        "solute": [
+          "calcite"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "limestone": {
+        "solute": [
+          "calcite"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "calcite": {
+        "solute": [
+          "Ca",
+          "C",
+          "O"
+        ],
+        "composition": [
+          1,
+          1,
+          3
+        ]
+      },
+      "feldspathoidSilicate": {
+        "solute": [
+          "Na",
+          "Al",
+          "Si",
+          "O",
+          "Cl"
+        ],
+        "composition": [
+          8,
+          6,
+          6,
+          24,
+          2
+        ]
+      },
+      "carbonatite": {
+        "solute": [
+          "nyerereite",
+          "gregoryite"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "nyerereite": {
+        "solute": [
+          "Na",
+          "Ca",
+          "C",
+          "O"
+        ],
+        "composition": [
+          2,
+          1,
+          2,
+          6
+        ]
+      },
+      "halloysite": {
+        "solute": [
+          "Al",
+          "Si",
+          "O",
+          "O",
+          "H"
+        ],
+        "composition": [
+          2,
+          2,
+          5,
+          4,
+          4
+        ]
+      },
+      "dirtB": {
+        "solute": [
+          "C",
+          "O",
+          "H",
+          "N"
+        ],
+        "composition": [
+          5,
+          46,
+          0.15,
+          0.002
+        ]
+      },
+      "ilmenite": {
+        "solute": [
+          "Fe",
+          "Ti",
+          "O"
+        ],
+        "composition": [
+          1,
+          1,
+          3
+        ]
+      },
+      "anatase": {
+        "solute": [
+          "Ti",
+          "O"
+        ],
+        "composition": [
+          1,
+          2
+        ]
+      },
+      "kaolinite": {
+        "solute": [
+          "Al",
+          "Si",
+          "O",
+          "O",
+          "H"
+        ],
+        "composition": [
+          2,
+          2,
+          5,
+          4,
+          4
+        ]
+      },
+      "haematite": {
+        "solute": [
+          "Fe",
+          "O"
+        ],
+        "composition": [
+          2,
+          3
+        ]
+      },
+      "geothite": {
+        "solute": [
+          "Fe",
+          "O",
+          "O",
+          "H"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "diaspore": {
+        "solute": [
+          "Al",
+          "O",
+          "O",
+          "H"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "boehmite": {
+        "solute": [
+          "Y",
+          "Al",
+          "O",
+          "O",
+          "H"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "gibbsite": {
+        "solute": [
+          "Al",
+          "O",
+          "H"
+        ],
+        "composition": [
+          1,
+          3,
+          3
+        ]
+      },
+      "afghanite": {
+        "solute": [
+          "Na",
+          "K",
+          "Ca",
+          "Si",
+          "Al",
+          "O",
+          "S",
+          "O",
+          "Cl"
+        ],
+        "composition": [
+          22,
+          22,
+          10,
+          24,
+          24,
+          96,
+          6,
+          24,
+          6
+        ]
+      },
+      "plagioclase": {
+        "solute": [
+          "Na",
+          "Al",
+          "Si",
+          "O",
+          "Ca",
+          "Al",
+          "Si",
+          "O"
+        ],
+        "composition": [
+          1,
+          1,
+          3,
+          8,
+          1,
+          2,
+          2,
+          8
+        ]
+      },
+      "alkaliFeldspar": {
+        "solute": [
+          "K",
+          "Al",
+          "Si",
+          "O"
+        ],
+        "composition": [
+          1,
+          1,
+          3,
+          8
+        ]
+      },
+      "silicateA": {
+        "solute": [
+          "Fe",
+          "Si",
+          "O"
+        ],
+        "composition": [
+          1,
+          1,
+          4
+        ]
+      },
+      "silicateB": {
+        "solute": [
+          "Mg",
+          "Si",
+          "O"
+        ],
+        "composition": [
+          1,
+          1,
+          4
+        ]
+      },
+      "silicate": {
+        "solute": [
+          "silicateA",
+          "silicateB"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "pyroxene": {
+        "solute": [
+          "Mg",
+          "Co",
+          "O"
+        ],
+        "composition": [
+          1,
+          2,
+          6
+        ]
+      },
+      "olivine": {
+        "solute": [
+          "Fe",
+          "Si",
+          "O"
+        ],
+        "composition": [
+          2,
+          1,
+          4
+        ]
+      },
+      "carbonSilicate": {
+        "solute": [
+          "C",
+          "Si",
+          "O"
+        ],
+        "composition": [
+          1,
+          1,
+          4
+        ]
+      },
+      "soul": {
+        "solute": [
+          "ethanol"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "dense": {
+        "solute": [
+          "compress"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "slime": {
+        "solute": [
+          "water"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "gelena": {
+        "solute": [
+          "water"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "blood": {
+        "solute": [
+          "water"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "brine": {
+        "solute": [
+          "saltwater"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "watery": {
+        "solute": [
+          "crop",
+          "slime",
+          "gelena",
+          "blood",
+          "brine",
+          "milk",
+          "water"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "aquarium": {
+        "solute": [
+          "saltwater"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "heavy_gas_oil": {
+        "solute": [
+          "octane"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "residual_fuel_oil": {
+        "solute": [
+          "n-octane"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "kerosene_oxygen_fuel": {
+        "solute": [
+          "kerosene",
+          "O"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "naphtha": {
+        "solute": [
+          "n-octane"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "oil": {
+        "solute": [
+          "crude_oil",
+          "heavy_gas_oil",
+          "residual_fuel_oil",
+          "butane",
+          "diesel",
+          "gasoline",
+          "kerosene",
+          "kerosene_oxygen_fuel",
+          "naphtha"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "airy": {
+        "solute": [
+          "air",
+          "aetherium",
+          "etherite",
+          "O"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "argonium": {
+        "solute": [
+          "Ar"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "magic": {
+        "solute": [
+          "chloroform"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "gasses": {
+        "solute": [
+          "argonium",
+          "H",
+          "magic",
+          "soul"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "sparkly": {
+        "solute": [
+          "galaxium",
+          "celestium",
+          "lunum",
+          "lutetium",
+          "prometheum",
+          "stormyx",
+          "glow",
+          "discordium",
+          "electrum",
+          "chrome",
+          "stellum",
+          "starrite",
+          "pyrite"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "asterite": {
+        "solute": [
+          "Fe",
+          "Co",
+          "Ni"
+        ],
+        "composition": [
+          1,
+          1,
+          1
+        ]
+      },
+      "asteroid": {
+        "solute": [
+          "carbonSilicate",
+          "olivine",
+          "pyroxene"
+        ],
+        "composition": [
+          1,
+          1,
+          1
+        ]
+      },
+      "end_stones": {
+        "solute": [
+          "silicate"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "meteor": {
+        "solute": [
+          "antitaenite",
+          "kamacite",
+          "taenite",
+          "tetrataenite"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "coal": {
+        "solute": [
+          "C",
+          "H",
+          "S",
+          "O",
+          "N"
+        ],
+        "composition": [
+          4,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "quartz": {
+        "solute": [
+          "Si",
+          "O"
+        ],
+        "composition": [
+          1,
+          2
+        ]
+      },
+      "basalt": {
+        "solute": [
+          "quartz",
+          "alkaliFeldspar",
+          "plagioclase",
+          "afghanite",
+          "air"
+        ],
+        "composition": [
+          50,
+          50,
+          50,
+          50,
+          5
+        ]
+      },
+      "porous": {
+        "solute": [
+          "asterite",
+          "asteroid",
+          "end_stones",
+          "meteor",
+          "coal",
+          "wool",
+          "basalt"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "ur": {
+        "solute": [
+          "U"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "unobtainium": {
+        "solute": [
+          "U"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "carmot": {
+        "solute": [
+          "Hg",
+          "Ag",
+          "Au"
+        ],
+        "composition": [
+          1,
+          3,
+          3
+        ]
+      },
+      "kyber": {
+        "solute": [
+          "He",
+          "Si"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "experience": {
+        "solute": [
+          "magic"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "aura": {
+        "solute": [
+          "Th",
+          "ur",
+          "U",
+          "Pu",
+          "unobtainium",
+          "carmot",
+          "kyber",
+          "experience"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "cinnabar": {
+        "solute": [
+          "Hg",
+          "S"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "quicksilver": {
+        "solute": [
+          "Hg"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "mercury": {
+        "solute": [
+          "cinnabar",
+          "quicksilver"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "iron": {
+        "solute": [
+          "Fe",
+          "durasteel"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "resonant": {
+        "solute": [
+          "invar"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "nickel": {
+        "solute": [
+          "Ni",
+          "invar"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "orichalcum": {
+        "solute": [
+          "Ag",
+          "Cu"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "gold": {
+        "solute": [
+          "Au",
+          "orichalcum"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "copper": {
+        "solute": [
+          "Cu",
+          "orichalcum",
+          "brass",
+          "bronze"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "zinc": {
+        "solute": [
+          "Zn",
+          "brass"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "platinum": {
+        "solute": [
+          "Pt",
+          "Pd",
+          "Os"
+        ],
+        "composition": [
+          1,
+          1,
+          1
+        ]
+      },
+      "truesilver": {
+        "solute": [
+          "Ag"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "silver": {
+        "solute": [
+          "Ag",
+          "slowsilver",
+          "truesilver",
+          "sterling"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "vermiculite": {
+        "solute": [
+          "V"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "heavy": {
+        "solute": [
+          "vermiculite",
+          "Pb"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "aluminum": {
+        "solute": [
+          "Al",
+          "bauxite"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "metite": {
+        "solute": [
+          "asterite"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "sodalite": {
+        "solute": [
+          "Na",
+          "Al",
+          "Si",
+          "O",
+          "Cl"
+        ],
+        "composition": [
+          8,
+          6,
+          6,
+          24,
+          2
+        ]
+      },
+      "unknown": {
+        "solute": [
+          "metite",
+          "quadrillium",
+          "runite",
+          "sheldonite",
+          "sodalite",
+          "sphalerite",
+          "tantalite",
+          "univite",
+          "banglum",
+          "mythril"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "metals": {
+        "solute": [
+          "iron",
+          "resonant",
+          "nickel",
+          "gold",
+          "copper",
+          "zinc",
+          "platinum",
+          "silver",
+          "heavy",
+          "aluminum",
+          "Sn",
+          "Ti",
+          "unknown"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "sand": {
+        "solute": [
+          "quartz",
+          "aragonite"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "saprolite": {
+        "solute": [
+          "bauxite",
+          "Ag",
+          "Cu"
+        ],
+        "composition": [
+          1,
+          1,
+          1
+        ]
+      },
+      "dirt": {
+        "solute": [
+          "mineral",
+          "organic"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "dusty": {
+        "solute": [
+          "sand",
+          "gravel",
+          "dirt"
+        ],
+        "composition": [
+          1,
+          1,
+          1
+        ]
+      },
+      "glass": {
+        "solute": [
+          "quartz",
+          "limestone",
+          "sodiumCarbonate"
+        ],
+        "composition": [
+          1,
+          1,
+          1
+        ]
+      },
+      "peridot": {
+        "solute": [
+          "Fe",
+          "Si",
+          "O"
+        ],
+        "composition": [
+          2,
+          1,
+          4
+        ]
+      },
+      "ruby": {
+        "solute": [
+          "Al",
+          "O",
+          "Cr"
+        ],
+        "composition": [
+          2,
+          3,
+          1
+        ]
+      },
+      "sapphire": {
+        "solute": [
+          "Al",
+          "O"
+        ],
+        "composition": [
+          2,
+          3
+        ]
+      },
+      "topaz": {
+        "solute": [
+          "Al",
+          "Si",
+          "O",
+          "F"
+        ],
+        "composition": [
+          2,
+          1,
+          4,
+          2
+        ]
+      },
+      "amethyst": {
+        "solute": [
+          "Si",
+          "O"
+        ],
+        "composition": [
+          1,
+          2
+        ]
+      },
+      "diamond": {
+        "solute": [
+          "C"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "emerald": {
+        "solute": [
+          "Be",
+          "Al",
+          "Si",
+          "O"
+        ],
+        "composition": [
+          3,
+          2,
+          6,
+          18
+        ]
+      },
+      "glassy": {
+        "solute": [
+          "quartz",
+          "glass",
+          "peridot",
+          "ruby",
+          "sapphire",
+          "topaz",
+          "amethyst",
+          "diamond",
+          "emerald"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "cobblestone": {
+        "solute": [
+          "stone"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "heterogeneous": {
+        "solute": [
+          "cobblestone"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "concrete": {
+        "solute": [
+          "concreteA",
+          "concreteB"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "marble": {
+        "solute": [
+          "limestone"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "redstone": {
+        "solute": [
+          "Cu"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "stones": {
+        "solute": [
+          "concrete",
+          "terracotta",
+          "marble",
+          "stone",
+          "redstone"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "mud": {
+        "solute": [
+          "farmland",
+          "mushroom",
+          "mycelium"
+        ],
+        "composition": [
+          1,
+          1,
+          1
+        ]
+      },
+      "damp": {
+        "solute": [
+          "purpur",
+          "pollen",
+          "mud",
+          "water"
+        ],
+        "composition": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "salt": {
+        "solute": [
+          "Na",
+          "Cl"
+        ],
+        "composition": [
+          1,
+          1
+        ]
+      },
+      "certus": {
+        "solute": [
+          "Si",
+          "O"
+        ],
+        "composition": [
+          1,
+          2
+        ]
+      },
+      "silicon": {
+        "solute": [
+          "Si",
+          "redstone",
+          "certus"
+        ],
+        "composition": [
+          1,
+          1,
+          1
+        ]
+      },
+      "insulators": {
+        "solute": [
+          "wool"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "visual/honey": {
+        "solute": [
+          "honey"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "visual/water": {
+        "solute": [
+          "water"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "leaves": {
+        "solute": [
+          "crop"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 5.0
+      },
+      "barrel": {
+        "solute": [
+          "storage",
+          "wood"
+        ],
+        "composition": [
+          2,
+          1
+        ],
+        "granularity": 2.0
+      },
+      "chest": {
+        "solute": [
+          "storage"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 2.0
+      },
+      "bush": {
+        "solute": [
+          "crop"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 5.0
+      },
+      "shelves": {
+        "solute": [
+          "wood",
+          "log",
+          "wool"
+        ],
+        "composition": [
+          2,
+          4,
+          1
+        ],
+        "granularity": 2.75
+      },
+      "crop": {
+        "solute": [
+          "water"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 0.5
+      },
+      "gravel": {
+        "solute": [
+          "quartz",
+          "saprolite"
+        ],
+        "composition": [
+          1,
+          1
+        ],
+        "granularity": 15
+      },
+      "grass": {
+        "solute": [
+          "dirt"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 1.0
+      },
+      "stone": {
+        "solute": [
+          "carbonatite"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 0.8
+      },
+      "innate": {
+        "children": {
+          "slowsilver": {
+            "swave": 2282.5,
+            "solute": [
+              "Ag"
+            ],
+            "composition": [
+              1
+            ]
+          },
+          "honey": {
+            "swave": 2030,
+            "melt": -46.5,
+            "boil": 100
+          },
+          "ethanol": {
+            "swave": 269,
+            "melt": -114.14,
+            "boil": 78.23
+          },
+          "butane": {
+            "swave": 1219.8,
+            "melt": -137,
+            "boil": -0.5
+          },
+          "crude_oil": {
+            "swave": 1250,
+            "melt": 0,
+            "boil": 265
+          },
+          "n-octane": {
+            "swave": 1212.5,
+            "melt": -56.85,
+            "boil": 125.6
+          },
+          "octane": {
+            "swave": 1172,
+            "melt": -56.85,
+            "boil": 125.6
+          },
+          "milk": {
+            "swave": 1548,
+            "melt": -0.54,
+            "boil": 100.2
+          },
+          "saltwater": {
+            "swave": 1550,
+            "melt": -2,
+            "boil": 100.25
+          },
+          "water": {
+            "swave": 1500,
+            "melt": 0,
+            "boil": 100
+          },
+          "chloroform": {
+            "swave": 171,
+            "melt": -63.5,
+            "boil": 61.15
+          },
+          "wool": {
+            "swave": 118.2,
+            "granularity": 36
+          },
+          "wood": {
+            "lwave": 3960,
+            "granularity": 1.2
+          },
+          "log": {
+            "lwave": 4150,
+            "granularity": 1.6
+          }
+        }
+      },
+      "pyrite": {
+        "solute": [
+          "Fe",
+          "S"
+        ],
+        "composition": [
+          1,
+          2
+        ],
+        "children": {
+          "starrite": {},
+          "stellum": {},
+          "chrome": {},
+          "electrum": {},
+          "discordium": {},
+          "glow": {},
+          "stormyx": {},
+          "prometheum": {},
+          "lutetium": {},
+          "lunum": {},
+          "celestium": {},
+          "galaxium": {},
+          "kerosene": {}
+        }
+      }
+    }
   },
-  "resounding:wool": {
-    "density": 80.0,
-    "swave": 50.0,
-    "lwave": 150.0,
-    "melt": 500.0,
-    "boil": 600.0,
-    "granularity": 1.0
+  "ratio": {
+    "ratio": true,
+    "children": {
+      "concreteB": {
+        "solute": [
+          "gravel",
+          "sand",
+          "water"
+        ],
+        "composition": [
+          22,
+          22,
+          10
+        ]
+      },
+      "concreteA": {
+        "solute": [
+          "clay",
+          "limestone",
+          "gypsum"
+        ],
+        "composition": [
+          47,
+          50,
+          3
+        ]
+      },
+      "dirtA": {
+        "solute": [
+          "O",
+          "Si",
+          "Al",
+          "Fe",
+          "Ca",
+          "Na",
+          "Mg",
+          "K"
+        ],
+        "composition": [
+          46,
+          27,
+          8.1,
+          6.3,
+          5,
+          2.3,
+          2.9,
+          1.5
+        ]
+      },
+      "tetrataenite": {
+        "solute": [
+          "Ni",
+          "Fe"
+        ],
+        "composition": [
+          53,
+          47
+        ]
+      },
+      "taenite": {
+        "solute": [
+          "Ni",
+          "Fe"
+        ],
+        "composition": [
+          50,
+          50
+        ]
+      },
+      "kamacite": {
+        "solute": [
+          "Ni",
+          "Fe"
+        ],
+        "composition": [
+          7,
+          93
+        ]
+      },
+      "antitaenite": {
+        "solute": [
+          "Ni",
+          "Fe"
+        ],
+        "composition": [
+          35,
+          65
+        ]
+      },
+      "farmland": {
+        "solute": [
+          "dirt",
+          "water"
+        ],
+        "composition": [
+          90,
+          10
+        ]
+      },
+      "air": {
+        "solute": [
+          "N",
+          "O",
+          "Ar"
+        ],
+        "composition": [
+          78.08,
+          20.95,
+          0.93
+        ]
+      },
+      "aetherium": {
+        "solute": [
+          "oxygen",
+          "glow"
+        ],
+        "composition": [
+          50,
+          50
+        ]
+      },
+      "etherite": {
+        "solute": [
+          "aetherium",
+          "void"
+        ],
+        "composition": [
+          80,
+          20
+        ]
+      },
+      "durasteel": {
+        "solute": [
+          "Fe",
+          "C"
+        ],
+        "composition": [
+          95,
+          5
+        ]
+      },
+      "invar": {
+        "solute": [
+          "Fe",
+          "Ni"
+        ],
+        "composition": [
+          1,
+          36
+        ]
+      },
+      "brass": {
+        "solute": [
+          "Cu",
+          "Zn"
+        ],
+        "composition": [
+          66,
+          34
+        ]
+      },
+      "bronze": {
+        "solute": [
+          "Cu",
+          "Sn"
+        ],
+        "composition": [
+          88,
+          12
+        ]
+      },
+      "sterling": {
+        "solute": [
+          "Ag",
+          "Cu"
+        ],
+        "composition": [
+          92.5,
+          7.5
+        ]
+      },
+      "bauxite": {
+        "solute": [
+          "gibbsite",
+          "boehmite",
+          "diaspore",
+          "geothite",
+          "haematite",
+          "kaolinite",
+          "anatase",
+          "ilmenite"
+        ],
+        "composition": [
+          50,
+          50,
+          50,
+          30,
+          30,
+          30,
+          15,
+          15
+        ]
+      },
+      "clay": {
+        "solute": [
+          "kaolinite",
+          "quartz"
+        ],
+        "composition": [
+          90,
+          10
+        ]
+      },
+      "terracotta": {
+        "solute": [
+          "kaolinite",
+          "halloysite",
+          "quartz"
+        ],
+        "composition": [
+          45,
+          45,
+          10
+        ]
+      },
+      "lapis": {
+        "solute": [
+          "feldspathoidSilicate",
+          "calcite",
+          "sodalite",
+          "pyrite"
+        ],
+        "composition": [
+          40,
+          20,
+          20,
+          20
+        ]
+      }
+    }
   },
-  "resounding:glass": {
-    "density": 2500.0,
-    "swave": 3400.0,
-    "lwave": 5900.0,
-    "melt": 1450.0,
-    "boil": 2503.0,
-    "granularity": 7.0
+  "granularity": {
+    "weight": 0,
+    "children": {
+      "void": {
+        "granularity": 36,
+        "weight": 100
+      },
+      "air": {
+        "granularity": 0.5
+      },
+      "block": {
+        "granularity": 0.2
+      },
+      "ore": {
+        "granularity": 2.5
+      },
+      "dust": {
+        "granularity": 5.0
+      },
+      "compress": {
+        "granularity": 0.5
+      },
+      "powder": {
+        "granularity": 0.8
+      },
+      "fence": {
+        "granularity": 0.2
+      },
+      "flower": {
+        "granularity": 0.5
+      },
+      "tint": {
+        "granularity": 1.0
+      },
+      "nether": {
+        "granularity": 0.2
+      },
+      "refined": {
+        "granularity": 0.1
+      },
+      "sapling": {
+        "granularity": 0.5
+      },
+      "stained": {
+        "granularity": 1.0
+      },
+      "storage": {
+        "granularity": 2.0
+      },
+      "strip": {
+        "granularity": 0.6
+      },
+      "plate": {
+        "granularity": 0.0
+      },
+      "bench": {
+        "granularity": 0.5
+      }
+    }
   },
-  "resounding:metal": {
-    "density": 7870.0,
-    "swave": 3200.0,
-    "lwave": 5900.0,
-    "melt": 1811.0,
-    "boil": 3134.0,
-    "granularity": 10.0
-  },
-  "resounding:sand": {
-    "density": 1600.0,
-    "swave": 150.0,
-    "lwave": 500.0,
-    "melt": 1986.0,
-    "boil": 2503.0,
-    "granularity": 3.0
-  },
-  "resounding:dirt": {
-    "density": 1300.0,
-    "swave": 150.0,
-    "lwave": 400.0,
-    "melt": 1373.0,
-    "boil": 2503.0,
-    "granularity": 3.0
-  },
-  "resounding:snow": {
-    "density": 500.0,
-    "swave": 700.0,
-    "lwave": 1500.0,
-    "melt": 273.15,
-    "boil": 373.15,
-    "granularity": 2.0
-  },
-  "resounding:leaves": {
-    "density": 200.0,
-    "swave": 50.0,
-    "lwave": 500.0,
-    "melt": 273.15,
-    "boil": 373.15,
-    "granularity": 1.0
-  },
-  "resounding:water": {
-    "density": 1000.0,
-    "swave": 0.0,
-    "lwave": 1480.0,
-    "melt": 273.15,
-    "boil": 373.15,
-    "granularity": 2.0
-  },
-  "resounding:lava": {
-    "density": 3100.0,
-    "swave": 0.0,
-    "lwave": 2200.0,
-    "melt": 1473.0,
-    "boil": 2503.0,
-    "temperature": 1473.0,
-    "granularity": 4.0
-  },
-  "resounding:air": {
-    "density": 1.225,
-    "swave": 0.0,
-    "lwave": 343.0,
-    "melt": 63.15,
-    "boil": 77.15,
-    "granularity": 0.0
+  "element": {
+    "granularity": 0.6,
+    "children": {
+      "H": {
+        "swave": 270,
+        "weight": 1.00794,
+        "density": 89.9,
+        "melt": -259.14,
+        "boil": -252.87
+      },
+      "He": {
+        "swave": 70,
+        "weight": 4.002602,
+        "density": 178.5,
+        "boil": -268.93
+      },
+      "Li": {
+        "swave": 6000,
+        "weight": 6.941,
+        "density": 0.535,
+        "melt": 180.54,
+        "boil": 1342
+      },
+      "Be": {
+        "swave": 13000,
+        "weight": 9.012182,
+        "density": 1.848,
+        "melt": 1287,
+        "boil": 2470
+      },
+      "B": {
+        "swave": 16200,
+        "weight": 10.811,
+        "density": 2.46,
+        "melt": 2075,
+        "boil": 4000
+      },
+      "C": {
+        "swave": 18350,
+        "weight": 12.0107,
+        "density": 2.26,
+        "melt": 3550,
+        "boil": 4027
+      },
+      "N": {
+        "swave": 333.6,
+        "weight": 14.0067,
+        "density": 1251,
+        "melt": -210.1,
+        "boil": -195.79
+      },
+      "O": {
+        "swave": 317.5,
+        "weight": 15.9994,
+        "density": 1429,
+        "melt": -218.3,
+        "boil": -182.9
+      },
+      "F": {
+        "weight": 18.9984032,
+        "density": 1696,
+        "melt": -219.6,
+        "boil": -188.12
+      },
+      "Ne": {
+        "swave": 936,
+        "weight": 20.1797,
+        "density": 900,
+        "melt": -248.59,
+        "boil": -246.08
+      },
+      "Na": {
+        "swave": 3200,
+        "weight": 22.98977,
+        "density": 0.968,
+        "melt": 97.72,
+        "boil": 883
+      },
+      "Mg": {
+        "swave": 4602,
+        "weight": 24.305,
+        "density": 1.738,
+        "melt": 650,
+        "boil": 1090
+      },
+      "Al": {
+        "swave": 5100,
+        "weight": 26.981538,
+        "density": 2.7,
+        "melt": 660.32,
+        "boil": 2519
+      },
+      "Si": {
+        "swave": 2200,
+        "weight": 28.0855,
+        "density": 2.33,
+        "melt": 1414,
+        "boil": 2900
+      },
+      "P": {
+        "weight": 30.973761,
+        "density": 1.823,
+        "melt": 44.2,
+        "boil": 280.5
+      },
+      "S": {
+        "weight": 32.065,
+        "density": 1.96,
+        "melt": 115.21,
+        "boil": 444.72
+      },
+      "Cl": {
+        "swave": 206,
+        "weight": 35.453,
+        "density": 3214,
+        "melt": -101.5,
+        "boil": -34.04
+      },
+      "Ar": {
+        "swave": 319,
+        "weight": 39.948,
+        "density": 1784,
+        "melt": -189.3,
+        "boil": -185.8
+      },
+      "K": {
+        "swave": 2000,
+        "weight": 39.0983,
+        "density": 0.856,
+        "melt": 63.38,
+        "boil": 759
+      },
+      "Ca": {
+        "swave": 3810,
+        "weight": 40.078,
+        "density": 1.55,
+        "melt": 842,
+        "boil": 1484
+      },
+      "Sc": {
+        "weight": 44.95591,
+        "density": 2.985,
+        "melt": 1541,
+        "boil": 2830
+      },
+      "Ti": {
+        "swave": 4140,
+        "weight": 47.867,
+        "density": 4.507,
+        "melt": 1668,
+        "boil": 3287
+      },
+      "V": {
+        "swave": 4560,
+        "weight": 50.9415,
+        "density": 6.11,
+        "melt": 1910,
+        "boil": 3407
+      },
+      "Cr": {
+        "swave": 5940,
+        "weight": 51.9961,
+        "density": 7.19,
+        "melt": 1907,
+        "boil": 2671
+      },
+      "Mn": {
+        "swave": 5150,
+        "weight": 54.938049,
+        "density": 7.47,
+        "melt": 1246,
+        "boil": 2061
+      },
+      "Fe": {
+        "swave": 4910,
+        "weight": 55.845,
+        "density": 7.874,
+        "melt": 1538,
+        "boil": 2861
+      },
+      "Co": {
+        "swave": 4720,
+        "weight": 58.9332,
+        "density": 8.9,
+        "melt": 1495,
+        "boil": 2927
+      },
+      "Ni": {
+        "swave": 4970,
+        "weight": 58.6934,
+        "density": 8.908,
+        "melt": 1455,
+        "boil": 2913
+      },
+      "Cu": {
+        "swave": 3570,
+        "weight": 63.546,
+        "density": 8.96,
+        "melt": 1084.62,
+        "boil": 2562
+      },
+      "Zn": {
+        "swave": 3700,
+        "weight": 65.409,
+        "density": 7.14,
+        "melt": 419.53,
+        "boil": 907
+      },
+      "Ga": {
+        "swave": 2740,
+        "weight": 69.723,
+        "density": 5.904,
+        "melt": 29.76,
+        "boil": 2204
+      },
+      "Ge": {
+        "swave": 5400,
+        "weight": 72.64,
+        "density": 5.323,
+        "melt": 938.3,
+        "boil": 2820
+      },
+      "As": {
+        "weight": 74.9216,
+        "density": 5.727,
+        "melt": 817,
+        "boil": 614
+      },
+      "Se": {
+        "swave": 3350,
+        "weight": 78.96,
+        "density": 4.819,
+        "melt": 221,
+        "boil": 685
+      },
+      "Br": {
+        "weight": 79.904,
+        "density": 3.12,
+        "melt": -7.3,
+        "boil": 59
+      },
+      "Kr": {
+        "swave": 1120,
+        "weight": 83.798,
+        "density": 3750,
+        "melt": -157.36,
+        "boil": -153.22
+      },
+      "Rb": {
+        "swave": 1300,
+        "weight": 85.4678,
+        "density": 1.532,
+        "melt": 39.31,
+        "boil": 688
+      },
+      "Sr": {
+        "weight": 87.62,
+        "density": 2.63,
+        "melt": 777,
+        "boil": 1382
+      },
+      "Y": {
+        "swave": 3300,
+        "weight": 88.90585,
+        "density": 4.472,
+        "melt": 1526,
+        "boil": 3345
+      },
+      "Zr": {
+        "swave": 3800,
+        "weight": 91.224,
+        "density": 6.511,
+        "melt": 1855,
+        "boil": 4409
+      },
+      "Nb": {
+        "swave": 3480,
+        "weight": 92.90638,
+        "density": 8.57,
+        "melt": 2477,
+        "boil": 4744
+      },
+      "Mo": {
+        "swave": 6190,
+        "weight": 95.94,
+        "density": 10.28,
+        "melt": 2623,
+        "boil": 4639
+      },
+      "Tc": {
+        "weight": 98,
+        "density": 11.5,
+        "melt": 2157,
+        "boil": 4265
+      },
+      "Ru": {
+        "swave": 5970,
+        "weight": 101.07,
+        "density": 12.37,
+        "melt": 2334,
+        "boil": 4150
+      },
+      "Rh": {
+        "swave": 4700,
+        "weight": 102.9055,
+        "density": 12.45,
+        "melt": 1964,
+        "boil": 3695
+      },
+      "Pd": {
+        "swave": 3070,
+        "weight": 106.42,
+        "density": 12.023,
+        "melt": 1554.9,
+        "boil": 2963
+      },
+      "Ag": {
+        "swave": 2600,
+        "weight": 107.8682,
+        "density": 10.49,
+        "melt": 961.78,
+        "boil": 2162
+      },
+      "Cd": {
+        "swave": 2310,
+        "weight": 112.411,
+        "density": 8.65,
+        "melt": 321.07,
+        "boil": 767
+      },
+      "In": {
+        "swave": 1215,
+        "weight": 114.818,
+        "density": 7.31,
+        "melt": 156.6,
+        "boil": 2072
+      },
+      "Sn": {
+        "swave": 2500,
+        "weight": 118.71,
+        "density": 7.31,
+        "melt": 231.93,
+        "boil": 2602
+      },
+      "Sb": {
+        "swave": 3420,
+        "weight": 121.76,
+        "density": 6.697,
+        "melt": 630.63,
+        "boil": 1587
+      },
+      "Te": {
+        "swave": 2610,
+        "weight": 127.6,
+        "density": 6.24,
+        "melt": 449.51,
+        "boil": 988
+      },
+      "I": {
+        "weight": 126.90447,
+        "density": 4.94,
+        "melt": 113.7,
+        "boil": 184.3
+      },
+      "Xe": {
+        "swave": 1090,
+        "weight": 131.293,
+        "density": 5900,
+        "melt": -111.8,
+        "boil": -108
+      },
+      "Cs": {
+        "weight": 132.90545,
+        "density": 1.879,
+        "melt": 28.44,
+        "boil": 671
+      },
+      "Ba": {
+        "swave": 1620,
+        "weight": 137.327,
+        "density": 3.51,
+        "melt": 727,
+        "boil": 1870
+      },
+      "La": {
+        "swave": 2475,
+        "weight": 138.9055,
+        "density": 6.146,
+        "melt": 919,
+        "boil": 3464
+      },
+      "Ce": {
+        "swave": 2100,
+        "weight": 140.116,
+        "density": 6.689,
+        "melt": 798,
+        "boil": 3360
+      },
+      "Pr": {
+        "swave": 2280,
+        "weight": 140.90765,
+        "density": 6.64,
+        "melt": 931,
+        "boil": 3290
+      },
+      "Nd": {
+        "swave": 2330,
+        "weight": 144.24,
+        "density": 7.01,
+        "melt": 1021,
+        "boil": 3100
+      },
+      "Pm": {
+        "weight": 145,
+        "density": 7.264,
+        "melt": 1100,
+        "boil": 3000
+      },
+      "Sm": {
+        "swave": 2130,
+        "weight": 150.36,
+        "density": 7.353,
+        "melt": 1072,
+        "boil": 1803
+      },
+      "Eu": {
+        "weight": 151.964,
+        "density": 5.244,
+        "melt": 822,
+        "boil": 1527
+      },
+      "Gd": {
+        "swave": 2680,
+        "weight": 157.25,
+        "density": 7.901,
+        "melt": 1313,
+        "boil": 3250
+      },
+      "Tb": {
+        "swave": 2620,
+        "weight": 158.92534,
+        "density": 8.219,
+        "melt": 1356,
+        "boil": 3230
+      },
+      "Dy": {
+        "swave": 2710,
+        "weight": 162.5,
+        "density": 8.551,
+        "melt": 1412,
+        "boil": 2567
+      },
+      "Ho": {
+        "swave": 2760,
+        "weight": 164.93032,
+        "density": 8.795,
+        "melt": 1474,
+        "boil": 2700
+      },
+      "Er": {
+        "swave": 2830,
+        "weight": 167.259,
+        "density": 9.066,
+        "melt": 1497,
+        "boil": 2868
+      },
+      "Tm": {
+        "weight": 168.93421,
+        "density": 9.32,
+        "melt": 1545,
+        "boil": 1950
+      },
+      "Yb": {
+        "swave": 1590,
+        "weight": 173.04,
+        "density": 6.57,
+        "melt": 819,
+        "boil": 1196
+      },
+      "Lu": {
+        "weight": 174.967,
+        "density": 9.841,
+        "melt": 1663,
+        "boil": 3402
+      },
+      "Hf": {
+        "swave": 3010,
+        "weight": 178.49,
+        "density": 13.31,
+        "melt": 2233,
+        "boil": 4603
+      },
+      "Ta": {
+        "swave": 3400,
+        "weight": 180.9479,
+        "density": 16.65,
+        "melt": 3017,
+        "boil": 5458
+      },
+      "W": {
+        "swave": 5174,
+        "weight": 183.84,
+        "density": 19.25,
+        "melt": 3422,
+        "boil": 5555
+      },
+      "Re": {
+        "swave": 4700,
+        "weight": 186.207,
+        "density": 21.02,
+        "melt": 3186,
+        "boil": 5596
+      },
+      "Os": {
+        "swave": 4940,
+        "weight": 190.23,
+        "density": 22.59,
+        "melt": 3033,
+        "boil": 5012
+      },
+      "Ir": {
+        "swave": 4825,
+        "weight": 192.217,
+        "density": 22.56,
+        "melt": 2466,
+        "boil": 4428
+      },
+      "Pt": {
+        "swave": 2680,
+        "weight": 195.078,
+        "density": 21.45,
+        "melt": 1768.3,
+        "boil": 3825
+      },
+      "Au": {
+        "swave": 1740,
+        "weight": 196.96655,
+        "density": 19.3,
+        "melt": 1064.18,
+        "boil": 2856
+      },
+      "Hg": {
+        "swave": 1407,
+        "weight": 200.59,
+        "density": 13.534,
+        "melt": -38.83,
+        "boil": 356.73
+      },
+      "Tl": {
+        "swave": 818,
+        "weight": 204.3833,
+        "density": 11.85,
+        "melt": 304,
+        "boil": 1473
+      },
+      "Pb": {
+        "swave": 1260,
+        "weight": 207.2,
+        "density": 11.34,
+        "melt": 327.46,
+        "boil": 1749
+      },
+      "Bi": {
+        "swave": 1790,
+        "weight": 208.98038,
+        "density": 9.78,
+        "melt": 271.3,
+        "boil": 1564
+      },
+      "Po": {
+        "weight": 209,
+        "density": 9.196,
+        "melt": 254,
+        "boil": 962
+      },
+      "At": {
+        "weight": 210,
+        "melt": 302
+      },
+      "Rn": {
+        "weight": 222,
+        "density": 9730,
+        "melt": -71,
+        "boil": -61.7
+      },
+      "Fr": {
+        "weight": 223
+      },
+      "Ra": {
+        "weight": 226,
+        "density": 5,
+        "melt": 700,
+        "boil": 1737
+      },
+      "Ac": {
+        "weight": 227,
+        "density": 10.07,
+        "melt": 1050,
+        "boil": 3200
+      },
+      "Th": {
+        "swave": 2490,
+        "weight": 232.0381,
+        "density": 11.724,
+        "melt": 1750,
+        "boil": 4820
+      },
+      "Pa": {
+        "weight": 231.03588,
+        "density": 15.37,
+        "melt": 1572,
+        "boil": 4000
+      },
+      "U": {
+        "swave": 3155,
+        "weight": 238.02891,
+        "density": 19.05,
+        "melt": 1135,
+        "boil": 3927
+      },
+      "Np": {
+        "weight": 237,
+        "density": 20.45,
+        "melt": 644,
+        "boil": 4000
+      },
+      "Pu": {
+        "swave": 2260,
+        "weight": 244,
+        "density": 19.816,
+        "melt": 640,
+        "boil": 3230
+      },
+      "Am": {
+        "weight": 243,
+        "density": 13.67,
+        "melt": 1176,
+        "boil": 2011
+      },
+      "Cm": {
+        "weight": 247,
+        "density": 13.51,
+        "melt": 1345,
+        "boil": 3110
+      },
+      "Bk": {
+        "weight": 247,
+        "density": 14.78,
+        "melt": 1050
+      },
+      "Cf": {
+        "weight": 251,
+        "density": 15.1,
+        "melt": 900
+      },
+      "Es": {
+        "weight": 252,
+        "melt": 860
+      },
+      "Fm": {
+        "weight": 257,
+        "melt": 1527
+      },
+      "Md": {
+        "weight": 258,
+        "melt": 828
+      },
+      "No": {
+        "weight": 259,
+        "melt": 828
+      },
+      "Lr": {
+        "weight": 262,
+        "melt": 1627
+      },
+      "Rf": {
+        "weight": 261
+      },
+      "Db": {
+        "weight": 262
+      },
+      "Sg": {
+        "weight": 266
+      },
+      "Bh": {
+        "weight": 264
+      },
+      "Hs": {
+        "weight": 277
+      },
+      "Mt": {
+        "weight": 268
+      },
+      "Ds": {
+        "weight": 281
+      },
+      "Rg": {
+        "weight": 272
+      },
+      "Cn": {
+        "weight": 285
+      },
+      "Nh": {
+        "weight": 284
+      },
+      "Fl": {
+        "weight": 289
+      },
+      "Mc": {
+        "weight": 288
+      },
+      "Lv": {
+        "weight": 292
+      },
+      "Ts": {},
+      "Og": {
+        "weight": 294
+      }
+    }
   }
 }

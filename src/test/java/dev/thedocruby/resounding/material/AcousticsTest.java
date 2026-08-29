@@ -36,4 +36,23 @@ class AcousticsTest {
     void lerpProgressReturnsZeroForAnEmptyRange() {
         assertEquals(0.0, Acoustics.lerpProgress(5.0, 10.0, 10.0), 1e-12);
     }
+
+    @Test
+    void phaseStateClampsBelowMeltAndAboveBoil() {
+        assertEquals(1.0, Acoustics.phaseState(50.0, 0.0, 100.0), 1e-12); // 50 K, well below 0°C melt → solid
+        assertEquals(0.0, Acoustics.phaseState(500.0, 0.0, 100.0), 1e-12); // 500 K, above 100°C boil → gas
+    }
+
+    @Test
+    void phaseStateInterpolatesBetweenMeltAndBoil() {
+        // 287.15 K = 14°C, between 0°C melt and 100°C boil → melt-boil progress 0.14, state 0.86
+        assertEquals(0.86, Acoustics.phaseState(287.15, 0.0, 100.0), 1e-12);
+    }
+
+    @Test
+    void clampLimitsToRange() {
+        assertEquals(0.0, Acoustics.clamp(-1.0, 0.0, 1.0), 1e-12);
+        assertEquals(1.0, Acoustics.clamp(2.0, 0.0, 1.0), 1e-12);
+        assertEquals(0.5, Acoustics.clamp(0.5, 0.0, 1.0), 1e-12);
+    }
 }

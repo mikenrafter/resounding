@@ -1,79 +1,1887 @@
 {
-  "resounding:stone": {
+  "wool": {
     "patterns": [
-      "(?:^|[:_])stone(?:$|_)",
-      "(?:^|[:_])cobblestone(?:$|_)",
-      "(?:^|[:_])(?:granite|diorite|andesite)(?:$|_)",
-      "(?:^|[:_])deepslate(?:$|_)",
-      "(?:^|[:_])tuff(?:$|_)",
-      "(?:^|[:_])calcite(?:$|_)",
-      "(?:^|[:_])basalt(?:$|_)",
-      "(?:^|[:_])blackstone(?:$|_)",
-      "(?:^|[:_])sandstone(?:$|_)",
-      "(?:^|[:_])dripstone(?:$|_)"
+      "wool"
     ]
   },
-  "resounding:wood": {
+  "crude_oil": {
     "patterns": [
-      "(?:^|[:_])(?<!petrified_)(?:oak|spruce|birch|jungle|acacia|mangrove|cherry|crimson|warped|bamboo)_(?:log|wood|hyphae|stem|planks|block|mosaic(?:_slab|_stairs)?|fence(?:_gate)?|door|trapdoor|stairs|slab|button|pressure_plate|hanging_sign|wall_hanging_sign|wall_sign|sign)(?:$|_)"
+      "crude_oil"
     ]
   },
-  "resounding:wool": {
+  "netherite": {
     "patterns": [
-      "(?:^|[:_])wool(?:$|_)",
-      "(?:^|[:_])(?<!moss_)carpet(?:$|_)"
+      "netherite"
     ]
   },
-  "resounding:glass": {
+  "block": {
     "patterns": [
-      "(?:^|[:_])glass(?:$|_)"
+      "block"
     ]
   },
-  "resounding:metal": {
+  "barrel": {
     "patterns": [
-      "(?:^|[:_])iron_(?:block|bars|door|trapdoor)(?:$|_)",
-      "(?:^|[:_])gold_block(?:$|_)",
-      "(?:^|[:_])copper(?!_ore)(?:$|_)",
-      "(?:^|[:_])netherite_block(?:$|_)",
-      "(?:^|[:_])anvil(?:$|_)",
-      "(?:^|[:_])chain(?!_command)(?:$|_)",
-      "(?:^|[:_])rail(?:$|_)"
+      "barrel"
     ]
   },
-  "resounding:sand": {
+  "tint": {
     "patterns": [
-      "(?:^|[:_])(?<!soul_)sand(?:$|_)",
-      "(?:^|[:_])gravel(?:$|_)"
+      "tint"
     ]
   },
-  "resounding:dirt": {
+  "storage": {
     "patterns": [
-      "(?:^|[:_])dirt(?:$|_)",
-      "(?:^|[:_])grass(?:$|_)",
-      "(?:^|[:_])mud(?:$|_)",
-      "(?:^|[:_])farmland(?:$|_)",
-      "(?:^|[:_])mycelium(?:$|_)",
-      "(?:^|[:_])podzol(?:$|_)"
+      "storage"
     ]
   },
-  "resounding:snow": {
+  "strip": {
     "patterns": [
-      "(?:^|[:_])snow(?:$|_)",
-      "(?:^|[:_])ice(?:$|_)"
+      "strip"
     ]
   },
-  "resounding:leaves": {
+  "plate": {
     "patterns": [
-      "(?:^|[:_])(?:leaves|sapling|fern|vines?|kelp|seagrass|lily_pad|sugar_cane|cactus|mushroom|fungus|roots|bush|moss|flower|cornflower|sunflower|torchflower|pitcher|beetroots|sprouts|azalea|potted)(?:$|_)"
+      "plate"
     ]
   },
-  "resounding:water": {
-    "blocks": ["minecraft:water", "minecraft:water_cauldron"]
+  "adamantite": {
+    "tagPatterns": [
+      "adamantite"
+    ]
   },
-  "resounding:lava": {
-    "blocks": ["minecraft:lava", "minecraft:lava_cauldron"]
+  "immune": {
+    "tagPatterns": [
+      "immune"
+    ]
   },
-  "resounding:air": {
-    "blocks": ["minecraft:air", "minecraft:cave_air", "minecraft:void_air"]
+  "metallurgium": {
+    "tagPatterns": [
+      "metallurgium"
+    ]
+  },
+  "prehistoric": {
+    "tagPatterns": [
+      "prehistoric"
+    ]
+  },
+  "aquarium": {
+    "tagPatterns": [
+      "aquarium"
+    ]
+  },
+  "kerosene": {
+    "tagPatterns": [
+      "kerosene"
+    ]
+  },
+  "aetherium": {
+    "tagPatterns": [
+      "aetherium"
+    ]
+  },
+  "argonium": {
+    "tagPatterns": [
+      "argonium"
+    ]
+  },
+  "soul": {
+    "tagPatterns": [
+      "soul"
+    ]
+  },
+  "galaxium": {
+    "tagPatterns": [
+      "galaxium"
+    ]
+  },
+  "celestium": {
+    "tagPatterns": [
+      "celestium"
+    ]
+  },
+  "lunum": {
+    "tagPatterns": [
+      "lunum"
+    ]
+  },
+  "lutetium": {
+    "tagPatterns": [
+      "lutetium"
+    ]
+  },
+  "prometheum": {
+    "tagPatterns": [
+      "prometheum"
+    ]
+  },
+  "stormyx": {
+    "tagPatterns": [
+      "stormyx"
+    ]
+  },
+  "discordium": {
+    "tagPatterns": [
+      "discordium"
+    ]
+  },
+  "electrum": {
+    "tagPatterns": [
+      "electrum"
+    ]
+  },
+  "chrome": {
+    "tagPatterns": [
+      "chrome"
+    ]
+  },
+  "stellum": {
+    "tagPatterns": [
+      "stellum"
+    ]
+  },
+  "starrite": {
+    "tagPatterns": [
+      "starrite"
+    ]
+  },
+  "pyrite": {
+    "tagPatterns": [
+      "pyrite"
+    ]
+  },
+  "asterite": {
+    "tagPatterns": [
+      "asterite"
+    ]
+  },
+  "end_stones": {
+    "tagPatterns": [
+      "end_stones"
+    ]
+  },
+  "meteor": {
+    "tagPatterns": [
+      "meteor"
+    ]
+  },
+  "coal": {
+    "tagPatterns": [
+      "coal"
+    ]
+  },
+  "unobtainium": {
+    "tagPatterns": [
+      "unobtainium"
+    ]
+  },
+  "carmot": {
+    "tagPatterns": [
+      "carmot"
+    ]
+  },
+  "kyber": {
+    "tagPatterns": [
+      "kyber"
+    ]
+  },
+  "cinnabar": {
+    "tagPatterns": [
+      "cinnabar"
+    ]
+  },
+  "quicksilver": {
+    "tagPatterns": [
+      "quicksilver"
+    ]
+  },
+  "vermiculite": {
+    "tagPatterns": [
+      "vermiculite"
+    ]
+  },
+  "peridot": {
+    "tagPatterns": [
+      "peridot"
+    ]
+  },
+  "sapphire": {
+    "tagPatterns": [
+      "sapphire"
+    ]
+  },
+  "topaz": {
+    "tagPatterns": [
+      "topaz"
+    ]
+  },
+  "amethyst": {
+    "tagPatterns": [
+      "amethyst"
+    ]
+  },
+  "emerald": {
+    "tagPatterns": [
+      "emerald"
+    ]
+  },
+  "concrete": {
+    "tagPatterns": [
+      "concrete"
+    ]
+  },
+  "terracotta": {
+    "tagPatterns": [
+      "terracotta"
+    ]
+  },
+  "redstone": {
+    "tagPatterns": [
+      "redstone"
+    ]
+  },
+  "manganese": {
+    "tagPatterns": [
+      "manganese"
+    ]
+  },
+  "certus": {
+    "tagPatterns": [
+      "certus"
+    ]
+  },
+  "metite": {
+    "tagPatterns": [
+      "metite"
+    ]
+  },
+  "quadrillium": {
+    "tagPatterns": [
+      "quadrillium"
+    ]
+  },
+  "runite": {
+    "tagPatterns": [
+      "runite"
+    ]
+  },
+  "sheldonite": {
+    "tagPatterns": [
+      "sheldonite"
+    ]
+  },
+  "sodalite": {
+    "tagPatterns": [
+      "sodalite"
+    ]
+  },
+  "sphalerite": {
+    "tagPatterns": [
+      "sphalerite"
+    ]
+  },
+  "tantalite": {
+    "tagPatterns": [
+      "tantalite"
+    ]
+  },
+  "univite": {
+    "tagPatterns": [
+      "univite"
+    ]
+  },
+  "banglum": {
+    "tagPatterns": [
+      "banglum"
+    ]
+  },
+  "mythril": {
+    "tagPatterns": [
+      "mythril"
+    ]
+  },
+  "durasteel": {
+    "tagPatterns": [
+      "durasteel"
+    ]
+  },
+  "invar": {
+    "tagPatterns": [
+      "invar"
+    ]
+  },
+  "orichalcum": {
+    "tagPatterns": [
+      "orichalcum"
+    ]
+  },
+  "bronze": {
+    "tagPatterns": [
+      "bronze"
+    ]
+  },
+  "brass": {
+    "tagPatterns": [
+      "brass"
+    ]
+  },
+  "slowsilver": {
+    "tagPatterns": [
+      "slowsilver"
+    ]
+  },
+  "truesilver": {
+    "tagPatterns": [
+      "truesilver"
+    ]
+  },
+  "sterling": {
+    "tagPatterns": [
+      "sterling"
+    ]
+  },
+  "bauxite": {
+    "tagPatterns": [
+      "bauxite"
+    ]
+  },
+  "shelves": {
+    "tagPatterns": [
+      "shelves"
+    ]
+  },
+  "chest": {
+    "tagPatterns": [
+      "chest"
+    ]
+  },
+  "powder": {
+    "tagPatterns": [
+      "powder"
+    ]
+  },
+  "fence": {
+    "tagPatterns": [
+      "fence"
+    ]
+  },
+  "log": {
+    "tagPatterns": [
+      "log"
+    ]
+  },
+  "refined": {
+    "tagPatterns": [
+      "refined"
+    ]
+  },
+  "sapling": {
+    "tagPatterns": [
+      "sapling"
+    ]
+  },
+  "gasoline": {
+    "tags": [
+      "gasoline"
+    ]
+  },
+  "naphtha": {
+    "tags": [
+      "naphtha"
+    ]
+  },
+  "magic": {
+    "tags": [
+      "magic"
+    ]
+  },
+  "experience": {
+    "tags": [
+      "experience"
+    ]
+  },
+  "cobblestone": {
+    "tags": [
+      "cobblestone"
+    ]
+  },
+  "marble": {
+    "tags": [
+      "marble"
+    ]
+  },
+  "pollen": {
+    "tags": [
+      "pollen"
+    ]
+  },
+  "mud": {
+    "tags": [
+      "mud"
+    ]
+  },
+  "ancient_debris": {
+    "tags": [
+      "ancient_debris"
+    ]
+  },
+  "immobile": {
+    "tags": [
+      "immobile"
+    ]
+  },
+  "saltwater": {
+    "tags": [
+      "saltwater"
+    ]
+  },
+  "visual/water": {
+    "tags": [
+      "visual/water"
+    ]
+  },
+  "brine": {
+    "tags": [
+      "brine"
+    ]
+  },
+  "milk": {
+    "tags": [
+      "milk"
+    ]
+  },
+  "heavy_gas_oil": {
+    "tags": [
+      "heavy_gas_oil"
+    ]
+  },
+  "residual_fuel_oil": {
+    "tags": [
+      "residual_fuel_oil"
+    ]
+  },
+  "butane": {
+    "tags": [
+      "butane"
+    ]
+  },
+  "diesel": {
+    "tags": [
+      "diesel"
+    ]
+  },
+  "leaves": {
+    "tags": [
+      "leaves"
+    ]
+  },
+  "honey": {
+    "patterns": [
+      "honey"
+    ],
+    "tagPatterns": [
+      "honey"
+    ]
+  },
+  "lava": {
+    "patterns": [
+      "lava"
+    ],
+    "tagPatterns": [
+      "lava"
+    ]
+  },
+  "obsidian": {
+    "patterns": [
+      "obsidian"
+    ],
+    "tagPatterns": [
+      "obsidian"
+    ]
+  },
+  "farmland": {
+    "patterns": [
+      "farmland"
+    ],
+    "tagPatterns": [
+      "farmland"
+    ]
+  },
+  "glow": {
+    "patterns": [
+      "glow"
+    ],
+    "tagPatterns": [
+      "glow"
+    ]
+  },
+  "asteroid": {
+    "patterns": [
+      "asteroid"
+    ],
+    "tagPatterns": [
+      "asteroid"
+    ]
+  },
+  "basalt": {
+    "patterns": [
+      "basalt"
+    ],
+    "tagPatterns": [
+      "basalt"
+    ]
+  },
+  "sand": {
+    "patterns": [
+      "sand"
+    ],
+    "tagPatterns": [
+      "sand"
+    ]
+  },
+  "gravel": {
+    "patterns": [
+      "gravel"
+    ],
+    "tagPatterns": [
+      "gravel"
+    ]
+  },
+  "dirt": {
+    "patterns": [
+      "dirt"
+    ],
+    "tagPatterns": [
+      "dirt"
+    ]
+  },
+  "quartz": {
+    "patterns": [
+      "quartz"
+    ],
+    "tagPatterns": [
+      "quartz"
+    ]
+  },
+  "glass": {
+    "patterns": [
+      "glass"
+    ],
+    "tagPatterns": [
+      "glass"
+    ]
+  },
+  "ruby": {
+    "patterns": [
+      "ruby"
+    ],
+    "tagPatterns": [
+      "ruby"
+    ]
+  },
+  "diamond": {
+    "patterns": [
+      "diamond"
+    ],
+    "tagPatterns": [
+      "diamond"
+    ]
+  },
+  "purpur": {
+    "patterns": [
+      "purpur"
+    ],
+    "tagPatterns": [
+      "purpur"
+    ]
+  },
+  "lapis": {
+    "patterns": [
+      "lapis"
+    ],
+    "tagPatterns": [
+      "lapis"
+    ]
+  },
+  "bush": {
+    "patterns": [
+      "bush"
+    ],
+    "tagPatterns": [
+      "bush"
+    ]
+  },
+  "crop": {
+    "patterns": [
+      "crop"
+    ],
+    "tagPatterns": [
+      "crop"
+    ]
+  },
+  "dust": {
+    "patterns": [
+      "dust"
+    ],
+    "tagPatterns": [
+      "dust"
+    ]
+  },
+  "flower": {
+    "patterns": [
+      "flower"
+    ],
+    "tagPatterns": [
+      "flower"
+    ]
+  },
+  "grass": {
+    "patterns": [
+      "grass"
+    ],
+    "tagPatterns": [
+      "grass"
+    ]
+  },
+  "nether": {
+    "patterns": [
+      "nether"
+    ],
+    "tagPatterns": [
+      "nether"
+    ]
+  },
+  "stained": {
+    "patterns": [
+      "stained"
+    ],
+    "tagPatterns": [
+      "stained"
+    ]
+  },
+  "wood": {
+    "patterns": [
+      "wood"
+    ],
+    "tagPatterns": [
+      "wood"
+    ]
+  },
+  "bench": {
+    "patterns": [
+      "bench"
+    ],
+    "tagPatterns": [
+      "bench"
+    ]
+  },
+  "mushroom": {
+    "patterns": [
+      "mushroom"
+    ],
+    "tagPatterns": [
+      "mushroom"
+    ]
+  },
+  "mycelium": {
+    "patterns": [
+      "mycelium"
+    ],
+    "tagPatterns": [
+      "mycelium"
+    ]
+  },
+  "slime": {
+    "patterns": [
+      "slime"
+    ],
+    "tagPatterns": [
+      "slime"
+    ]
+  },
+  "gelena": {
+    "patterns": [
+      "gelena"
+    ],
+    "tagPatterns": [
+      "gelena"
+    ]
+  },
+  "blood": {
+    "patterns": [
+      "blood"
+    ],
+    "tagPatterns": [
+      "blood"
+    ]
+  },
+  "cobble": {
+    "patterns": [
+      "cobble"
+    ],
+    "tagPatterns": [
+      "cobble"
+    ]
+  },
+  "ore": {
+    "patterns": [
+      "([^\\w]|^)ore"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)ore"
+    ]
+  },
+  "air": {
+    "patterns": [
+      "([^\\w]|^)air([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)air([^\\w]|$)"
+    ]
+  },
+  "compress": {
+    "patterns": [
+      "compress"
+    ],
+    "tagPatterns": [
+      "compress"
+    ]
+  },
+  "salt": {
+    "patterns": [
+      "salt."
+    ],
+    "tagPatterns": [
+      "salt."
+    ]
+  },
+  "etherite": {
+    "patterns": [
+      "([^n]|^)etherite"
+    ],
+    "tagPatterns": [
+      "([^n]|^)etherite"
+    ]
+  },
+  "stone": {
+    "patterns": [
+      "stones"
+    ],
+    "tagPatterns": [
+      "stones"
+    ]
+  },
+  "ur": {
+    "patterns": [
+      "^ur[^\\w]"
+    ],
+    "tagPatterns": [
+      "^ur[^\\w]"
+    ]
+  },
+  "water": {
+    "patterns": [
+      "water$"
+    ],
+    "tagPatterns": [
+      "water$"
+    ]
+  },
+  "H": {
+    "patterns": [
+      "([^\\w]|^)hydrogen([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w|]^)hydrogen([^\\w]|$)"
+    ]
+  },
+  "He": {
+    "patterns": [
+      "([^\\w]|^)helium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)helium([^\\w]|$)"
+    ]
+  },
+  "Li": {
+    "patterns": [
+      "([^\\w]|^)lithium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)lithium([^\\w]|$)"
+    ]
+  },
+  "Be": {
+    "patterns": [
+      "([^\\w]|^)beryllium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)beryllium([^\\w]|$)"
+    ]
+  },
+  "B": {
+    "patterns": [
+      "([^\\w]|^)boron([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)boron([^\\w]|$)"
+    ]
+  },
+  "C": {
+    "patterns": [
+      "([^\\w]|^)carbon([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)carbon([^\\w]|$)"
+    ]
+  },
+  "N": {
+    "patterns": [
+      "([^\\w]|^)nitrogen([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)nitrogen([^\\w]|$)"
+    ]
+  },
+  "O": {
+    "patterns": [
+      "([^\\w]|^)oxygen([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)oxygen([^\\w]|$)"
+    ]
+  },
+  "F": {
+    "patterns": [
+      "([^\\w]|^)fluorine([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)fluorine([^\\w]|$)"
+    ]
+  },
+  "Ne": {
+    "patterns": [
+      "([^\\w]|^)neon([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)neon([^\\w]|$)"
+    ]
+  },
+  "Na": {
+    "patterns": [
+      "([^\\w]|^)sodium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)sodium([^\\w]|$)"
+    ]
+  },
+  "Mg": {
+    "patterns": [
+      "([^\\w]|^)magnesium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)magnesium([^\\w]|$)"
+    ]
+  },
+  "Al": {
+    "patterns": [
+      "([^\\w]|^)aluminum([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)aluminum([^\\w]|$)"
+    ]
+  },
+  "Si": {
+    "patterns": [
+      "([^\\w]|^)silicon([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)silicon([^\\w]|$)"
+    ]
+  },
+  "P": {
+    "patterns": [
+      "([^\\w]|^)phosphorus([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)phosphorus([^\\w]|$)"
+    ]
+  },
+  "S": {
+    "patterns": [
+      "([^\\w]|^)sulfur([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)sulfur([^\\w]|$)"
+    ]
+  },
+  "Cl": {
+    "patterns": [
+      "([^\\w]|^)chlorine([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)chlorine([^\\w]|$)"
+    ]
+  },
+  "Ar": {
+    "patterns": [
+      "([^\\w]|^)argon([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)argon([^\\w]|$)"
+    ]
+  },
+  "K": {
+    "patterns": [
+      "([^\\w]|^)potassium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)potassium([^\\w]|$)"
+    ]
+  },
+  "Ca": {
+    "patterns": [
+      "([^\\w]|^)calcium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)calcium([^\\w]|$)"
+    ]
+  },
+  "Sc": {
+    "patterns": [
+      "([^\\w]|^)scandium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)scandium([^\\w]|$)"
+    ]
+  },
+  "Ti": {
+    "patterns": [
+      "([^\\w]|^)titanium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)titanium([^\\w]|$)"
+    ]
+  },
+  "V": {
+    "patterns": [
+      "([^\\w]|^)vanadium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)vanadium([^\\w]|$)"
+    ]
+  },
+  "Cr": {
+    "patterns": [
+      "([^\\w]|^)chromium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)chromium([^\\w]|$)"
+    ]
+  },
+  "Mn": {
+    "patterns": [
+      "([^\\w]|^)manganese([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)manganese([^\\w]|$)"
+    ]
+  },
+  "Fe": {
+    "patterns": [
+      "([^\\w]|^)iron([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)iron([^\\w]|$)"
+    ]
+  },
+  "Co": {
+    "patterns": [
+      "([^\\w]|^)cobalt([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)cobalt([^\\w]|$)"
+    ]
+  },
+  "Ni": {
+    "patterns": [
+      "([^\\w]|^)nickel([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)nickel([^\\w]|$)"
+    ]
+  },
+  "Cu": {
+    "patterns": [
+      "([^\\w]|^)copper([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)copper([^\\w]|$)"
+    ]
+  },
+  "Zn": {
+    "patterns": [
+      "([^\\w]|^)zinc([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)zinc([^\\w]|$)"
+    ]
+  },
+  "Ga": {
+    "patterns": [
+      "([^\\w]|^)gallium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)gallium([^\\w]|$)"
+    ]
+  },
+  "Ge": {
+    "patterns": [
+      "([^\\w]|^)germanium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)germanium([^\\w]|$)"
+    ]
+  },
+  "As": {
+    "patterns": [
+      "([^\\w]|^)arsenic([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)arsenic([^\\w]|$)"
+    ]
+  },
+  "Se": {
+    "patterns": [
+      "([^\\w]|^)selenium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)selenium([^\\w]|$)"
+    ]
+  },
+  "Br": {
+    "patterns": [
+      "([^\\w]|^)bromine([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)bromine([^\\w]|$)"
+    ]
+  },
+  "Kr": {
+    "patterns": [
+      "([^\\w]|^)krypton([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)krypton([^\\w]|$)"
+    ]
+  },
+  "Rb": {
+    "patterns": [
+      "([^\\w]|^)rubidium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)rubidium([^\\w]|$)"
+    ]
+  },
+  "Sr": {
+    "patterns": [
+      "([^\\w]|^)strontium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)strontium([^\\w]|$)"
+    ]
+  },
+  "Y": {
+    "patterns": [
+      "([^\\w]|^)yttrium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)yttrium([^\\w]|$)"
+    ]
+  },
+  "Zr": {
+    "patterns": [
+      "([^\\w]|^)zirconium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)zirconium([^\\w]|$)"
+    ]
+  },
+  "Nb": {
+    "patterns": [
+      "([^\\w]|^)niobium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)niobium([^\\w]|$)"
+    ]
+  },
+  "Mo": {
+    "patterns": [
+      "([^\\w]|^)molybdenum([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)molybdenum([^\\w]|$)"
+    ]
+  },
+  "Tc": {
+    "patterns": [
+      "([^\\w]|^)technetium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)technetium([^\\w]|$)"
+    ]
+  },
+  "Ru": {
+    "patterns": [
+      "([^\\w]|^)ruthenium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)ruthenium([^\\w]|$)"
+    ]
+  },
+  "Rh": {
+    "patterns": [
+      "([^\\w]|^)rhodium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)rhodium([^\\w]|$)"
+    ]
+  },
+  "Pd": {
+    "patterns": [
+      "([^\\w]|^)palladium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)palladium([^\\w]|$)"
+    ]
+  },
+  "Ag": {
+    "patterns": [
+      "([^\\w]|^)silver([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)silver([^\\w]|$)"
+    ]
+  },
+  "Cd": {
+    "patterns": [
+      "([^\\w]|^)cadmium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)cadmium([^\\w]|$)"
+    ]
+  },
+  "In": {
+    "patterns": [
+      "([^\\w]|^)indium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)indium([^\\w]|$)"
+    ]
+  },
+  "Sn": {
+    "patterns": [
+      "([^\\w]|^)tin([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)tin([^\\w]|$)"
+    ]
+  },
+  "Sb": {
+    "patterns": [
+      "([^\\w]|^)antimony([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)antimony([^\\w]|$)"
+    ]
+  },
+  "Te": {
+    "patterns": [
+      "([^\\w]|^)tellurium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)tellurium([^\\w]|$)"
+    ]
+  },
+  "I": {
+    "patterns": [
+      "([^\\w]|^)iodine([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)iodine([^\\w]|$)"
+    ]
+  },
+  "Xe": {
+    "patterns": [
+      "([^\\w]|^)xenon([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)xenon([^\\w]|$)"
+    ]
+  },
+  "Cs": {
+    "patterns": [
+      "([^\\w]|^)cesium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)cesium([^\\w]|$)"
+    ]
+  },
+  "Ba": {
+    "patterns": [
+      "([^\\w]|^)barium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)barium([^\\w]|$)"
+    ]
+  },
+  "La": {
+    "patterns": [
+      "([^\\w]|^)lanthanum([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)lanthanum([^\\w]|$)"
+    ]
+  },
+  "Ce": {
+    "patterns": [
+      "([^\\w]|^)cerium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)cerium([^\\w]|$)"
+    ]
+  },
+  "Pr": {
+    "patterns": [
+      "([^\\w]|^)praseodymium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)praseodymium([^\\w]|$)"
+    ]
+  },
+  "Nd": {
+    "patterns": [
+      "([^\\w]|^)neodymium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)neodymium([^\\w]|$)"
+    ]
+  },
+  "Pm": {
+    "patterns": [
+      "([^\\w]|^)promethium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)promethium([^\\w]|$)"
+    ]
+  },
+  "Sm": {
+    "patterns": [
+      "([^\\w]|^)samarium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)samarium([^\\w]|$)"
+    ]
+  },
+  "Eu": {
+    "patterns": [
+      "([^\\w]|^)europium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)europium([^\\w]|$)"
+    ]
+  },
+  "Gd": {
+    "patterns": [
+      "([^\\w]|^)gadolinium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)gadolinium([^\\w]|$)"
+    ]
+  },
+  "Tb": {
+    "patterns": [
+      "([^\\w]|^)terbium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)terbium([^\\w]|$)"
+    ]
+  },
+  "Dy": {
+    "patterns": [
+      "([^\\w]|^)dysprosium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)dysprosium([^\\w]|$)"
+    ]
+  },
+  "Ho": {
+    "patterns": [
+      "([^\\w]|^)holmium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)holmium([^\\w]|$)"
+    ]
+  },
+  "Er": {
+    "patterns": [
+      "([^\\w]|^)erbium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)erbium([^\\w]|$)"
+    ]
+  },
+  "Tm": {
+    "patterns": [
+      "([^\\w]|^)thulium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)thulium([^\\w]|$)"
+    ]
+  },
+  "Yb": {
+    "patterns": [
+      "([^\\w]|^)ytterbium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)ytterbium([^\\w]|$)"
+    ]
+  },
+  "Lu": {
+    "patterns": [
+      "([^\\w]|^)lutetium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)lutetium([^\\w]|$)"
+    ]
+  },
+  "Hf": {
+    "patterns": [
+      "([^\\w]|^)hafnium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)hafnium([^\\w]|$)"
+    ]
+  },
+  "Ta": {
+    "patterns": [
+      "([^\\w]|^)tantalum([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)tantalum([^\\w]|$)"
+    ]
+  },
+  "W": {
+    "patterns": [
+      "([^\\w]|^)tungsten([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)tungsten([^\\w]|$)"
+    ]
+  },
+  "Re": {
+    "patterns": [
+      "([^\\w]|^)rhenium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)rhenium([^\\w]|$)"
+    ]
+  },
+  "Os": {
+    "patterns": [
+      "([^\\w]|^)osmium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)osmium([^\\w]|$)"
+    ]
+  },
+  "Ir": {
+    "patterns": [
+      "([^\\w]|^)iridium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)iridium([^\\w]|$)"
+    ]
+  },
+  "Pt": {
+    "patterns": [
+      "([^\\w]|^)platinum([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)platinum([^\\w]|$)"
+    ]
+  },
+  "Au": {
+    "patterns": [
+      "([^\\w]|^)gold([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)gold([^\\w]|$)"
+    ]
+  },
+  "Hg": {
+    "patterns": [
+      "([^\\w]|^)mercury([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)mercury([^\\w]|$)"
+    ]
+  },
+  "Tl": {
+    "patterns": [
+      "([^\\w]|^)thallium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)thallium([^\\w]|$)"
+    ]
+  },
+  "Pb": {
+    "patterns": [
+      "([^\\w]|^)lead([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)lead([^\\w]|$)"
+    ]
+  },
+  "Bi": {
+    "patterns": [
+      "([^\\w]|^)bismuth([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)bismuth([^\\w]|$)"
+    ]
+  },
+  "Po": {
+    "patterns": [
+      "([^\\w]|^)polonium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)polonium([^\\w]|$)"
+    ]
+  },
+  "At": {
+    "patterns": [
+      "([^\\w]|^)astatine([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)astatine([^\\w]|$)"
+    ]
+  },
+  "Rn": {
+    "patterns": [
+      "([^\\w]|^)radon([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)radon([^\\w]|$)"
+    ]
+  },
+  "Fr": {
+    "patterns": [
+      "([^\\w]|^)francium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)francium([^\\w]|$)"
+    ]
+  },
+  "Ra": {
+    "patterns": [
+      "([^\\w]|^)radium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)radium([^\\w]|$)"
+    ]
+  },
+  "Ac": {
+    "patterns": [
+      "([^\\w]|^)actinium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)actinium([^\\w]|$)"
+    ]
+  },
+  "Th": {
+    "patterns": [
+      "([^\\w]|^)thorium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)thorium([^\\w]|$)"
+    ]
+  },
+  "Pa": {
+    "patterns": [
+      "([^\\w]|^)protactinium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)protactinium([^\\w]|$)"
+    ]
+  },
+  "U": {
+    "patterns": [
+      "([^\\w]|^)uranium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)uranium([^\\w]|$)"
+    ]
+  },
+  "Np": {
+    "patterns": [
+      "([^\\w]|^)neptunium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)neptunium([^\\w]|$)"
+    ]
+  },
+  "Pu": {
+    "patterns": [
+      "([^\\w]|^)plutonium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)plutonium([^\\w]|$)"
+    ]
+  },
+  "Am": {
+    "patterns": [
+      "([^\\w]|^)americium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)americium([^\\w]|$)"
+    ]
+  },
+  "Cm": {
+    "patterns": [
+      "([^\\w]|^)curium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)curium([^\\w]|$)"
+    ]
+  },
+  "Bk": {
+    "patterns": [
+      "([^\\w]|^)berkelium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)berkelium([^\\w]|$)"
+    ]
+  },
+  "Cf": {
+    "patterns": [
+      "([^\\w]|^)californium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)californium([^\\w]|$)"
+    ]
+  },
+  "Es": {
+    "patterns": [
+      "([^\\w]|^)einsteinium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)einsteinium([^\\w]|$)"
+    ]
+  },
+  "Fm": {
+    "patterns": [
+      "([^\\w]|^)fermium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)fermium([^\\w]|$)"
+    ]
+  },
+  "Md": {
+    "patterns": [
+      "([^\\w]|^)mendelevium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)mendelevium([^\\w]|$)"
+    ]
+  },
+  "No": {
+    "patterns": [
+      "([^\\w]|^)nobelium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)nobelium([^\\w]|$)"
+    ]
+  },
+  "Lr": {
+    "patterns": [
+      "([^\\w]|^)lawrencium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)lawrencium([^\\w]|$)"
+    ]
+  },
+  "Rf": {
+    "patterns": [
+      "([^\\w]|^)rutherfordium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)rutherfordium([^\\w]|$)"
+    ]
+  },
+  "Db": {
+    "patterns": [
+      "([^\\w]|^)dubnium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)dubnium([^\\w]|$)"
+    ]
+  },
+  "Sg": {
+    "patterns": [
+      "([^\\w]|^)seaborgium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)seaborgium([^\\w]|$)"
+    ]
+  },
+  "Bh": {
+    "patterns": [
+      "([^\\w]|^)bohrium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)bohrium([^\\w]|$)"
+    ]
+  },
+  "Hs": {
+    "patterns": [
+      "([^\\w]|^)hassium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)hassium([^\\w]|$)"
+    ]
+  },
+  "Mt": {
+    "patterns": [
+      "([^\\w]|^)meitnerium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)meitnerium([^\\w]|$)"
+    ]
+  },
+  "Ds": {
+    "patterns": [
+      "([^\\w]|^)darmstadtium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)darmstadtium([^\\w]|$)"
+    ]
+  },
+  "Rg": {
+    "patterns": [
+      "([^\\w]|^)roentgenium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)roentgenium([^\\w]|$)"
+    ]
+  },
+  "Cn": {
+    "patterns": [
+      "([^\\w]|^)copernicium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)copernicium([^\\w]|$)"
+    ]
+  },
+  "Nh": {
+    "patterns": [
+      "([^\\w]|^)nihonium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)nihonium([^\\w]|$)"
+    ]
+  },
+  "Fl": {
+    "patterns": [
+      "([^\\w]|^)flerovium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)flerovium([^\\w]|$)"
+    ]
+  },
+  "Mc": {
+    "patterns": [
+      "([^\\w]|^)moscovium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)moscovium([^\\w]|$)"
+    ]
+  },
+  "Lv": {
+    "patterns": [
+      "([^\\w]|^)livermorium([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)livermorium([^\\w]|$)"
+    ]
+  },
+  "Ts": {
+    "patterns": [
+      "([^\\w]|^)tennessine([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)tennessine([^\\w]|$)"
+    ]
+  },
+  "Og": {
+    "patterns": [
+      "([^\\w]|^)oganesson([^\\w]|$)"
+    ],
+    "tagPatterns": [
+      "([^\\w]|^)([^\\w]|^)oganesson([^\\w]|$)([^\\w]|$)"
+    ]
+  },
+  "impenetrable": {
+    "tags": [
+      "ancient_debris",
+      "immobile",
+      "immune",
+      "metallurgium",
+      "netherite",
+      "obsidian",
+      "prehistoric"
+    ]
+  },
+  "dense": {
+    "tags": [
+      "compress"
+    ]
+  },
+  "watery": {
+    "tags": [
+      "blood",
+      "brine",
+      "crop",
+      "gelena",
+      "milk",
+      "slime",
+      "water"
+    ]
+  },
+  "oil": {
+    "tags": [
+      "butane",
+      "crude_oil",
+      "diesel",
+      "gasoline",
+      "heavy_gas_oil",
+      "kerosene",
+      "naphtha",
+      "residual_fuel_oil"
+    ]
+  },
+  "airy": {
+    "tags": [
+      "O",
+      "aetherium",
+      "air",
+      "etherite"
+    ]
+  },
+  "gasses": {
+    "tags": [
+      "H",
+      "argonium",
+      "magic",
+      "soul"
+    ]
+  },
+  "sparkly": {
+    "tags": [
+      "celestium",
+      "chrome",
+      "discordium",
+      "electrum",
+      "galaxium",
+      "glow",
+      "lunum",
+      "lutetium",
+      "prometheum",
+      "pyrite",
+      "starrite",
+      "stellum",
+      "stormyx"
+    ]
+  },
+  "porous": {
+    "tags": [
+      "asterite",
+      "asteroid",
+      "basalt",
+      "coal",
+      "end_stones",
+      "meteor",
+      "wools"
+    ]
+  },
+  "aura": {
+    "tags": [
+      "Pu",
+      "Th",
+      "U",
+      "carmot",
+      "experience",
+      "kyber",
+      "unobtainium",
+      "ur"
+    ]
+  },
+  "mercury": {
+    "tags": [
+      "cinnabar",
+      "quicksilver"
+    ]
+  },
+  "dusty": {
+    "tags": [
+      "dirt",
+      "gravel",
+      "sand"
+    ]
+  },
+  "glassy": {
+    "tags": [
+      "amethyst",
+      "diamond",
+      "emerald",
+      "peridot",
+      "quartz",
+      "ruby",
+      "sapphire",
+      "topaz"
+    ]
+  },
+  "heterogeneous": {
+    "tags": [
+      "cobblestone"
+    ]
+  },
+  "stones": {
+    "tags": [
+      "concrete",
+      "marble",
+      "redstone",
+      "terracotta"
+    ]
+  },
+  "damp": {
+    "tags": [
+      "mud",
+      "mushroom",
+      "mycelium",
+      "pollen",
+      "purpur",
+      "water"
+    ]
+  },
+  "silicon": {
+    "tags": [
+      "certus",
+      "redstone"
+    ]
+  },
+  "insulators": {
+    "tags": [
+      "wools"
+    ]
   }
 }

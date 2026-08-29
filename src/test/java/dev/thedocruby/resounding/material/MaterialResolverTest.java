@@ -50,15 +50,16 @@ class MaterialResolverTest {
     @Test
     void resolveBakesImpedancePermeationAndStatePerTheDocumentedFormulas() {
         // Hand-computed via the exact formulas documented on MaterialResolver.resolve:
+        //   state      = phaseState(temperature, melt°C, boil°C)
         //   impedance  = lerp(state, lwave, swave) * density
-        //   permeation = (1 - reflection(impedance, solvent))^(granularity * (1 + state))
-        //   state      = lerpProgress(temperature, melt, boil)
+        //   permeation = clamp((1 - reflection(impedance, solvent))^(granularity * (1 + state)), 0, 1)
         Ident solventId = id("mod:solvent");
         Ident matId = id("mod:stone");
 
         // solvent: lwave == swave, so its impedance is independent of its own state
-        RawMaterialDef solvent = standalone(1.0, 0.0, 1.0, 0.5, 50.0, 50.0, 1.0, null);
-        RawMaterialDef material = standalone(10.0, 0.0, 100.0, 50.0, 300.0, 100.0, 2.0, solventId);
+        RawMaterialDef solvent = standalone(1.0, 0.0, 1.0, 287.15, 50.0, 50.0, 1.0, null);
+        // 287.15 K ≈ 14°C, between 0°C melt and 100°C boil → state = 0.86
+        RawMaterialDef material = standalone(10.0, 0.0, 100.0, 287.15, 300.0, 100.0, 2.0, solventId);
 
         Map<Ident, RawMaterialDef> defs = new LinkedHashMap<>();
         defs.put(solventId, solvent);
@@ -66,12 +67,12 @@ class MaterialResolverTest {
 
         MaterialResolver.Baked baked = MaterialResolver.resolve(defs);
 
-        double state = (50.0 - 0.0) / (100.0 - 0.0);
+        double state = 0.86;
         double velocity = 100.0 + state * (300.0 - 100.0); // lerp(state, lwave, swave)
         double impedance = velocity * 10.0;
         double solventImpedance = 50.0;
         double reflection = Math.pow((impedance - solventImpedance) / (impedance + solventImpedance), 2);
-        double permeation = Math.pow(1 - reflection, 2.0 * (1 + state));
+        double permeation = Acoustics.clamp(Math.pow(1 - reflection, 2.0 * (1 + state)), 0.0, 1.0);
 
         Material baked1 = baked.materials().get(matId);
         assertNotNull(baked1, "the material must bake; diagnostics: " + baked.diagnostics());

@@ -36,4 +36,26 @@ public final class Acoustics {
     public static double lerp(double delta, double start, double end) {
         return start + delta * (end - start);
     }
+
+    /** Clamps {@code value} to {@code [min, max]}. */
+    public static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    /**
+     * Baked phase coordinate on {@code [0, 1]} from temperature and phase points.
+     *
+     * <p>Melt and boil are authored in degrees Celsius in the shipped pack; they are converted to
+     * kelvin before progress is computed. Melt→boil progress is clamped, then inverted so cold
+     * solids approach 1 ({@code swave}) and hot gases approach 0 ({@code lwave}).
+     *
+     * <p>Semantic anchors: 0 absent/fluid, 0.25 plasma, 0.5 gas, 0.75 liquid, 1 solid — see
+     * {@link Material}.
+     */
+    public static double phaseState(double temperatureKelvin, double meltCelsius, double boilCelsius) {
+        double meltKelvin = meltCelsius + 273.15;
+        double boilKelvin = boilCelsius + 273.15;
+        double meltToBoil = clamp(lerpProgress(temperatureKelvin, meltKelvin, boilKelvin), 0.0, 1.0);
+        return 1.0 - meltToBoil;
+    }
 }

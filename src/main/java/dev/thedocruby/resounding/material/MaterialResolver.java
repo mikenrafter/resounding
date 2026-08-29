@@ -69,7 +69,7 @@ public final class MaterialResolver {
      * <ul>
      *   <li>{@code impedance  = lerp(state, lwave, swave) * density}
      *   <li>{@code permeation = (1 - reflection(impedance, solvent))^(granularity * (1 + state))}
-     *   <li>{@code state      = lerpProgress(temperature, melt, boil)}
+     *   <li>{@code state      = 1 - clamp(lerpProgress(temperature, melt, boil), 0, 1)} — melt/boil in °C
      * </ul>
      *
      * <p>Definitions still missing required properties after flattening are dropped with a
@@ -285,9 +285,9 @@ public final class MaterialResolver {
         bakeState.put(id, 1);
         bakePath.add(id);
 
-        double state = Acoustics.lerpProgress(raw.temperature(), raw.melt(), raw.boil());
+        double state = Acoustics.phaseState(raw.temperature(), raw.melt(), raw.boil());
         double velocity = Acoustics.lerp(state, raw.lwave(), raw.swave());
-        double impedance = velocity * raw.density();
+        double impedance = Math.max(0.0, velocity * raw.density());
 
         double solventImpedance;
         if (raw.solvent() == null) {
@@ -323,7 +323,17 @@ public final class MaterialResolver {
             permeation = 0.0;
         } else {
             double refl = Acoustics.reflection(impedance, solventImpedance);
-            permeation = Math.pow(1.0 - refl, raw.granularity() * (1.0 + state));
+            if (!Double.isFinite(refl)) {
+                refl = 1.0;
+            }
+            refl = Acoustics.clamp(refl, 0.0, 1.0);
+            double exponent = raw.granularity() * (1.0 + state);
+            double permeationBase = 1.0 - refl;
+            permeation = Math.pow(permeationBase, exponent);
+            if (!Double.isFinite(permeation)) {
+                permeation = permeationBase <= 0.0 ? 0.0 : 1.0;
+            }
+            permeation = Acoustics.clamp(permeation, 0.0, 1.0);
         }
 
         Material baked = new Material(impedance, permeation, state);
