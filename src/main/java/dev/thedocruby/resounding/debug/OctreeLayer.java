@@ -1,6 +1,5 @@
 package dev.thedocruby.resounding.debug;
 
-import dev.thedocruby.resounding.debug.math.DepthColor;
 import dev.thedocruby.resounding.raycast.Branch;
 import dev.thedocruby.resounding.toolbox.ChunkChain;
 import net.fabricmc.api.EnvType;
@@ -9,13 +8,12 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.VertexBuffer;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.util.math.BlockPos;
-import org.joml.Matrix4f;
-import net.minecraft.util.math.Box;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.profiler.Profiler;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.ChunkStatus;
+import org.joml.Matrix4f;
 
 import java.util.List;
 
@@ -28,7 +26,7 @@ public final class OctreeLayer implements DebugLayer {
 	private int lastSectionX = Integer.MIN_VALUE;
 	private int lastSectionY = Integer.MIN_VALUE;
 	private int lastSectionZ = Integer.MIN_VALUE;
-	private List<Box> boxes = List.of();
+	private List<OctreeOverlay.OctantView> octants = List.of();
 
 	@Override
 	public boolean isEnabled() {
@@ -39,8 +37,8 @@ public final class OctreeLayer implements DebugLayer {
 		this.enabled = enabled;
 	}
 
-	public List<Box> boxes() {
-		return boxes;
+	public List<OctreeOverlay.OctantView> octants() {
+		return octants;
 	}
 
 	@Override
@@ -65,7 +63,7 @@ public final class OctreeLayer implements DebugLayer {
 		Profiler profiler = client.getProfiler();
 		profiler.push("resounding_octree_walk");
 		try {
-			boxes = collectSectionBoxes(client.world, playerPos);
+			octants = collectSectionOctants(client.world, playerPos);
 		} finally {
 			profiler.pop();
 		}
@@ -78,7 +76,7 @@ public final class OctreeLayer implements DebugLayer {
 		buffer.draw(positionMatrix, projectionMatrix, cameraPos);
 	}
 
-	private static List<Box> collectSectionBoxes(World world, BlockPos playerPos) {
+	private static List<OctreeOverlay.OctantView> collectSectionOctants(World world, BlockPos playerPos) {
 		ChunkPos chunkPos = new ChunkPos(playerPos);
 		ChunkChain chain = (ChunkChain) world.getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, false);
 		if (chain == null) {
@@ -94,10 +92,13 @@ public final class OctreeLayer implements DebugLayer {
 	}
 
 	private void populate(BufferBuilder builder) {
-		for (Box box : boxes) {
-			int size = (int) (box.maxX - box.minX);
-			int color = DepthColor.colorForSize(size);
-			GpuLineBuffer.boxEdges(builder, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, color);
+		for (OctreeOverlay.OctantView octant : octants) {
+			GpuLineBuffer.boxEdges(
+					builder,
+					octant.box().minX, octant.box().minY, octant.box().minZ,
+					octant.box().maxX, octant.box().maxY, octant.box().maxZ,
+					octant.color()
+			);
 		}
 	}
 }

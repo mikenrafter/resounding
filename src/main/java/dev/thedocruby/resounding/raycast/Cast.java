@@ -1,5 +1,6 @@
 package dev.thedocruby.resounding.raycast;
 
+import dev.thedocruby.resounding.debug.math.OctantColor;
 import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.Physics;
 import dev.thedocruby.resounding.toolbox.ChunkChain;
@@ -45,6 +46,7 @@ public class Cast {
     public @Nullable Double lastReflectivity;
     public @Nullable Double lastTransmission;
     public @Nullable Material lastMaterial;
+    public int lastOctantColor;
 
 //    public static Material air = Cache.material(Blocks.AIR.getDefaultState());
 
@@ -74,6 +76,7 @@ public class Cast {
             blank(position);
             return;
         }
+        this.lastOctantColor = OctantColor.forNode(branch.start, branch.size);
         // } */
         // prepare variables
         Step step, rstep;

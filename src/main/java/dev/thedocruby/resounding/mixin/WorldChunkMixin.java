@@ -166,7 +166,7 @@ public abstract class WorldChunkMixin extends Chunk implements ChunkChain {
 				branches[index] = empty ? air : blank;
 			}
 			// only calculate if necessary
-			if (empty) {
+			if (!empty) {
 				OctreeManager.counter++;
 				OctreeManager.octreePool.execute(() -> OctreeManager.plantOctree(this, index, blank));
 			}

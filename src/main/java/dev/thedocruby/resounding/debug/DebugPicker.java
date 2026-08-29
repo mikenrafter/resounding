@@ -63,7 +63,8 @@ public final class DebugPicker {
 			}
 
 			if (octreePeekable) {
-				for (Box box : DebugRenderDispatcher.INSTANCE.octree().boxes()) {
+				for (OctreeOverlay.OctantView octant : DebugRenderDispatcher.INSTANCE.octree().octants()) {
+					Box box = octant.box();
 					BoxEdges.forEach(
 							box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
 							edge -> {
@@ -72,7 +73,7 @@ public final class DebugPicker {
 									state.consider(
 											approach.tSelf() * PICK_LENGTH,
 											approach.distance(),
-											new OctreeHit(box)
+											new OctreeHit(octant)
 									);
 								}
 							}
@@ -133,18 +134,29 @@ public final class DebugPicker {
 		}
 	}
 
-	private record OctreeHit(Box box) implements PickHit {
+	private record OctreeHit(OctreeOverlay.OctantView octant) implements PickHit {
 		@Override
 		public String format() {
-			int size = (int) (box.maxX - box.minX);
-			return String.format(
+			StringBuilder builder = new StringBuilder(96);
+			builder.append(String.format(
 					Locale.ROOT,
 					"Octant size=%d @ (%.0f,%.0f,%.0f)",
-					size,
-					box.minX,
-					box.minY,
-					box.minZ
-			);
+					octant.size(),
+					octant.box().minX,
+					octant.box().minY,
+					octant.box().minZ
+			));
+			Material material = octant.material();
+			if (material != null) {
+				builder.append(String.format(
+						Locale.ROOT,
+						" Z=%.2f P=%.2f S=%.2f",
+						material.impedance(),
+						material.permeation(),
+						material.state()
+				));
+			}
+			return builder.toString();
 		}
 	}
 }
