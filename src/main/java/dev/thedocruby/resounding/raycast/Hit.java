@@ -22,7 +22,7 @@ public record Hit(
         Hit data = (Hit) o;
         return  // only need these to determine equality, all else will be moot based on rest of architecture
                 length  () == data.length  ()
-             && position() == data.position()
+             && Objects.equals(position(), data.position())
              && reflect () == data.reflect ();
     }
 

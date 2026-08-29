@@ -271,7 +271,6 @@ public class Engine {
 				if (ray == null || ray.vector() == null) {
 					break;
 				}
-				length = 0;
 				continue;
 			}
 			if (cast.transmitted.vector() == null) {
@@ -484,12 +483,7 @@ public class Engine {
 				final double bounceTime = hit.length() / speedOfSound;
 
 				sendGain[
-						MathHelper.clamp((int) (1 / Utils.logBase(
-								Math.max(
-										Math.pow(bounceEnergy, pConfig.maxDecayTime / bounceTime * pConfig.energyFix),
-										java.lang.Double.MIN_VALUE
-								), minEnergy) * pConfig.resolution),
-								0, pConfig.resolution)
+						bounceEnergyBin(bounceEnergy, bounceTime)
 						] += playerEnergy;
 
 			}
@@ -545,8 +539,8 @@ public class Engine {
 	public static @NotNull SlotProfile selectSlot(double[] sendGain, double[] sendCutoff) {
 		if (pConfig.fastPick) { // TODO: find cause of block.lava.ambient NaN
 			int slot = 0;
-			double max = sendGain[1];
-			for (int i = 2; i <= pConfig.resolution; i++) if (sendGain[i] > max) {
+			double max = sendGain[0];
+			for (int i = 1; i <= pConfig.resolution; i++) if (sendGain[i] > max) {
 				slot=i;
 				max = sendGain[i];
 			}
@@ -574,6 +568,20 @@ public class Engine {
 		double selected = factorial(m)/(factorial(k)-factorial(mk))*Math.pow(1-x,mk)*Math.min(1,Math.max(0,Math.pow(x,k)));
 		 */
 		return new SlotProfile(0, 0, 0);
+	}
+
+	/** Maps bounce energy and path time to a reverb preset bin without log(1.0) singularities. */
+	@Environment(EnvType.CLIENT)
+	static int bounceEnergyBin(double bounceEnergy, double bounceTime) {
+		if (bounceTime < 1e-9) {
+			return 0;
+		}
+		double energy = MathHelper.clamp(bounceEnergy, 1e-12, 1.0 - 1e-12);
+		double rt60 = energy >= 1.0 - 1e-12
+				? pConfig.maxDecayTime
+				: Math.min(pConfig.maxDecayTime, -bounceTime / Math.log(energy));
+		double fraction = rt60 / pConfig.maxDecayTime;
+		return MathHelper.clamp((int) Math.round(fraction * pConfig.resolution), 0, pConfig.resolution);
 	}
 
 }
