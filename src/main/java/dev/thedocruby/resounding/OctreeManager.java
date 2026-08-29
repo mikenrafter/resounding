@@ -118,8 +118,9 @@ public class OctreeManager {
             for (BlockPos block : blockSequence) {
                 final BlockPos position = start.add(block.multiply(scale));
                 Branch leaf = growOctree(chunk, new Branch(position, scale, (Material) null));
-                if (leaf.material == null) {
-                    heterogeneous = heterogeneous || !leaf.isEmpty();
+                if (leaf.material == null || !leaf.isEmpty()) {
+                    heterogeneous = true;
+                    valid = false;
                 } else if (!sameAcousticCell(corner, chunk.getBlockState(position))) {
                     heterogeneous = true;
                     valid = false;
