@@ -42,6 +42,9 @@ public class Cast {
 
     public @Nullable Step stood = null; // prior position
     public @Nullable Double impeded = null; // prior impedance
+    public @Nullable Double lastReflectivity;
+    public @Nullable Double lastTransmission;
+    public @Nullable Material lastMaterial;
 
 //    public static Material air = Cache.material(Blocks.AIR.getDefaultState());
 
@@ -123,6 +126,9 @@ public class Cast {
         reflect (reflectivity*power, rposition, reflected, rdistance);
         transmit(transmission*power, pposition, transmitted, pdistance);
         stood = step; // TODO ?
+        this.lastReflectivity = reflectivity;
+        this.lastTransmission = transmission;
+        this.lastMaterial = branch.material;
         this.impeded = branch.material.impedance();
     }
     // } */

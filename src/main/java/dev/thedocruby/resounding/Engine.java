@@ -4,6 +4,7 @@ package dev.thedocruby.resounding;
 // internal {
 
 import dev.thedocruby.resounding.openal.Context;
+import dev.thedocruby.resounding.debug.CaptureBuffer;
 import dev.thedocruby.resounding.raycast.Cast;
 import dev.thedocruby.resounding.raycast.Hit;
 import dev.thedocruby.resounding.raycast.Ray;
@@ -214,7 +215,13 @@ public class Engine {
 		// while power, within max search range & iterate bounces
 		while (ray.power() > 1 && maxLength > length && results.size() < pConfig.nRayBounces) {
 			// debugging output
-			if (pConfig.dRays) Renderer.addSoundBounceRay(prior, ray.position(), SoundClassifier.colors[(casts++ + id + results.size()) % SoundClassifier.colors.length]);
+			if (pConfig.dRays) Renderer.addSoundBounceRay(
+					prior, ray.position(),
+					SoundClassifier.colors[(casts++ + id + results.size()) % SoundClassifier.colors.length],
+					results.size(),
+					ctx.sourceID(),
+					cast.lastMaterial
+			);
 			prior = ray.position();
 
 			// cast ray
@@ -259,6 +266,8 @@ public class Engine {
 
 	@Environment(EnvType.CLIENT)
 	private static @NotNull EnvData evalEnv(SoundEvalContext ctx) {
+		CaptureBuffer.INSTANCE.onSoundEvalStart();
+		try {
 		// Throw rays around
 		// TODO implement tagging system here
 		Consumer<String> logger = pConfig.log ? (pConfig.eLog ? Utils.LOGGER::info : Utils.LOGGER::debug) : x -> {};
@@ -281,6 +290,9 @@ public class Engine {
 		EnvData data = new EnvData(reflRays, occlRays);
 		logger.accept("Raw Environment data:\n"+data);
 		return data;
+		} finally {
+			CaptureBuffer.INSTANCE.onSoundEvalEnd();
+		}
 	}
 
 	@Contract("_, _ -> new")

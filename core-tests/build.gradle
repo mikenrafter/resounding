@@ -25,6 +25,7 @@ sourceSets {
         java {
             srcDirs = ['../src/test/java']
             exclude 'dev/thedocruby/resounding/debug/OctreeOverlayTest.java'
+            exclude 'dev/thedocruby/resounding/debug/CaptureBufferTest.java'
         }
         resources.srcDirs = ['../src/test/resources']
     }
