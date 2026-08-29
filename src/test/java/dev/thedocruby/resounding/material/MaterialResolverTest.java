@@ -69,8 +69,8 @@ class MaterialResolverTest {
 
         double state = 0.86;
         double velocity = 100.0 + state * (300.0 - 100.0); // lerp(state, lwave, swave)
-        double impedance = velocity * 10.0;
-        double solventImpedance = 50.0;
+        double impedance = MaterialResolver.clampImpedance(velocity * 10.0);
+        double solventImpedance = MaterialResolver.clampImpedance(50.0);
         double reflection = Math.pow((impedance - solventImpedance) / (impedance + solventImpedance), 2);
         double permeation = Acoustics.clamp(Math.pow(1 - reflection, 2.0 * (1 + state)), 0.0, 1.0);
 

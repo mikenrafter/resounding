@@ -8,7 +8,6 @@ import dev.thedocruby.resounding.tag.Diagnostic;
 import dev.thedocruby.resounding.tag.Ident;
 import dev.thedocruby.resounding.tag.Resolution;
 import dev.thedocruby.resounding.tag.TagResolver;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
@@ -114,7 +113,6 @@ class ShippedDefaultsTest {
     }
 
     @Test
-    @Disabled("blocked on stressor S-07: clamping fixes finiteness but some definitions still bake to Z=0 (e.g. innate)")
     void everyBakedMaterialHasPositiveImpedanceAndPermeationAtMostOne() throws Exception {
         Run run = pipeline();
 

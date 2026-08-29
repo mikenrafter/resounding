@@ -22,6 +22,30 @@ public final class MaterialResolver {
 
     private MaterialResolver() {}
 
+    /** Physical acoustic impedance range in Rayl (air ~415, dense stone ~1e7). */
+    private static final double MIN_IMPEDANCE = 1e2;
+    private static final double MAX_IMPEDANCE = 1e8;
+
+    static double clampImpedance(double impedance) {
+        if (!Double.isFinite(impedance) || impedance <= 0.0) {
+            return MIN_IMPEDANCE;
+        }
+        return Acoustics.clamp(impedance, MIN_IMPEDANCE, MAX_IMPEDANCE);
+    }
+
+    /** Fills common bake defaults so elemental solutes and gases can complete the pipeline. */
+    private static RawMaterialDef withBakeDefaults(RawMaterialDef raw) {
+        Double temp = raw.temperature() != null ? raw.temperature() : AMBIENT_KELVIN;
+        Double sw = raw.swave();
+        Double lw = raw.lwave() != null ? raw.lwave() : sw;
+        Double gran = raw.granularity() != null ? raw.granularity() : 1.0;
+        return new RawMaterialDef(
+                raw.weight(), raw.solvent(), raw.solute(), raw.composition(), raw.ratio(),
+                gran, raw.melt(), raw.boil(), temp,
+                raw.density(), sw, lw
+        );
+    }
+
     /** Baked materials plus everything that went wrong producing them. */
     public record Baked(Map<Ident, Material> materials, List<Diagnostic> diagnostics) {}
 
@@ -118,14 +142,7 @@ public final class MaterialResolver {
         Map<Ident, RawMaterialDef> readyToBake = new LinkedHashMap<>();
         for (var entry : flattened.entrySet()) {
             Ident id = entry.getKey();
-            RawMaterialDef raw = entry.getValue();
-
-            Double temp = raw.temperature() != null ? raw.temperature() : AMBIENT_KELVIN;
-            RawMaterialDef withTemp = new RawMaterialDef(
-                    raw.weight(), raw.solvent(), raw.solute(), raw.composition(), raw.ratio(),
-                    raw.granularity(), raw.melt(), raw.boil(), temp,
-                    raw.density(), raw.swave(), raw.lwave()
-            );
+            RawMaterialDef withTemp = withBakeDefaults(entry.getValue());
 
             if (withTemp.isComplete()) {
                 readyToBake.put(id, withTemp);
@@ -191,8 +208,9 @@ public final class MaterialResolver {
         if (solutes == null || solutes.isEmpty()) {
             currentPath.remove(currentPath.size() - 1);
             state.put(id, 2);
-            flattened.put(id, def);
-            return def;
+            RawMaterialDef normalized = withBakeDefaults(def);
+            flattened.put(id, normalized);
+            return normalized;
         }
 
         boolean failed = false;
@@ -249,9 +267,11 @@ public final class MaterialResolver {
             melt.add(soluteDef.melt(), coeff, count, ratioUpdate);
             boil.add(soluteDef.boil(), coeff, count, ratioUpdate);
             temperature.add(soluteDef.temperature(), coeff, count, ratioUpdate);
-            density.add(soluteDef.density(), coeff, count, ratioUpdate);
-            swave.add(soluteDef.swave(), coeff, count, ratioUpdate);
-            lwave.add(soluteDef.lwave(), coeff, count, ratioUpdate);
+            // Density and wave speeds are physical properties in consistent units — do not
+            // scale by molar weight; that produced impedances off by orders of magnitude.
+            density.add(soluteDef.density(), 1.0, count, ratioUpdate);
+            swave.add(soluteDef.swave(), 1.0, count, ratioUpdate);
+            lwave.add(soluteDef.lwave(), 1.0, count, ratioUpdate);
         }
 
         Double w = weight.get() != null ? weight.get() : def.weight();
@@ -261,7 +281,7 @@ public final class MaterialResolver {
         Double t = temperature.get() != null ? temperature.get() : def.temperature();
         Double d = density.get() != null ? density.get() : def.density();
         Double sw = swave.get() != null ? swave.get() : def.swave();
-        Double lw = lwave.get() != null ? lwave.get() : def.lwave();
+        Double lw = lwave.get() != null ? lwave.get() : (sw != null ? sw : def.lwave());
 
         RawMaterialDef flat = new RawMaterialDef(
                 w, def.solvent(), def.solute(), def.composition(), def.ratio(),
@@ -307,10 +327,15 @@ public final class MaterialResolver {
 
         double state = Acoustics.phaseState(raw.temperature(), raw.melt(), raw.boil());
         double velocity = Acoustics.lerp(state, raw.lwave(), raw.swave());
-        double impedance = Math.max(0.0, velocity * raw.density());
+        double density = raw.density();
+        // Shipped gas entries use g/m³ (e.g. N: 1251); solids use g/cm³. Scale gases for Rayl.
+        if (state < 0.5 && density > 50.0) {
+            density /= 1000.0;
+        }
+        double impedance = clampImpedance(velocity * density);
 
         double solventImpedance;
-        if (raw.solvent() == null) {
+        if (raw.solvent() == null || raw.solvent().equals(id)) {
             solventImpedance = impedance * 0.8;
         } else {
             Ident solventId = raw.solvent();

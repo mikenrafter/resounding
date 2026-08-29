@@ -178,22 +178,6 @@ public final class JsonAdapter {
         List<Ident> solute = getIdentList(obj, "solute", sourceName, diagnostics);
         List<Double> composition = getDoubleList(obj, "composition");
 
-        if (parentId != null) {
-            if (solute == null) {
-                solute = new ArrayList<>();
-            } else {
-                solute = new ArrayList<>(solute);
-            }
-            solute.add(0, parentId);
-
-            if (composition == null) {
-                composition = new ArrayList<>();
-            } else {
-                composition = new ArrayList<>(composition);
-            }
-            composition.add(0, 0.0);
-        }
-
         Boolean ratio = getBoolean(obj, "ratio");
         Double granularity = getDouble(obj, "granularity");
         Double melt = getDouble(obj, "melt");
@@ -203,11 +187,47 @@ public final class JsonAdapter {
         Double swave = getDouble(obj, "swave", "solid");
         Double lwave = getDouble(obj, "lwave", "fluid");
 
-        RawMaterialDef matDef = new RawMaterialDef(
-                weight, solvent, solute, composition, ratio,
-                granularity, melt, boil, temperature, density, swave, lwave
-        );
-        outMaterials.put(id, matDef);
+        // Later children such as ancestry.air only tune granularity; they must not replace an
+        // existing full definition (e.g. base.air's N/O/Ar composition) via inherited solute.
+        boolean scalarPatch = outMaterials.containsKey(id)
+                && parentId != null
+                && !obj.has("solute")
+                && !obj.has("composition")
+                && !obj.has("solvent");
+
+        if (scalarPatch) {
+            RawMaterialDef patch = new RawMaterialDef(
+                    weight, null, null, null, ratio,
+                    granularity, melt, boil, temperature, density, swave, lwave
+            );
+            outMaterials.put(id, outMaterials.get(id).overlay(patch));
+        } else {
+            if (parentId != null) {
+                if (solute == null) {
+                    solute = new ArrayList<>();
+                } else {
+                    solute = new ArrayList<>(solute);
+                }
+                solute.add(0, parentId);
+
+                if (composition == null) {
+                    composition = new ArrayList<>();
+                } else {
+                    composition = new ArrayList<>(composition);
+                }
+                composition.add(0, 0.0);
+            }
+
+            RawMaterialDef matDef = new RawMaterialDef(
+                    weight, solvent, solute, composition, ratio,
+                    granularity, melt, boil, temperature, density, swave, lwave
+            );
+            if (outMaterials.containsKey(id)) {
+                outMaterials.put(id, outMaterials.get(id).overlay(matDef));
+            } else {
+                outMaterials.put(id, matDef);
+            }
+        }
 
         if (obj.has("children") && obj.get("children").isJsonObject()) {
             JsonObject childrenObj = obj.get("children").getAsJsonObject();
