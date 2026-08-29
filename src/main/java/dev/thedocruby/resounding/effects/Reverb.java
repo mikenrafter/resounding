@@ -16,12 +16,29 @@ public class Reverb extends Effect {
 
 	public String id = "reverb";
 
+	static double presetT(int index, int resolution) {
+		return (double) index / resolution;
+	}
+
+	static float presetReflectionsDelay(double t) {
+		return (float) (0.005 + t * 0.075);
+	}
+
+	static float presetLateReverbDelay(double t) {
+		return (float) (0.008 + t * 0.045);
+	}
+
+	static float presetMasterGain(double t) {
+		return (float) MathHelper.lerp((float) t, 0.3f, 0.9f);
+	}
+
 	public void apply(
 			int id,
 			// Effect_properties {
 			float decayTime,
 			float density,
 			float diffusion,
+			float gain,
 			float gainHF,
 			float decayHFRatio,
 			float reflectionsGain,
@@ -34,6 +51,7 @@ public class Reverb extends Effect {
 		EffectParameter[] effects = {
 		new EffectParameter("density"            , EXTEfx.AL_EAXREVERB_DENSITY              , density         ),
 		new EffectParameter("diffusion"          , EXTEfx.AL_EAXREVERB_DIFFUSION            , diffusion       ),
+		new EffectParameter("gain"               , EXTEfx.AL_EAXREVERB_GAIN                 , gain            ),
 		new EffectParameter("air_absorption_gain", EXTEfx.AL_EAXREVERB_AIR_ABSORPTION_GAINHF, 1f              ),
 		new EffectParameter("late_delay"         , EXTEfx.AL_EAXREVERB_LATE_REVERB_DELAY    , lateReverbDelay ),
 		new EffectParameter("late_gain"          , EXTEfx.AL_EAXREVERB_LATE_REVERB_GAIN     , lateReverbGain  ),
@@ -71,7 +89,7 @@ public class Reverb extends Effect {
 		final int slot   = context.slots  [id];
 		lowpass(filter, gain, cutoff);
 		// TODO: figure out how to properly use `AL11.alSource3i(` so i don't have to predetermine reverb.
-		AL11.alSource3i(source, EXTEfx.AL_AUXILIARY_SEND_FILTER, slot, 1, filter);
+		AL11.alSource3i(source, EXTEfx.AL_AUXILIARY_SEND_FILTER, slot, 0, filter);
 		ALUtils.errorApply(new String[]{"filter", "slot"}, new int[]{filter, slot}, "source", source);
 	}
 
@@ -97,18 +115,19 @@ public class Reverb extends Effect {
 
 @Override
 	public boolean init() {
-		for(int i = 1; i <= pConfig.resolution; i++){
-			double t = (double) i / pConfig.resolution;
+		for (int i = 1; i <= pConfig.resolution; i++) {
+			double t = presetT(i, pConfig.resolution);
 			apply(i - 1,
 					(float) Math.max(t * pConfig.maxDecayTime, 0.1),             // decayTime
 					(float) (t * 0.5 + 0.5),                                // density
-					(float) MathHelper.lerp(pConfig.rvrbDiff, 1-t, 1), // diffusion
+					(float) MathHelper.lerp(pConfig.rvrbDiff, 1 - t, 1), // diffusion
+					presetMasterGain(t),                                    // gain
 					(float) (0.95 - (0.75 * t)),                            // gainHF
 					(float) Math.max(0.95 - (0.3 * t), 0.1),                // decayHFRatio
 					(float) Math.max(Math.pow(1 - t, 0.5) + 0.618, 0.1),    // reflectionsGain
-					(float) (t * 0.01),                                     // reflectionsDelay
+					presetReflectionsDelay(t),                              // reflectionsDelay
 					(float) (Math.pow(t, 0.5) + 0.618),                     // lateReverbGain
-					(float) (t * 0.01)                                      // lateReverbDelay
+					presetLateReverbDelay(t)                                // lateReverbDelay
 			);
 		}
 		EXTEfx.alFilteri(context.direct, EXTEfx.AL_FILTER_TYPE, EXTEfx.AL_FILTER_LOWPASS);

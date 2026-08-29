@@ -158,7 +158,7 @@ public class Cast {
         }
         // } */
         // apply movement
-        reflect (reflectivity*power, rposition, reflected, rdistance);
+        reflect(reflectedPower(reflectivity, power), rposition, reflected, rdistance);
         transmit(transmission*power, pposition, transmitted, pdistance);
         stood = step; // TODO ?
         this.lastReflectivity = reflectivity;
@@ -295,6 +295,11 @@ public class Cast {
     }
     private void reflect(/*MaterialData material,*/ double power, Vec3d position, Vec3d angle, double distance) {
         this.reflected = new Ray(power, position, angle, distance);
+    }
+    /** Surface absorption on the reflected path; softer materials lose more energy. */
+    public static double reflectedPower(double reflectivity, double incidentPower) {
+        double absorption = net.minecraft.util.math.MathHelper.clamp(1.0 - Math.sqrt(reflectivity), 0.01, 0.95);
+        return reflectivity * incidentPower * (1.0 - absorption);
     }
     private void transmit(/*MaterialData material,*/ double power, Vec3d position, Vec3d angle, double distance) {
         this.transmitted = new Ray(power, position, angle, distance);

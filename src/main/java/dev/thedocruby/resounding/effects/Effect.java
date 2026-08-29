@@ -45,9 +45,9 @@ public class Effect extends Utils {
 
 	// it's a pun! General function for setup of slots/effects/filters
 	private int[]   generAL(final String type, Consumer<int[]> generate, IntPredicate verify, IntConsumer init) {
-			if (pConfig.dLog) Utils.LOGGER.info("Creating {}[{}]", type, pConfig.resolution);
+			if (pConfig.dLog) Utils.LOGGER.info("Creating {}[{}]", type, pConfig.resolution + 1);
 			// create array
-			int[] set = new int[pConfig.resolution];
+			int[] set = new int[pConfig.resolution + 1];
 			generate.accept(set);      // generate   set
 			for(int bit : set) {       // loop over  set
 				if(verify.test(bit)) { // verify     bit

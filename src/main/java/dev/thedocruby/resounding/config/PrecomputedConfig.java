@@ -18,12 +18,12 @@ import java.util.*;
  */
 public class PrecomputedConfig {
     @Environment(EnvType.CLIENT)
-    public static final float globalVolumeMultiplier = 4f;
+    public static final float globalVolumeMultiplier = 1f;
     @Environment(EnvType.CLIENT)
     public static final double speedOfSound = 343.3;
     public static final double minEnergy = Math.exp(-9.21);
     @Environment(EnvType.CLIENT)
-    public double maxDecayTime = 4.142; // TODO: add config setting for this
+    public double maxDecayTime = 8.0;
     public static PrecomputedConfig pConfig = null;
 
     public boolean enabled;
@@ -49,6 +49,9 @@ public class PrecomputedConfig {
     public double globalReflRcp;
     @Environment(EnvType.CLIENT)
     public float airAbs;
+    /** Per-meter HF air absorption factor derived from {@link #airAbs}. */
+    @Environment(EnvType.CLIENT)
+    public double airAbsorptionHF;
     @Environment(EnvType.CLIENT)
     public float humAbs;
     @Environment(EnvType.CLIENT)
@@ -136,7 +139,8 @@ public class PrecomputedConfig {
             globalRefl = c.general.globalBlockReflectance;
             globalReflRcp = 1 / globalRefl;
             // TODO implement environment functions
-            // airAbs = (float) MathHelper.clamp(c.effects.airAbsorption, 0.0, 10.0);
+            airAbs = (float) MathHelper.clamp(c.effects.airAbsorption, 0.0, 10.0);
+            airAbsorptionHF = Math.pow(0.994, airAbs);
             // humAbs = (float) MathHelper.clamp(c.effects.humidityAbsorption, 0.0, 4.0);
             // rainAbs = (float) MathHelper.clamp(c.effects.rainAbsorption, 0.0, 2.0);
             waterFilt = 1 - MathHelper.clamp(c.effects.underwaterFilter, 0.0, 1.0);

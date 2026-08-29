@@ -24,6 +24,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Collections;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -150,7 +151,7 @@ public class Engine {
 		}
 
 		// bundle per-sound state for the evaluation pipeline
-		ChunkChain soundChunk = (ChunkChain) mc.world.getChunk((int) soundPos.x>>4, (int) soundPos.z>>4);
+		ChunkChain soundChunk = (ChunkChain) mc.world.getChunk(MathHelper.floor(soundPos.x) >> 4, MathHelper.floor(soundPos.z) >> 4);
 		SoundEvalContext evalCtx = new SoundEvalContext(soundPos, listenerPos, sourceIDIn, soundChunk, auxOnlyIn);
 		boolean isGentle = SoundClassifier.gentlePattern.matcher(currentTag).matches();
 
@@ -216,7 +217,6 @@ public class Engine {
 
 		double length = cast.transmitted.length();
 		Vec3d prior = ctx.soundPos(); // used solely for debugging
-		byte reflected = 0; // used to stop rays that are trapped between two walls
 		// while power, within max search range & iterate bounces
 		while (ray.power() > 1 && maxLength > length && results.size() < pConfig.nRayBounces) {
 			// debugging output
@@ -253,9 +253,6 @@ public class Engine {
 			// TODO handle splits & replace:
 			//  reflect instead of permeate, when logical
 			if (reflect.apply(cast, results)) {
-				// stop rays stuck between two walls (not moving)
-				// num, not bool -> (3D) edges & corners
-				if (reflected++ > 2) break;
 				// record bounce results
 				results.add(new Hit
 						/*end pos  */( ray.position()
@@ -282,7 +279,6 @@ public class Engine {
 			}
 			ray = cast.transmitted;
 			length += advance;
-			reflected = 0;
 			// } */
 		}
 		return results;
@@ -365,9 +361,9 @@ public class Engine {
 		// Throw rays around
 		// TODO implement tagging system here
 		Consumer<String> logger = pConfig.log ? (pConfig.eLog ? Utils.LOGGER::info : Utils.LOGGER::debug) : x -> {};
-		Set<LinkedList<Hit>> reflRays;
+		List<LinkedList<Hit>> reflRays;
 		logger.accept("Sampling environment with "+pConfig.nRays+" seed rays...");
-		reflRays = rays.stream().parallel().unordered().map((ray) -> Engine.raycast(ray, 128, ctx)).collect(Collectors.toSet());
+		reflRays = rays.stream().parallel().unordered().map((ray) -> Engine.raycast(ray, 128, ctx)).toList();
 		if (pConfig.eLog) {
 			int rayCount = 0;
 			for (LinkedList<Hit> reflRay : reflRays) {
@@ -382,7 +378,9 @@ public class Engine {
 
 		// Pass data to post
 		EnvData data = new EnvData(reflRays, occlRays);
-		logger.accept("Raw Environment data:\n"+data);
+		if (pConfig.log) {
+			logger.accept("Raw Environment data:\n" + data);
+		}
 		return data;
 		} finally {
 			CaptureBuffer.INSTANCE.onSoundEvalEnd();
@@ -392,7 +390,7 @@ public class Engine {
 	@Contract("_, _ -> new")
 	@Environment(EnvType.CLIENT)
 	private static @NotNull SoundProfile processEnv(final EnvData data, SoundEvalContext ctx) {
-		final double airAbsorptionHF = 1.0;
+		final double airAbsorptionHF = pConfig.airAbsorptionHF;
 		double directGain = (ctx.auxOnly() ? 0 : 1) * Math.pow(airAbsorptionHF, ctx.listenerPos().distanceTo(ctx.soundPos()));
 
 		double directPermeation = 1.0;
@@ -420,7 +418,7 @@ public class Engine {
 				missed++;
 			}
 		}
-		missed /= pConfig.nRays;
+		missed /= data.reflRays().size();
 		if (bounces < 1e-6) {
 			bounces = 1.0;
 		}
@@ -465,19 +463,19 @@ public class Engine {
 						hit.amplitude() * (
 								pConfig.fastShared
 								? Math.pow(airAbsorptionHF, hit.length() + hit.distance())
-								/ Math.pow(hit.length() + hit.distance(), 2.0D * missed)
+								/ Math.pow(Math.max(hit.length() + hit.distance(), 1e-6), distanceAttenuationExponent())
 
 								: smoothSharedEnergy
 								* Math.pow(airAbsorptionHF, hit.length() + smoothSharedDistance)
-								/ Math.pow(hit.length() + smoothSharedDistance, 2.0D * missed)
+								/ Math.pow(Math.max(hit.length() + smoothSharedDistance, 1e-6), distanceAttenuationExponent())
 							),
 						0, 1);
 
 				final double bounceEnergy = MathHelper.clamp(
-						hit.amplitude()
+						(hit.amplitude() / 128.0)
 								* Math.pow(airAbsorptionHF, hit.length())
-								/ Math.pow(hit.length(), 2.0D * missed),
-						java.lang.Double.MIN_VALUE, 1);
+								/ Math.pow(Math.max(hit.length(), 1e-6), distanceAttenuationExponent()),
+						1e-12, 1.0 - 1e-12);
 
 				// TODO modify to use individual speed of sound in mediums
 				final double bounceTime = hit.length() / speedOfSound;
@@ -493,7 +491,7 @@ public class Engine {
 		final double[] sendCutoff = new double[pConfig.resolution+1];
 		for (int i = 0; i <= pConfig.resolution; i++) {
 			// NOTE, removed pConfig.waterFilt logic, as it's superseded by new occlusion method
-			sendGain[i] = MathHelper.clamp(sendGain[i] * (pConfig.fastShared ? sharedSum : 1) * pConfig.resolution / bounces * pConfig.globalRvrbGain, 0, 1.0 - java.lang.Double.MIN_NORMAL);
+			sendGain[i] = MathHelper.clamp(sendGain[i] * (pConfig.fastShared ? sharedSum : 1) * pConfig.rcpNRays * pConfig.globalRvrbGain, 0, 1.0 - java.lang.Double.MIN_NORMAL);
 			sendCutoff[i] = Math.pow(sendGain[i], pConfig.globalRvrbHFRcp); // TODO: make sure this actually works.
 		}
 
@@ -501,7 +499,7 @@ public class Engine {
 		double permeation = amplitude / 128;
 
 		directGain *= Math.pow(airAbsorptionHF, ctx.listenerPos().distanceTo(ctx.soundPos()))
-				/ Math.pow(ctx.listenerPos().distanceTo(ctx.soundPos()), 2 * missed)
+				/ Math.pow(Math.max(ctx.listenerPos().distanceTo(ctx.soundPos()), 1e-6), distanceAttenuationExponent())
 				* MathHelper.lerp(permeation, 1, sharedSum);
 		directCutoff = Math.pow(MathHelper.clamp(directGain, 1e-6, 1.0), pConfig.globalAbsHFRcp);
 
@@ -570,6 +568,12 @@ public class Engine {
 		return new SlotProfile(0, 0, 0);
 	}
 
+	/** Inverse-square distance rolloff for air paths (not scaled by missed-ray count). */
+	@Environment(EnvType.CLIENT)
+	static double distanceAttenuationExponent() {
+		return 2.0;
+	}
+
 	/** Maps bounce energy and path time to a reverb preset bin without log(1.0) singularities. */
 	@Environment(EnvType.CLIENT)
 	static int bounceEnergyBin(double bounceEnergy, double bounceTime) {
@@ -581,7 +585,7 @@ public class Engine {
 				? pConfig.maxDecayTime
 				: Math.min(pConfig.maxDecayTime, -bounceTime / Math.log(energy));
 		double fraction = rt60 / pConfig.maxDecayTime;
-		return MathHelper.clamp((int) Math.round(fraction * pConfig.resolution), 0, pConfig.resolution);
+		return MathHelper.clamp((int) Math.round(fraction * pConfig.resolution), 0, Math.max(0, pConfig.resolution - 1));
 	}
 
 }
