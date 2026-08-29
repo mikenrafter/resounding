@@ -1,0 +1,25 @@
+<timestamp>Saturday, Aug 29, 2026, 12:24 AM (UTC-6)</timestamp>
+
+TDD RED PHASE ONLY — write failing tests, do not implement real behavior.
+
+Read the plan at /home/v0id/.claude/plans/soft-purring-haven.md fully first (it's the spec for everything below). For any code search/navigation, start with the `agentgrep` CLI (subcommands: grep/find/outline/trace, e.g. `agentgrep grep <query>`, `agentgrep find <pattern>`, `agentgrep outline <file>`) before falling back to plain grep/rg.
+
+Scope for THIS phase — exactly two testable units from the plan's section B3, nothing else. Do not touch any existing file other than core-tests/build.gradle (one include-filter line). Do not create GpuLineBuffer, DebugRenderDispatcher, CaptureBuffer, DebugKeybinds, DebugPicker, or any DebugLayer implementations yet — those have no dedicated automated test per the plan and belong to later phases.
+
+1. core-tests/build.gradle: add `debug/math/**` to the existing Lane-1 include filter (alongside tag/**, material/**, data/**), so the new Minecraft-free subpackage gets picked up by the `canary` task.
+
+2. New Minecraft-free package src/main/java/dev/thedocruby/resounding/debug/math/ with three classes — SKELETONS ONLY, correct public method signatures so everything compiles, but method bodies must NOT correctly implement the behavior (return an obviously-wrong placeholder, or throw UnsupportedOperationException) so the tests below fail on real assertions/exceptions, not compile errors:
+   - Segment3.java — plain record/class with double endpoints (ax,ay,az,bx,by,bz), a closestDistanceTo(Segment3 other) method (3D segment-to-segment closest distance) and a closestDistanceToPoint(double,double,double) method. No net.minecraft imports.
+   - RingBuffer.java — generic bounded collection with drop-oldest-on-overflow semantics: offer(T), a way to read contents in insertion order, size(), capacity(). No net.minecraft imports.
+   - DepthColor.java — pure static function colorForSize(int size) mapping octree node sizes {16,8,4,2,1} to 5 distinct fixed ARGB int color constants, plus explicit defined behavior for an unexpected/invalid size (pick either: throw IllegalArgumentException, or return a documented fallback color — pick one and be consistent, this choice will be locked in by the test).
+
+3. New Lane-1 tests under src/test/java/dev/thedocruby/resounding/debug/math/ (model the style/rigor of the existing src/test/java/dev/thedocruby/resounding/material/AcousticsTest.java — no Minecraft on the classpath, this is Lane 1):
+   - Segment3Test.java — parallel segments, perpendicular/skew segments, coincident/overlapping segments, and a degenerate zero-length segment (point-vs-segment) case, each asserting the real expected closest distance.
+   - RingBufferTest.java — fill-to-capacity-then-overflow drops the oldest element first (assert final contents), capacity=0 and capacity=1 edge cases, and iteration order is insertion order.
+   - DepthColorTest.java — exhaustive table test over all 5 valid sizes asserting distinct colors, plus a test locking in whatever behavior you chose for an invalid size.
+
+4. New Minecraft-dependent (Lane-2 only) skeleton + test, isolated to the new debug/ package, touching no other existing file:
+   - src/main/java/dev/thedocruby/resounding/debug/OctreeOverlay.java — SKELETON: a static method collectOctants(Branch root) returning a List<net.minecraft.util.math.Box>, one box per octree node (Branch.start is the absolute BlockPos origin, Branch.size is the edge length; recurse into Branch.leaves.values() when non-empty — see src/main/java/dev/thedocruby/resounding/raycast/Branch.java for the exact field names/types, read it directly, do not guess). Body should be wrong/incomplete (e.g. return an empty list) so the test below fails on assertions, not compile errors.
+   - src/test/java/dev/thedocruby/resounding/debug/OctreeOverlayTest.java (Lane 2, only needs BlockPos/VoxelShape/Box — not a running Minecraft client) — hand-build a small synthetic Branch tree using Branch's plain constructors (2 levels deep is enough: a root Branch of size 8 with a few children of size 4, built by directly calling Branch's public constructor and Branch.put(...)/leaves — read Branch.java to see exactly how to construct one without needing OctreeManager.growOctree or a real WorldChunk), call collectOctants on it, and assert the resulting Box list has the expected count and expected min/max coordinates for each box given the hand-built tree.
+
+Do NOT run `./gradlew runClient`. Do NOT git commit or git add anything — leave the working tree dirty for review. When done, run `./core-tests/gradlew -p core-tests canary test` and `./gradlew build` yourself (both already have JDK/gradle on PATH in this shell) and report: (a) the two build.gradle invocations' pass/fail summary, (b) confirm every new test you wrote actually FAILS and explain in one line each why the failure is a real assertion/exception failure and not a compile or missing-class error, (c) confirm you touched no file other than core-tests/build.gradle and the new files listed above.
