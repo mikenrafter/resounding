@@ -17,15 +17,21 @@ import java.util.function.Consumer;
 @Environment(EnvType.CLIENT)
 public final class GpuLineBuffer implements AutoCloseable {
 
-	private final VertexBuffer vertexBuffer;
+	private final VertexBuffer.Usage usage;
 	private final boolean depthTest;
 	private final float lineWidth;
 
+	// Allocated lazily on first rebuild(), not in the constructor: DebugRenderDispatcher's
+	// layers are constructed at mod-init time (ModClient.onInitializeClient()), which runs
+	// before MinecraftClient's GL context exists on the render thread. Eagerly calling
+	// `new VertexBuffer(...)` there crashes the JVM natively (SIGABRT, no Java stack trace)
+	// instead of throwing a catchable exception.
+	private VertexBuffer vertexBuffer;
 	private boolean dirty = true;
 	private boolean hasGeometry;
 
 	public GpuLineBuffer(VertexBuffer.Usage usage, boolean depthTest, float lineWidth) {
-		this.vertexBuffer = new VertexBuffer(usage);
+		this.usage = usage;
 		this.depthTest = depthTest;
 		this.lineWidth = lineWidth;
 		this.hasGeometry = false;
@@ -38,6 +44,9 @@ public final class GpuLineBuffer implements AutoCloseable {
 	public void rebuild(Consumer<BufferBuilder> populate) {
 		if (!dirty) {
 			return;
+		}
+		if (vertexBuffer == null) {
+			vertexBuffer = new VertexBuffer(usage);
 		}
 
 		Profiler profiler = MinecraftClient.getInstance().getProfiler();
@@ -122,6 +131,8 @@ public final class GpuLineBuffer implements AutoCloseable {
 
 	@Override
 	public void close() {
-		vertexBuffer.close();
+		if (vertexBuffer != null) {
+			vertexBuffer.close();
+		}
 	}
 }
