@@ -39,6 +39,10 @@ public final class OctreeLayer implements DebugLayer {
 		this.enabled = enabled;
 	}
 
+	public List<Box> boxes() {
+		return boxes;
+	}
+
 	@Override
 	public void update() {
 		MinecraftClient client = MinecraftClient.getInstance();

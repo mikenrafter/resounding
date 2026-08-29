@@ -220,7 +220,10 @@ public class Engine {
 					SoundClassifier.colors[(casts++ + id + results.size()) % SoundClassifier.colors.length],
 					results.size(),
 					ctx.sourceID(),
-					cast.lastMaterial
+					cast.lastMaterial,
+					cast.lastReflectivity == null ? 0.0 : cast.lastReflectivity,
+					cast.lastTransmission == null ? 0.0 : cast.lastTransmission,
+					ray.power()
 			);
 			prior = ray.position();
 

@@ -15,13 +15,27 @@ public class Renderer {
 
 	private Renderer() {}
 
-	public static void addSoundBounceRay(Vec3d start, Vec3d end, int color, int bounceIndex, int sourceID, @Nullable Material material) {
+	public static void addSoundBounceRay(
+			Vec3d start,
+			Vec3d end,
+			int color,
+			int bounceIndex,
+			int sourceID,
+			@Nullable Material material,
+			double reflectivity,
+			double transmission,
+			double power
+	) {
 		if (!pConfig.dRays) {
 			return;
 		}
-		DebugRenderDispatcher.INSTANCE.bounceRays().addSoundBounceRay(start, end, color, bounceIndex, sourceID, material);
+		DebugRenderDispatcher.INSTANCE.bounceRays().addSoundBounceRay(
+				start, end, color, bounceIndex, sourceID, material, reflectivity, transmission, power
+		);
 		if (CaptureBuffer.INSTANCE.isCapturing()) {
-			CaptureBuffer.INSTANCE.offer(new CaptureBuffer.CapturedRay(start, end, color, sourceID, bounceIndex, material));
+			CaptureBuffer.INSTANCE.offer(new CaptureBuffer.CapturedRay(
+					start, end, color, sourceID, bounceIndex, material, reflectivity, transmission, power
+			));
 		}
 	}
 

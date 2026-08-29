@@ -1,6 +1,7 @@
 package dev.thedocruby.resounding.debug;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import dev.thedocruby.resounding.debug.math.BoxEdges;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.MinecraftClient;
@@ -114,20 +115,9 @@ public final class GpuLineBuffer implements AutoCloseable {
 	}
 
 	static void boxEdges(BufferBuilder builder, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {
-		line(builder, minX, minY, minZ, maxX, minY, minZ, color);
-		line(builder, maxX, minY, minZ, maxX, minY, maxZ, color);
-		line(builder, maxX, minY, maxZ, minX, minY, maxZ, color);
-		line(builder, minX, minY, maxZ, minX, minY, minZ, color);
-
-		line(builder, minX, maxY, minZ, maxX, maxY, minZ, color);
-		line(builder, maxX, maxY, minZ, maxX, maxY, maxZ, color);
-		line(builder, maxX, maxY, maxZ, minX, maxY, maxZ, color);
-		line(builder, minX, maxY, maxZ, minX, maxY, minZ, color);
-
-		line(builder, minX, minY, minZ, minX, maxY, minZ, color);
-		line(builder, maxX, minY, minZ, maxX, maxY, minZ, color);
-		line(builder, maxX, minY, maxZ, maxX, maxY, maxZ, color);
-		line(builder, minX, minY, maxZ, minX, maxY, maxZ, color);
+		BoxEdges.forEach(minX, minY, minZ, maxX, maxY, maxZ, segment ->
+				line(builder, segment.ax(), segment.ay(), segment.az(), segment.bx(), segment.by(), segment.bz(), color)
+		);
 	}
 
 	@Override

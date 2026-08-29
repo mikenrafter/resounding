@@ -22,7 +22,10 @@ public final class CaptureBuffer {
 			int color,
 			int soundEventId,
 			int bounceIndex,
-			@Nullable Material material
+			@Nullable Material material,
+			double reflectivity,
+			double transmission,
+			double power
 	) {}
 
 	private final int maxSegments;

@@ -46,4 +46,29 @@ class Segment3Test {
         assertEquals(1.0, segment.closestDistanceTo(point), EPS);
         assertEquals(1.0, point.closestDistanceToPoint(0.5, 0.0, 0.0), EPS);
     }
+
+    @Test
+    void closestApproachReportsParametricPositionAtATrueCrossing() {
+        // Perpendicular segment crosses exactly at the midpoint of both.
+        Segment3 alongX = new Segment3(0, 0, 0, 10, 0, 0);
+        Segment3 crossing = new Segment3(5, -1, 0, 5, 1, 0);
+
+        Segment3.ClosestApproach approach = alongX.closestApproachTo(crossing);
+        assertEquals(0.0, approach.distance(), EPS);
+        assertEquals(0.5, approach.tSelf(), EPS);
+        assertEquals(0.5, approach.tOther(), EPS);
+    }
+
+    @Test
+    void closestApproachClampsParametricPositionToNearestEndpoint() {
+        // "crossing" sits past alongX's far end (x=10), so tSelf must clamp to 1.0
+        // (the endpoint), while tOther still lands on crossing's own midpoint.
+        Segment3 alongX = new Segment3(0, 0, 0, 10, 0, 0);
+        Segment3 crossing = new Segment3(15, -1, 0, 15, 1, 0);
+
+        Segment3.ClosestApproach approach = alongX.closestApproachTo(crossing);
+        assertEquals(5.0, approach.distance(), EPS);
+        assertEquals(1.0, approach.tSelf(), EPS);
+        assertEquals(0.5, approach.tOther(), EPS);
+    }
 }

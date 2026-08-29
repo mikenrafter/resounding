@@ -13,7 +13,17 @@ public final class BounceRayLayer extends RayLineLayer {
 		super(true, 0.25F);
 	}
 
-	public void addSoundBounceRay(Vec3d start, Vec3d end, int color, int bounceIndex, int sourceID, @Nullable Material material) {
+	public void addSoundBounceRay(
+			Vec3d start,
+			Vec3d end,
+			int color,
+			int bounceIndex,
+			int sourceID,
+			@Nullable Material material,
+			double reflectivity,
+			double transmission,
+			double power
+	) {
 		addSegment(start, end, color);
 	}
 }
