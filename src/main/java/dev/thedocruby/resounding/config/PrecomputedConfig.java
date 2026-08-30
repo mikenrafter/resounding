@@ -79,6 +79,11 @@ public class PrecomputedConfig {
     public boolean fastPick;
 
     @Environment(EnvType.CLIENT)
+    public boolean reverbEnabled;
+    @Environment(EnvType.CLIENT)
+    public boolean occlusionEnabled;
+
+    @Environment(EnvType.CLIENT)
     public Map<String, Double> reflMap;
     @Environment(EnvType.CLIENT)
     public double defaultRefl;
@@ -149,12 +154,14 @@ public class PrecomputedConfig {
             skipRainOccl = c.misc.skipRainOcclusionTracing;
             nRays = c.quality.envEvalRays;
             rcpNRays = 1d / nRays;
-            nRayBounces = c.quality.envEvalRayBounces + resolution;
+            nRayBounces = Math.max(c.quality.envEvalRayBounces, 2);
             rcpAllRays = rcpNRays / nRayBounces;
-            maxTraceDist = MathHelper.clamp(c.quality.rayLength, 1.0, 16.0) * nRayBounces * 16 * Math.sqrt(2);
+            maxTraceDist = MathHelper.clamp(c.quality.rayLength, 1.0, 16.0) * 16 * Math.sqrt(2);
             occlMode = c.quality.occlusionMode;
             fastShared = c.quality.sharedAirspaceMode == SharedAirspaceMode.FAST;
             fastPick = true; // TODO: Make config setting for this
+            reverbEnabled = c.effects.reverb;
+            occlusionEnabled = c.effects.occlusion;
 
             defaultRefl = .5; // TODO remove
             defaultAbs = .5; // TODO remove

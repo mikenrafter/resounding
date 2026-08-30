@@ -25,7 +25,12 @@ public final class CaptureBuffer {
 			@Nullable Material material,
 			double reflectivity,
 			double transmission,
-			double power
+			double power,
+			/** Impedance this bounce's reflectivity was computed against (the medium the ray was previously in). */
+			double priorImpedance,
+			/** Octree node size (in blocks) the boundary was resolved at; >1 means a coarse cached node. */
+			int branchSize,
+			@Nullable String materialLabel
 	) {}
 
 	private final int maxSegments;

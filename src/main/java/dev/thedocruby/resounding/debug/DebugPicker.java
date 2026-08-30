@@ -15,6 +15,8 @@ import net.minecraft.util.profiler.Profiler;
 
 import java.util.Locale;
 
+import static dev.thedocruby.resounding.config.PrecomputedConfig.pConfig;
+
 @Environment(EnvType.CLIENT)
 public final class DebugPicker {
 
@@ -33,16 +35,25 @@ public final class DebugPicker {
 	}
 
 	private static void pick(MinecraftClient client) {
+		boolean showSoundEffects = pConfig != null && pConfig.dRays;
 		boolean capturePeekable = CaptureBuffer.INSTANCE.isCapturing()
 				|| !CaptureBuffer.INSTANCE.asCapturedList().isEmpty();
 		boolean octreePeekable = DebugRenderDispatcher.INSTANCE.octree().isEnabled();
-		if (!capturePeekable && !octreePeekable) {
+		if (!showSoundEffects && !capturePeekable && !octreePeekable) {
 			return;
 		}
 
 		Profiler profiler = client.getProfiler();
 		profiler.push("resounding_debug_pick");
 		try {
+			String message = null;
+			if (showSoundEffects) {
+				SoundEffectReadout.Snapshot snapshot = SoundEffectReadout.latest();
+				if (snapshot != null) {
+					message = SoundEffectReadout.format(snapshot);
+				}
+			}
+
 			Vec3d eye = client.player.getEyePos();
 			Vec3d look = client.player.getRotationVec(1.0f);
 			Vec3d end = eye.add(look.multiply(PICK_LENGTH));
@@ -82,7 +93,14 @@ public final class DebugPicker {
 			}
 
 			if (state.hit != null) {
-				client.player.sendMessage(Text.literal(state.hit.format()), true);
+				String pickLine = state.hit.format();
+				message = message == null || message.isBlank()
+						? pickLine
+						: message + " | " + pickLine;
+			}
+
+			if (message != null && !message.isBlank()) {
+				client.player.sendMessage(Text.literal(message), true);
 			}
 		} finally {
 			profiler.pop();
@@ -110,16 +128,19 @@ public final class DebugPicker {
 	private record RayHit(CaptureBuffer.CapturedRay ray) implements PickHit {
 		@Override
 		public String format() {
-			StringBuilder builder = new StringBuilder(96);
+			StringBuilder builder = new StringBuilder(128);
 			builder.append(String.format(
 					Locale.ROOT,
-					"Ray b=%d id=%d R=%.2f T=%.2f pow=%.1f",
+					"Ray b=%d id=%d R=%.2f T=%.2f pow=%.1f node=%d³ %s",
 					ray.bounceIndex(),
 					ray.soundEventId(),
 					ray.reflectivity(),
 					ray.transmission(),
-					ray.power()
+					ray.power(),
+					ray.branchSize(),
+					ray.materialLabel() == null ? "?" : ray.materialLabel()
 			));
+			builder.append(String.format(Locale.ROOT, " Zprev=%.2f", ray.priorImpedance()));
 			Material material = ray.material();
 			if (material != null) {
 				builder.append(String.format(

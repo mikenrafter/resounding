@@ -24,7 +24,10 @@ public class Renderer {
 			@Nullable Material material,
 			double reflectivity,
 			double transmission,
-			double power
+			double power,
+			double priorImpedance,
+			int branchSize,
+			@Nullable String materialLabel
 	) {
 		if (!pConfig.dRays) {
 			return;
@@ -34,7 +37,8 @@ public class Renderer {
 		);
 		if (CaptureBuffer.INSTANCE.isCapturing()) {
 			CaptureBuffer.INSTANCE.offer(new CaptureBuffer.CapturedRay(
-					start, end, color, sourceID, bounceIndex, material, reflectivity, transmission, power
+					start, end, color, sourceID, bounceIndex, material, reflectivity, transmission, power,
+					priorImpedance, branchSize, materialLabel
 			));
 		}
 	}

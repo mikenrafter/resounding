@@ -32,14 +32,12 @@ public class SourceMixin implements SourceAccessor {
 	@Inject(method = "play", at = @At("HEAD"))
 	private void onPlay(CallbackInfo ci) {
 		if (!Engine.isActive) return;
-		// TODO make context dynamic
 		Engine.play(Engine.root, soundPos, pointer, false);
 	}
 
 	public void calculateReverb(SoundInstance sound, SoundListener listener) {
 		if (!Engine.isActive) return;
 		Engine.recordLastSound(sound, listener);
-		// TODO make context dynamic
 		Engine.play(Engine.root, soundPos, pointer, false);
 	}
 }

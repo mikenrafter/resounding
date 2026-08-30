@@ -20,7 +20,10 @@ class CaptureBufferTest {
 				null,
 				0.0,
 				0.0,
-				0.0
+				0.0,
+				0.0,
+				1,
+				null
 		);
 	}
 

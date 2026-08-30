@@ -60,6 +60,9 @@ public class Engine {
 			boolean auxOnly
 	) {}
 
+	/** Result of {@link #processEnv} including direct-path permeation for debug readout. */
+	private record ProcessedSound(SoundProfile profile, double directPermeation) {}
+
 	// Mixin bridge: set by recordLastSound(), consumed by play().
 	// These statics exist solely because the SoundSystem mixin and Source mixin
 	// fire at separate injection points and cannot pass data directly.
@@ -117,11 +120,23 @@ public class Engine {
 
 	@Environment(EnvType.CLIENT)
 	public static void play(Context context, Vec3d pos, int sourceIDIn, boolean auxOnlyIn) {
+		play(context, pos, sourceIDIn, auxOnlyIn, tag, category, lastSoundListener);
+	}
+
+	@Environment(EnvType.CLIENT)
+	private static void play(
+			Context context,
+			Vec3d pos,
+			int sourceIDIn,
+			boolean auxOnlyIn,
+			String currentTag,
+			SoundCategory currentCategory,
+			SoundListener currentListener
+	) {
 		assert Engine.isActive;
-		// Capture mixin-bridged metadata as locals immediately
-		final String currentTag = tag;
-		final SoundCategory currentCategory = category;
-		final SoundListener currentListener = lastSoundListener;
+		if (!pConfig.reverbEnabled && !pConfig.occlusionEnabled) {
+			return;
+		}
 
 		long startTime = 0;
 		if (pConfig.pLog) startTime = System.nanoTime();
@@ -169,7 +184,8 @@ public class Engine {
 
 		// CORE PIPELINE
 		try {
-			setEnv(context, processEnv(env, evalCtx), isGentle);
+			ProcessedSound processed = processEnv(env, evalCtx);
+			setEnv(context, processed, isGentle, currentTag, currentCategory);
 		} catch (Exception e) {
 			Utils.LOGGER.error("Resounding: failed to apply sound profile", e);
 		}
@@ -189,7 +205,7 @@ public class Engine {
 
 	@Environment(EnvType.CLIENT)
 	private static @NotNull LinkedList<Hit> raycast(@NotNull Pair<Vec3d,Integer> input, double amplitude, SoundEvalContext ctx) {
-		return raycast(input, amplitude,
+		return raycast(input, amplitude, pConfig.maxTraceDist, null,
 				(Cast cast, LinkedList<Hit> results) -> cast.reflected.power() > cast.transmitted.power()
 						// TODO use better method for permeation preference near start
 						* (2 - (pConfig.nRayBounces - results.size()) / (double) pConfig.nRayBounces),
@@ -228,7 +244,10 @@ public class Engine {
 					cast.lastMaterial,
 					cast.lastReflectivity == null ? 0.0 : cast.lastReflectivity,
 					cast.lastTransmission == null ? 0.0 : cast.lastTransmission,
-					ray.power()
+					ray.power(),
+					cast.lastPriorImpedance,
+					cast.lastBranchSize,
+					cast.lastMaterialLabel
 			);
 			prior = ray.position();
 
@@ -238,11 +257,14 @@ public class Engine {
 				break;
 			}
 
-			if (pConfig.dLog && cast.lastMaterial != null) {
+			if (pConfig.dLog) {
 				Utils.LOGGER.info(
-						"Resounding: bounce #{} material Z={} R={} T={} power={}",
+						"Resounding: bounce #{} node={}³ material={} Zprev={} Z={} R={} T={} power={}",
 						results.size(),
-						String.format("%.1f", cast.lastMaterial.impedance()),
+						cast.lastBranchSize,
+						cast.lastMaterial == null ? "PASS" : (cast.lastMaterialLabel == null ? "?" : cast.lastMaterialLabel),
+						String.format("%.1f", cast.lastPriorImpedance),
+						cast.lastMaterial == null ? "-" : String.format("%.1f", cast.lastMaterial.impedance()),
 						String.format("%.3f", cast.lastReflectivity == null ? 0.0 : cast.lastReflectivity),
 						String.format("%.3f", cast.lastTransmission == null ? 0.0 : cast.lastTransmission),
 						String.format("%.1f", ray.power())
@@ -253,13 +275,17 @@ public class Engine {
 			// TODO handle splits & replace:
 			//  reflect instead of permeate, when logical
 			if (reflect.apply(cast, results)) {
+				// cumulative path length must include this reflection leg too, not just permeation legs —
+				// otherwise every hit after the first bounce reports a stale, frozen length downstream
+				// (bounceEnergy falloff, bounceTime/RT60 binning) instead of true distance traveled.
+				length += cast.reflected.length();
 				// record bounce results
 				results.add(new Hit
 						/*end pos  */( ray.position()
 						/*length   */, length
 						/*shared   */, 0 // TODO figure out & populate
 						/*distance */, cast.reflected.position().distanceTo(ctx.listenerPos())
-						/*segment  */, length+cast.reflected.length()
+						/*segment  */, cast.reflected.length()
 						/*surface  */, cast.reflected.power()/ray.power()
 						/*amplitude*/, cast.reflected.power()
 						));
@@ -361,20 +387,22 @@ public class Engine {
 		// Throw rays around
 		// TODO implement tagging system here
 		Consumer<String> logger = pConfig.log ? (pConfig.eLog ? Utils.LOGGER::info : Utils.LOGGER::debug) : x -> {};
-		List<LinkedList<Hit>> reflRays;
-		logger.accept("Sampling environment with "+pConfig.nRays+" seed rays...");
-		reflRays = rays.stream().parallel().unordered().map((ray) -> Engine.raycast(ray, 128, ctx)).toList();
-		if (pConfig.eLog) {
-			int rayCount = 0;
-			for (LinkedList<Hit> reflRay : reflRays) {
-				rayCount += reflRay.size() * 2 + 1;
+		List<LinkedList<Hit>> reflRays = List.of();
+		if (pConfig.reverbEnabled) {
+			logger.accept("Sampling environment with "+pConfig.nRays+" seed rays...");
+			reflRays = rays.stream().map((ray) -> Engine.raycast(ray, 128, ctx)).toList();
+			if (pConfig.eLog) {
+				int rayCount = 0;
+				for (LinkedList<Hit> reflRay : reflRays) {
+					rayCount += reflRay.size() * 2 + 1;
+				}
+				logger.accept("Total number of rays casted: "+rayCount);
 			}
-			logger.accept("Total number of rays casted: "+rayCount);
 		}
 
-		// TODO: Occlusion. Also, add occlusion profiles.
-		// Step rays from sound to listener
-		Set<OccludedRayData> occlRays = throwOcclRay(ctx.soundPos(), ctx.listenerPos(), ctx.soundChunk());
+		Set<OccludedRayData> occlRays = pConfig.occlusionEnabled
+				? throwOcclRay(ctx.soundPos(), ctx.listenerPos(), ctx.soundChunk())
+				: Collections.emptySet();
 
 		// Pass data to post
 		EnvData data = new EnvData(reflRays, occlRays);
@@ -389,24 +417,29 @@ public class Engine {
 
 	@Contract("_, _ -> new")
 	@Environment(EnvType.CLIENT)
-	private static @NotNull SoundProfile processEnv(final EnvData data, SoundEvalContext ctx) {
+	private static @NotNull ProcessedSound processEnv(final EnvData data, SoundEvalContext ctx) {
 		final double airAbsorptionHF = pConfig.airAbsorptionHF;
 		double directGain = (ctx.auxOnly() ? 0 : 1) * Math.pow(airAbsorptionHF, ctx.listenerPos().distanceTo(ctx.soundPos()));
 
 		double directPermeation = 1.0;
-		for (OccludedRayData occl : data.occlRays()) {
-			directPermeation *= (1.0 - MathHelper.clamp(occl.totalOcclusion(), 0.0, 1.0));
+		if (pConfig.occlusionEnabled) {
+			for (OccludedRayData occl : data.occlRays()) {
+				directPermeation *= (1.0 - MathHelper.clamp(occl.totalOcclusion(), 0.0, 1.0));
+			}
 		}
 		directGain *= directPermeation;
 		double directCutoff = Math.pow(directPermeation, pConfig.globalAbsHFRcp);
 
-		if (data.reflRays().isEmpty()) {
-			return new SoundProfile(
-					ctx.sourceID(),
-					MathHelper.clamp(directGain, 0.0, 1.0),
-					MathHelper.clamp(directCutoff, 0.0, 1.0),
-					new double[pConfig.resolution + 1],
-					new double[pConfig.resolution + 1]
+		if (!pConfig.reverbEnabled || data.reflRays().isEmpty()) {
+			return new ProcessedSound(
+					new SoundProfile(
+							ctx.sourceID(),
+							MathHelper.clamp(directGain, 0.0, 1.0),
+							MathHelper.clamp(directCutoff, 0.0, 1.0),
+							new double[pConfig.resolution + 1],
+							new double[pConfig.resolution + 1]
+					),
+					directPermeation
 			);
 		}
 
@@ -437,7 +470,7 @@ public class Engine {
 			double smoothSharedDistance = 0;
 			int iterations = 0;
 			for (Hit hit : ray) {
-				if (!pConfig.fastShared) { // in-depth calculation
+				if (!pConfig.fastShared && pConfig.occlusionEnabled) { // in-depth calculation
 					if (hit.shared() == 1) {
 						smoothSharedEnergy = 1;
 						smoothSharedDistance = hit.distance();
@@ -491,7 +524,12 @@ public class Engine {
 		final double[] sendCutoff = new double[pConfig.resolution+1];
 		for (int i = 0; i <= pConfig.resolution; i++) {
 			// NOTE, removed pConfig.waterFilt logic, as it's superseded by new occlusion method
-			sendGain[i] = MathHelper.clamp(sendGain[i] * (pConfig.fastShared ? sharedSum : 1) * pConfig.rcpNRays * pConfig.globalRvrbGain, 0, 1.0 - java.lang.Double.MIN_NORMAL);
+			// sharedSum is only ever accumulated in the !fastShared branch above; fastShared mode
+			// already folds the equivalent per-hit falloff into playerEnergy directly, so it must
+			// skip this multiplier (1) rather than apply the always-zero sharedSum computed by the
+			// path it never takes — the inverted ternary here zeroed every sendGain bin in the
+			// (default) FAST shared-airspace mode.
+			sendGain[i] = MathHelper.clamp(sendGain[i] * (pConfig.fastShared ? 1 : sharedSum) * pConfig.rcpNRays * pConfig.globalRvrbGain, 0, 1.0 - java.lang.Double.MIN_NORMAL);
 			sendCutoff[i] = Math.pow(sendGain[i], pConfig.globalRvrbHFRcp); // TODO: make sure this actually works.
 		}
 
@@ -513,22 +551,43 @@ public class Engine {
 
 		if (pConfig.log) Utils.LOGGER.info("Processed sound profile:\n{}", profile);
 
-		return profile;
+		return new ProcessedSound(profile, directPermeation);
 	}
 
 	@Environment(EnvType.CLIENT)
-	public static void setEnv(Context context, final @NotNull SoundProfile profile, boolean isGentle) {
+	public static void setEnv(
+			Context context,
+			final @NotNull ProcessedSound processed,
+			boolean isGentle,
+			String soundTag,
+			SoundCategory soundCategory
+	) {
+		final SoundProfile profile = processed.profile();
 		if (profile.sendGain().length != pConfig.resolution + 1 || profile.sendCutoff().length != pConfig.resolution + 1) {
 			throw new IllegalArgumentException("Error: Reverb parameter count does not match reverb resolution!");
 		}
 
-		final SlotProfile finalSend = selectSlot(profile.sendGain(), profile.sendCutoff());
+		final SlotProfile finalSend = pConfig.reverbEnabled
+				? selectSlot(profile.sendGain(), profile.sendCutoff())
+				: new SlotProfile(0, 0, 1.0);
 
 		if (pConfig.eLog || pConfig.dLog) {
 			Utils.LOGGER.info("Final reverb settings:\n{}", finalSend);
 		}
 
 		context.update(finalSend, profile, isGentle);
+
+		if (pConfig.dRays) {
+			dev.thedocruby.resounding.debug.SoundEffectReadout.publish(
+					soundTag,
+					soundCategory,
+					profile,
+					finalSend,
+					processed.directPermeation(),
+					pConfig.reverbEnabled,
+					pConfig.occlusionEnabled
+			);
+		}
 	}
 
 

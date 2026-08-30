@@ -2,6 +2,7 @@ package dev.thedocruby.resounding.raycast;
 
 import dev.thedocruby.resounding.debug.math.OctantColor;
 import dev.thedocruby.resounding.material.Material;
+import dev.thedocruby.resounding.MaterialRegistry;
 import dev.thedocruby.resounding.Physics;
 import dev.thedocruby.resounding.toolbox.ChunkChain;
 import net.fabricmc.api.EnvType;
@@ -43,10 +44,22 @@ public class Cast {
 
     public @Nullable Step stood = null; // prior position
     public @Nullable Double impeded = null; // prior impedance
+    /** Impedance the ray was in immediately before crossing into the {@link #impeded} medium — lets the
+     *  next boundary detect "exited straight back into the same medium" (a thin partition) instead of
+     *  paying a second full impedance-mismatch reflection on the way out. See research/transmission-upgrade.md. */
+    private @Nullable Double enteredFrom = null;
+    /** Relative tolerance for treating two impedances as "the same medium" when detecting thin-partition exits. */
+    private static final double THIN_MEMBRANE_RELATIVE_TOLERANCE = 0.25;
     public @Nullable Double lastReflectivity;
     public @Nullable Double lastTransmission;
     public @Nullable Material lastMaterial;
     public int lastOctantColor;
+    /** Impedance this bounce's reflectivity was computed against — the medium the ray was previously in. */
+    public double lastPriorImpedance;
+    /** Octree node size (in blocks) the boundary was resolved at; >1 means a coarse cached node, not a single voxel. */
+    public int lastBranchSize;
+    /** Human-readable material tag for the branch entered, for telemetry/debug readouts. */
+    public @Nullable String lastMaterialLabel;
 
 //    public static Material air = Cache.material(Blocks.AIR.getDefaultState());
 
@@ -77,6 +90,14 @@ public class Cast {
             return;
         }
         this.lastOctantColor = OctantColor.forNode(branch.start, branch.size);
+        this.lastBranchSize = branch.size;
+        this.lastMaterialLabel = branch.materialLabel;
+        // priorImpedance is the medium the ray was previously traveling through; recorded on every
+        // path (even pass-throughs) so telemetry can show what a reflection was actually computed against.
+        final double priorImpedance = impeded == null
+                ? material(Blocks.AIR.getDefaultState()).impedance()
+                : impeded;
+        this.lastPriorImpedance = priorImpedance;
         // } */
         // prepare variables
         Step step, rstep;
@@ -139,11 +160,16 @@ public class Cast {
             return;
         }
 
-        double priorImpedance = impeded == null
-                ? material(Blocks.AIR.getDefaultState()).impedance()
-                : impeded;
-        double reflectivity = Physics.reflection(priorImpedance, branch.material.impedance());
-        double transmission = (1-reflectivity) * Math.pow(branch.material.permeation(), pdistance);
+        final double newImpedance = branch.material.impedance();
+        // Exiting straight back into (about) the medium we entered the last branch from means this
+        // was a thin partition, not a fresh semi-infinite boundary — skip the second full-mismatch
+        // reflection instead of nearly soundproofing every 1-block wall/pane. See research/transmission-upgrade.md.
+        final boolean exitingThinMembrane = enteredFrom != null && withinRelativeTolerance(newImpedance, enteredFrom);
+
+        double reflectivity = exitingThinMembrane ? 0.0 : Physics.reflection(priorImpedance, newImpedance);
+        double transmission = exitingThinMembrane
+                ? Math.pow(branch.material.permeation(), pdistance)
+                : (1 - reflectivity) * Math.pow(branch.material.permeation(), pdistance);
 
         // if reflection / permeation -> calculate -> bounce / refract
         @Nullable Vec3d reflected = reflectivity > 0 ? Physics.pseudoReflect(vector,rstep.plane()) : null;
@@ -164,7 +190,13 @@ public class Cast {
         this.lastReflectivity = reflectivity;
         this.lastTransmission = transmission;
         this.lastMaterial = branch.material;
-        this.impeded = branch.material.impedance();
+        this.enteredFrom = priorImpedance;
+        this.impeded = newImpedance;
+    }
+
+    static boolean withinRelativeTolerance(double a, double b) {
+        double scale = Math.max(Math.abs(a), Math.abs(b));
+        return scale > 0 && Math.abs(a - b) <= THIN_MEMBRANE_RELATIVE_TOLERANCE * scale;
     }
     // } */
 
@@ -188,13 +220,20 @@ public class Cast {
         // Fall through to live block data only at 1³ leaves; null material on a large node
         // means heterogeneous — tree.get() should have descended, or siblings still use coarse cells.
         if (branch.material == null && branch.size == 1) {
-            return new Branch(block, 1, shape, mat);
+            return liveLeaf(block, shape, mat, state);
         }
         if (branch.size > 1) {
             return branch;
         }
         // 1³ cached leaf — always use live collision geometry for ray/shape tests.
-        return new Branch(block, 1, shape, mat);
+        return liveLeaf(block, shape, mat, state);
+    }
+
+    /** 1³ leaves are always re-fetched live (see above); stamp the debug label too, or telemetry shows "?" for nearly every bounce. */
+    private static Branch liveLeaf(BlockPos block, VoxelShape shape, Material mat, BlockState state) {
+        Branch leaf = new Branch(block, 1, shape, mat);
+        leaf.materialLabel = MaterialRegistry.describe(state);
+        return leaf;
     }
     public static Vec3d blockToVec(BlockPos pos) { return new Vec3d(pos.getX(), pos.getY(), pos.getZ()); }
     // } */
@@ -296,10 +335,16 @@ public class Cast {
     private void reflect(/*MaterialData material,*/ double power, Vec3d position, Vec3d angle, double distance) {
         this.reflected = new Ray(power, position, angle, distance);
     }
-    /** Surface absorption on the reflected path; softer materials lose more energy. */
+    /**
+     * Reflected power follows the impedance-derived power reflection coefficient directly.
+     * {@code reflectivity} already is the fraction of incident power reflected at the boundary
+     * (see {@link dev.thedocruby.resounding.material.Acoustics#reflection}); softer materials
+     * already lose more energy here because they have lower reflectivity. Applying an extra
+     * sqrt(reflectivity)-derived absorption on top double-counts that loss and made rays die out
+     * after only a few bounces off anything but a near-perfect reflector.
+     */
     public static double reflectedPower(double reflectivity, double incidentPower) {
-        double absorption = net.minecraft.util.math.MathHelper.clamp(1.0 - Math.sqrt(reflectivity), 0.01, 0.95);
-        return reflectivity * incidentPower * (1.0 - absorption);
+        return reflectivity * incidentPower;
     }
     private void transmit(/*MaterialData material,*/ double power, Vec3d position, Vec3d angle, double distance) {
         this.transmitted = new Ray(power, position, angle, distance);

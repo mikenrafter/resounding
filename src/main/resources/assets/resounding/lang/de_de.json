@@ -5,7 +5,7 @@
 
   "text.autoconfig.resounding.option.general": "Allgemeine Präferenzen",
   "text.autoconfig.resounding.option.quality": "Qualitätseinstellungen",
-  "text.autoconfig.resounding.option.effects": "Zusätzliche Effekte",
+  "text.autoconfig.resounding.option.effects": "Effekte",
   "text.autoconfig.resounding.option.materials": "Materialeigenschaften",
   "text.autoconfig.resounding.option.misc": "Sonstige Optionen",
   "text.autoconfig.resounding.option.debug": "Debug toggles",
@@ -25,6 +25,8 @@
   "text.autoconfig.resounding.option.quality.rayLength": "Strahlenlänge",
   "text.autoconfig.resounding.option.quality.sourceRefreshRate": "Intervall der Klang auffrischung",
 
+  "text.autoconfig.resounding.option.effects.reverb": "Hall",
+  "text.autoconfig.resounding.option.effects.occlusion": "Okklusion",
   "text.autoconfig.resounding.option.effects.airAbsorption": "Schallabsorption durch Luft",
   "text.autoconfig.resounding.option.effects.humidityAbsorption": "Schallabsorption durch Feuchtigkeit",
   "text.autoconfig.resounding.option.effects.rainAbsorption": "Schallabsorption durch Regentropfen",
