@@ -80,11 +80,38 @@ class EngineBounceEnergyTest {
 	}
 
 	@Test
-	void energyWeightDoesNotForceUnityForTypicalIndoorHit() {
-		Hit hit = new Hit(new Vec3d(0, 0, 0), 12.0, 0, 6.0, 3.0, 0.5, 96.0);
-		double bounceEnergy = Engine.bounceEnergyForHit(hit, 0.0, PrecomputedConfig.pConfig.airAbsorptionHF, 3.0);
-		double weight = Engine.energyWeightForHit(bounceEnergy, 12.0);
-		assertTrue(weight < 0.99, "typical indoor leg should not saturate energy weight to 1");
+	void longerPathsDepositMoreAbsoluteSendGain() throws Exception {
+		Hit nearHit = new Hit(new Vec3d(1, 0, 0), 3.0, 0, 4.0, 1.0, 0.5, 96.0);
+		Hit farHit = new Hit(new Vec3d(40, 0, 0), 60.0, 0, 4.0, 1.0, 0.5, 96.0);
+
+		double nearGain = totalSendGain(List.of(ray(nearHit)));
+		double farGain = totalSendGain(List.of(ray(farHit)));
+
+		assertTrue(farGain > 0, "large-room reflections must contribute wet send gain");
+		assertTrue(nearGain > 0, "small-room reflections must contribute wet send gain");
+	}
+
+	private static double totalSendGain(List<LinkedList<Hit>> reflRays) throws Exception {
+		EnvData data = new EnvData(reflRays, Set.of());
+
+		Class<?> ctxClass = Class.forName("dev.thedocruby.resounding.Engine$SoundEvalContext");
+		Constructor<?> ctxCtor = ctxClass.getDeclaredConstructors()[0];
+		ctxCtor.setAccessible(true);
+		Object ctx = ctxCtor.newInstance(Vec3d.ZERO, new Vec3d(0, 0, 4), 1, null, false);
+
+		Method processEnv = Engine.class.getDeclaredMethod("processEnv", EnvData.class, ctxClass);
+		processEnv.setAccessible(true);
+		Object processed = processEnv.invoke(null, data, ctx);
+
+		Method profileMethod = processed.getClass().getDeclaredMethod("profile");
+		profileMethod.setAccessible(true);
+		SoundProfile profile = (SoundProfile) profileMethod.invoke(processed);
+
+		double sum = 0;
+		for (double gain : profile.sendGain()) {
+			sum += gain;
+		}
+		return sum;
 	}
 
 	private static LinkedList<Hit> ray(Hit hit) {

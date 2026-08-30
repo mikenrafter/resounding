@@ -67,6 +67,11 @@ public class Cast {
     /** Whether this bounce resolved via sub-voxel VoxelShape geometry rather than full-cube stepping. */
     public boolean lastShapeMode;
 
+    /** Block cell the sound was born in; emission always exits this 1³ cell as a cube. */
+    public @Nullable BlockPos originBlock;
+
+    static final double EMISSION_EXIT_NUDGE = 1e-4;
+
     public Cast(@NotNull World world, @Nullable Branch tree, @Nullable ChunkChain chunk, @Nullable Vec3d targetPos) {
         this.world = world;
         this.tree = tree;
@@ -95,7 +100,6 @@ public class Cast {
         this.lastOctantColor = OctantColor.forNode(branch.start, branch.size);
         this.lastBranchSize = branch.size;
         this.lastMaterialLabel = branch.materialLabel;
-        this.lastPriorImpedance = impeded == null ? 0.0 : impeded;
         // } */
         // prepare variables
         Step step, rstep;
@@ -114,9 +118,10 @@ public class Cast {
             shape = ((WorldChunk) this.chunk).getBlockState(branch.start).getCollisionShape(world, branch.start);
         }
 
-        ShapeTraversal.Result geometry = ShapeTraversal.resolve(
-                branch.start, branch.size, position, vector, shape, this::getStep
-        );
+        final boolean emissionCast = impeded == null;
+        ShapeTraversal.Result geometry = emissionCast
+                ? ShapeTraversal.Result.voxel()
+                : ShapeTraversal.resolve(branch.start, branch.size, position, vector, shape, this::getStep);
 
         if (geometry.mode() == ShapeTraversal.Mode.SHAPE) {
             step = geometry.step();
@@ -127,14 +132,28 @@ public class Cast {
             rdistance = geometry.reflectDistance();
             rposition = geometry.reflectPosition();
         } else {
-            step = getStep(blockToVec(branch.start), branch.size, position, vector);
+            Vec3d cellBase;
+            int cellSize;
+            if (emissionCast && originBlock != null) {
+                cellBase = blockToVec(originBlock);
+                cellSize = 1;
+                this.lastBranchSize = 1;
+            } else {
+                cellBase = blockToVec(branch.start);
+                cellSize = branch.size;
+            }
+            step = getStep(cellBase, cellSize, position, vector);
             pdistance = step.step().length();
-            pposition = exitPosition(position, step, blockToVec(branch.start), branch.size);
+            pposition = exitPosition(position, step, cellBase, cellSize);
+            if (emissionCast) {
+                pposition = nudgeEmissionExit(pposition, vector);
+            }
             rstep = step;
             rdistance = 0;
             rposition = position;
             gridAlignedReflect = true;
-            if (branch.size == 1
+            if (!emissionCast
+                    && branch.size == 1
                     && ShapeTraversal.isPartialSolid(shape)
                     && ShapeTraversal.containsLocalPoint(shape, branch.start, position)) {
                 Step next = bounce(branch, position, vector);
@@ -152,27 +171,36 @@ public class Cast {
             BlockState state = ((WorldChunk) this.chunk).getBlockState(BlockPos.ofFloored(normalized));
             branchMaterial = material(state);
         }
-        Material interactionMaterial = interactionMaterial(
-                branchMaterial, shape, branch.start, position, geometry.mode()
+        Material interactionMaterial = interactionMaterialForCast(
+                emissionCast, branchMaterial, shape, branch.start, position, geometry.mode()
         );
 
-        // Skip reflectivity on the first cast so a sound originating inside a block does not
-        // immediately reflect back into that same block.
+        // Emission segment (impeded unset): exit the origin cell as a full cube with no reflection
+        // and no attenuation. Subsequent casts use real geometry and material interaction.
         double newImpedance = interactionMaterial.impedance();
-        boolean thinExit = impeded != null && isThinMembraneExit(newImpedance);
+        if (!emissionCast && isVacuumImpedance(newImpedance)) {
+            blank(position);
+            return;
+        }
+        double priorImpedance = priorImpedanceForCast(impeded, newImpedance);
+        this.lastPriorImpedance = priorImpedance;
+        boolean thinExit = !emissionCast && impeded != null && isThinMembraneExit(newImpedance);
         double reflectivity;
-        if (impeded == null) {
+        double transmission;
+        if (emissionCast) {
             reflectivity = 0;
+            transmission = 1;
         } else if (thinExit) {
             reflectivity = 0;
+            double permeationFactor = Acoustics.permeationOverDistance(
+                    interactionMaterial.permeation(), interactionMaterial.granularity(), pdistance);
+            transmission = permeationFactor;
         } else {
-            reflectivity = Physics.reflection(impeded, newImpedance);
+            reflectivity = Physics.reflection(priorImpedance, newImpedance);
+            double permeationFactor = Acoustics.permeationOverDistance(
+                    interactionMaterial.permeation(), interactionMaterial.granularity(), pdistance);
+            transmission = (1 - reflectivity) * permeationFactor;
         }
-        double permeationFactor = Acoustics.permeationOverDistance(
-                interactionMaterial.permeation(), interactionMaterial.granularity(), pdistance);
-        double transmission = thinExit
-                ? permeationFactor
-                : (1 - reflectivity) * permeationFactor;
 
         boolean shapeMode = geometry.mode() == ShapeTraversal.Mode.SHAPE;
         this.lastShapeMode = shapeMode;
@@ -186,7 +214,9 @@ public class Cast {
             reflectPlane = rstep.plane();
         }
         @Nullable Vec3d reflected = reflectivity > 0 ? Physics.pseudoReflect(vector, reflectPlane) : null;
-        @Nullable Vec3d transmitted = Physics.pseudoReflect(vector, transmitPlane, transmission / 5);
+        @Nullable Vec3d transmitted = emissionCast
+                ? vector
+                : Physics.pseudoReflect(vector, transmitPlane, transmission / 5);
         Vec3d reflectStart = gridAlignedReflect ? rposition : nudgeReflectOrigin(rposition, reflected, rdistance);
         // } */
         // apply movement
@@ -200,12 +230,53 @@ public class Cast {
     }
 
     /**
+     * Prior medium for boundary physics. An unset {@code impeded} means the ray is being born in
+     * {@code mediumImpedance}, so {@code null:air} and {@code null:stone} behave like matched pairs.
+     * Entering vacuum ({@code stone:null}) is handled separately and must not use this shortcut.
+     */
+    static double priorImpedanceForCast(@Nullable Double impeded, double mediumImpedance) {
+        return impeded != null ? impeded : mediumImpedance;
+    }
+
+    static boolean isVacuumImpedance(double impedance) {
+        return impedance <= 0.0 || !Double.isFinite(impedance);
+    }
+
+    static double emissionCellExitDistance(Vec3d cellOrigin, Vec3d position, Vec3d vector) {
+        Pair<Double, Vec3i> pair = getStepPair(cellOrigin, 1, position, vector);
+        return pair.getLeft() * vector.length();
+    }
+
+    static Vec3d nudgeEmissionExit(Vec3d exitPosition, Vec3d vector) {
+        double length = vector.length();
+        if (length < 1e-12) {
+            return exitPosition;
+        }
+        return exitPosition.add(vector.multiply(EMISSION_EXIT_NUDGE / length));
+    }
+
+    /**
      * Partial solids (doors, panes, etc.) can contain open air inside the 1³ cell. When the ray
      * is in that air — whether on the first cast or while permeating through the cell — use air
      * impedance so it can voxel-step out instead of reflecting off interior geometry. Inside solid
      * sub-voxel geometry (SHAPE mode or a point inside the collision boxes) keeps the block
      * material.
      */
+    static Material interactionMaterialForCast(
+            boolean emissionCast,
+            Material branchMaterial,
+            VoxelShape shape,
+            BlockPos origin,
+            Vec3d position,
+            ShapeTraversal.Mode mode
+    ) {
+        if (emissionCast) {
+            // Cube exit geometry, but the born-in medium still follows position (air gap vs solid).
+            return interactionMaterial(branchMaterial, shape, origin, position, ShapeTraversal.Mode.VOXEL);
+        }
+        return interactionMaterial(branchMaterial, shape, origin, position, mode);
+    }
+
     static Material interactionMaterial(
             Material branchMaterial,
             VoxelShape shape,
@@ -269,9 +340,29 @@ public class Cast {
         if (lastMaterial == null) {
             return;
         }
-        double newImpedance = lastMaterial.impedance();
-        double step = lastPermeationDistance;
+        commitEnteredImpedance(lastMaterial.impedance(), lastPermeationDistance);
+    }
 
+    /**
+     * After the emission segment leaves the origin cell, adopt the impedance of the medium the ray
+     * actually entered — not the block it was born in. Without this, a ray exiting stone into air
+     * keeps stone as prior and reflects fully at the first air cell face.
+     *
+     * @return false when the exit cell is unknown or vacuum (ray is blanked)
+     */
+    public boolean commitEmissionExit(Vec3d exitPosition, Vec3d direction) {
+        Material exitMedium = interactionMaterialAt(exitPosition, direction);
+        if (exitMedium == null || isVacuumImpedance(exitMedium.impedance())) {
+            blank(exitPosition);
+            return false;
+        }
+        impeded = exitMedium.impedance();
+        enteredFrom = null;
+        solidTransitDistance = 0.0;
+        return true;
+    }
+
+    private void commitEnteredImpedance(double newImpedance, double step) {
         if (impeded != null && enteredFrom == null
                 && isSolidImpedance(newImpedance) && !isSolidImpedance(impeded)) {
             enteredFrom = impeded;
@@ -288,6 +379,36 @@ public class Cast {
             enteredFrom = null;
             solidTransitDistance = 0.0;
         }
+    }
+
+    @Nullable
+    private Material interactionMaterialAt(Vec3d position, Vec3d direction) {
+        if (world == null) {
+            return null;
+        }
+        Vec3d normalized = normalize(position, direction);
+        if (chunk != null) {
+            chunk = chunk.access((int) normalized.x >> 4, (int) normalized.z >> 4);
+            if (chunk != null) {
+                tree = chunk.getBranch((int) normalized.y >> 4);
+            }
+        }
+        Branch branch = getBlock(normalized);
+        if (branch == null) {
+            return null;
+        }
+        VoxelShape shape = branch.shape;
+        if (shape == null && chunk != null) {
+            shape = ((WorldChunk) chunk).getBlockState(branch.start).getCollisionShape(world, branch.start);
+        }
+        Material branchMaterial = branch.material;
+        if (branchMaterial == null) {
+            BlockState state = ((WorldChunk) chunk).getBlockState(BlockPos.ofFloored(normalized));
+            branchMaterial = material(state);
+        }
+        return interactionMaterial(
+                branchMaterial, shape, branch.start, position, ShapeTraversal.Mode.VOXEL
+        );
     }
     // } */
 

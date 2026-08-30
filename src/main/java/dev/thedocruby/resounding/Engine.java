@@ -17,6 +17,7 @@ import net.minecraft.client.sound.SoundInstance;
 import net.minecraft.client.sound.SoundListener;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.util.Pair;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Contract;
@@ -231,6 +232,7 @@ public class Engine {
 		Vec3d vector = input.getLeft();
 		LinkedList<Hit> results = new LinkedList<>();
 		Cast cast = new Cast(mc.world, null, ctx.soundChunk(), targetPosition);
+		cast.originBlock = BlockPos.ofFloored(ctx.soundPos());
 		String terminationReason = "ok";
 		// Only kept when dLog is on, so the consecutive-reflect guard can show whether a ray made
 		// real geometric progress between bounces or was stuck re-resolving the same spot.
@@ -242,7 +244,10 @@ public class Engine {
 			logRayTermination(id, "initial cast left the known world", results, ctx.soundPos());
 			return results;
 		}
-		cast.commitPermeation();
+		if (!cast.commitEmissionExit(cast.transmitted.position(), cast.transmitted.vector())) {
+			logRayTermination(id, "emission exited into vacuum", results, cast.transmitted.position());
+			return results;
+		}
 		Ray ray = new Ray(amplitude, cast.transmitted.position(), cast.transmitted.vector(), cast.transmitted.length());
 
 		double pathLength = cast.transmitted.length();
@@ -615,6 +620,7 @@ public class Engine {
 		// TODO: Does this perform better in parallel? (test using Spark)
 		double sharedSum = 0.0D;
 		final double[] sendGain = new double[pConfig.resolution + 1];
+		final double[] sendCutoff = new double[pConfig.resolution + 1];
 		// NOTE temporary solution, will be removed during ray / redirection rework
 		// TODO fix during ray / redirection rework
 		double amplitude = 0.0D;
@@ -663,17 +669,14 @@ public class Engine {
 							),
 						0, 1);
 
-				final double bounceEnergy = bounceEnergyForHit(hit, missed, airAbsorptionHF, legLength);
 				final int timeBin = timeBinForAcousticPath(pathLength, hit.distance());
-				final double energyWeight = energyWeightForHit(bounceEnergy, pathLength);
 
-				sendGain[timeBin] += playerEnergy * energyWeight;
+				sendGain[timeBin] += playerEnergy;
 
 			}
 		}
 
 		sharedSum /= bounces;
-		final double[] sendCutoff = new double[pConfig.resolution+1];
 		for (int i = 0; i <= pConfig.resolution; i++) {
 			// NOTE, removed pConfig.waterFilt logic, as it's superseded by new occlusion method
 			// sharedSum is only ever accumulated in the !fastShared branch above; fastShared mode
