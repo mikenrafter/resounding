@@ -31,20 +31,33 @@ class CastInteractionMaterialTest {
 		VoxelShape pane = VoxelShapes.cuboid(0, 0, 0, 0.125, 1, 1);
 
 		Material material = Cast.interactionMaterial(
-				WOOD, pane, origin, gap, ShapeTraversal.Mode.VOXEL, null
+				WOOD, pane, origin, gap, ShapeTraversal.Mode.VOXEL
 		);
 
 		assertSame(MaterialRegistry.DEFAULT, material);
 	}
 
 	@Test
-	void traversingPartialCellKeepsBlockMaterialWhenPriorImpedanceSet() {
+	void airGapInPartialCellUsesAirMaterialEvenWithPriorImpedance() {
 		BlockPos origin = new BlockPos(0, 0, 0);
 		Vec3d gap = new Vec3d(0.5, 0.5, 0.5);
 		VoxelShape pane = VoxelShapes.cuboid(0, 0, 0, 0.125, 1, 1);
 
 		Material material = Cast.interactionMaterial(
-				WOOD, pane, origin, gap, ShapeTraversal.Mode.VOXEL, 1.0
+				WOOD, pane, origin, gap, ShapeTraversal.Mode.VOXEL
+		);
+
+		assertSame(MaterialRegistry.DEFAULT, material);
+	}
+
+	@Test
+	void solidRegionInPartialCellUsesBlockMaterialForVoxelTraversal() {
+		BlockPos origin = new BlockPos(0, 0, 0);
+		Vec3d onPane = new Vec3d(0.05, 0.5, 0.5);
+		VoxelShape pane = VoxelShapes.cuboid(0, 0, 0, 0.125, 1, 1);
+
+		Material material = Cast.interactionMaterial(
+				WOOD, pane, origin, onPane, ShapeTraversal.Mode.VOXEL
 		);
 
 		assertEquals(WOOD, material);
@@ -57,7 +70,7 @@ class CastInteractionMaterialTest {
 		VoxelShape pane = VoxelShapes.cuboid(0, 0, 0, 0.125, 1, 1);
 
 		Material material = Cast.interactionMaterial(
-				WOOD, pane, origin, onPane, ShapeTraversal.Mode.SHAPE, null
+				WOOD, pane, origin, onPane, ShapeTraversal.Mode.SHAPE
 		);
 
 		assertEquals(WOOD, material);
@@ -70,7 +83,7 @@ class CastInteractionMaterialTest {
 		VoxelShape cube = VoxelShapes.fullCube();
 
 		Material material = Cast.interactionMaterial(
-				WOOD, cube, origin, center, ShapeTraversal.Mode.VOXEL, null
+				WOOD, cube, origin, center, ShapeTraversal.Mode.VOXEL
 		);
 
 		assertEquals(WOOD, material);

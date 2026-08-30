@@ -6,6 +6,7 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Vec3i;
 import net.minecraft.util.shape.VoxelShape;
+import org.jetbrains.annotations.Nullable;
 
 import static dev.thedocruby.resounding.OctreeManager.CUBE;
 import static dev.thedocruby.resounding.OctreeManager.EMPTY;
@@ -35,24 +36,29 @@ final class ShapeTraversal {
 			Mode mode,
 			Step step,
 			Step reflectStep,
+			@Nullable Step entryStep,
 			double permeationDistance,
 			Vec3d transmitPosition,
 			double reflectDistance,
 			Vec3d reflectPosition
 	) {
 		static Result voxel() {
-			return new Result(Mode.VOXEL, null, null, 0, null, 0, null);
+			return new Result(Mode.VOXEL, null, null, null, 0, null, 0, null);
 		}
 
 		static Result shape(
 				Step step,
 				Step reflectStep,
+				@Nullable Step entryStep,
 				double permeationDistance,
 				Vec3d transmitPosition,
 				double reflectDistance,
 				Vec3d reflectPosition
 		) {
-			return new Result(Mode.SHAPE, step, reflectStep, permeationDistance, transmitPosition, reflectDistance, reflectPosition);
+			return new Result(
+					Mode.SHAPE, step, reflectStep, entryStep,
+					permeationDistance, transmitPosition, reflectDistance, reflectPosition
+			);
 		}
 	}
 
@@ -95,7 +101,8 @@ final class ShapeTraversal {
 		Vec3d exitPos;
 		Step reflectStep;
 		if (exit != null && exit.getPos().distanceTo(entryPos) > EPS) {
-			exitPos = nudgeAlongNormal(exit.getPos(), exit.getSide().getVector());
+			exitPos = snapHitPosition(
+					nudgeAlongNormal(exit.getPos(), exit.getSide().getVector()), exit.getSide().getVector(), origin);
 			solidDist = entryPos.distanceTo(exit.getPos());
 			reflectStep = new Step(vector.multiply(entryDist), exit.getSide().getVector());
 		} else {
@@ -107,10 +114,11 @@ final class ShapeTraversal {
 		return Result.shape(
 				cellStep,
 				reflectStep,
+				entryStep,
 				solidDist,
-				truncate(exitPos),
+				exitPos,
 				entryDist,
-				entryPos
+				snapHitPosition(entryPos, hit.getSide().getVector(), origin)
 		);
 	}
 
@@ -130,17 +138,19 @@ final class ShapeTraversal {
 				: shape.raycast(position, rayEnd, origin);
 
 		if (exit == null) {
-			return Result.shape(cellStep, cellStep, cellReach, cellExit, 0, position);
+			return Result.shape(cellStep, cellStep, null, cellReach, cellExit, 0, position);
 		}
 
-		Vec3d exitPos = nudgeAlongNormal(exit.getPos(), exit.getSide().getVector());
+		Vec3d exitPos = snapHitPosition(
+				nudgeAlongNormal(exit.getPos(), exit.getSide().getVector()), exit.getSide().getVector(), origin);
 		double solidDist = position.distanceTo(exit.getPos());
 		Step reflectStep = new Step(vector.multiply(solidDist), exit.getSide().getVector());
 		return Result.shape(
 				cellStep,
 				reflectStep,
+				null,
 				solidDist,
-				truncate(exitPos),
+				exitPos,
 				0,
 				position
 		);
@@ -154,17 +164,45 @@ final class ShapeTraversal {
 		return new Vec3d(pos.getX(), pos.getY(), pos.getZ());
 	}
 
+	/**
+	 * A real VoxelShape hit position, corrected on the axis its face normal ({@code side}) lies on:
+	 * when that axis is flush with the cell's outer 0/1 boundary (a face that coincides with the
+	 * block edge, e.g. a stair's back face) rather than genuine interior sub-voxel geometry (a
+	 * stair's diagonal, a riser, a slab's mid-height plane), snap it to the exact edge coordinate
+	 * instead of the raw double VoxelShape#raycast produced — otherwise Cast.normalize()'s
+	 * sign-of-vector octant pick on the next cast can land on the wrong side of that boundary from
+	 * float noise, same defect the full-cube path had (see Cast.exitPosition/entryPlane). Interior
+	 * hits — the common case — just get the same 5-decimal rounding as before.
+	 */
+	static Vec3d snapHitPosition(Vec3d pos, Vec3i side, BlockPos origin) {
+		return new Vec3d(
+				snapAxis(pos.x, side.getX(), origin.getX()),
+				snapAxis(pos.y, side.getY(), origin.getY()),
+				snapAxis(pos.z, side.getZ(), origin.getZ())
+		);
+	}
+
+	private static double snapAxis(double value, int sideComponent, int originComponent) {
+		if (sideComponent == 0) {
+			return round5(value);
+		}
+		double local = value - originComponent;
+		double rounded = Math.round(local);
+		boolean atOuterEdge = (rounded == 0 || rounded == 1) && Math.abs(local - rounded) < 1e-3;
+		return atOuterEdge ? originComponent + rounded : round5(value);
+	}
+
+	private static double round5(double value) {
+		return Math.round(value * 1e5) / 1e5;
+	}
+
 	static Vec3d truncate(Vec3d position) {
 		// Round (not floor/truncate) so a step that lands within float noise of a whole-number
 		// voxel edge snaps exactly onto it. Cast.normalize()'s sign-of-vector octant pick only
 		// diverges from the wrong answer when the coordinate is precisely integral; a truncating
 		// cast systematically undershoots toward zero and leaves the ray a hair off the boundary,
 		// silently defeating that sign check on the next cast.
-		return new Vec3d(
-				Math.round(position.x * 1e5) / 1e5,
-				Math.round(position.y * 1e5) / 1e5,
-				Math.round(position.z * 1e5) / 1e5
-		);
+		return new Vec3d(round5(position.x), round5(position.y), round5(position.z));
 	}
 
 	static boolean isPartialSolid(VoxelShape shape) {

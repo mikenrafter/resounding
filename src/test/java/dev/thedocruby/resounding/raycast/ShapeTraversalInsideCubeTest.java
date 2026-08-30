@@ -91,15 +91,35 @@ class ShapeTraversalInsideCubeTest {
 	}
 
 	@Test
-	void airCellUsesVoxelModeFromCentre() {
+	void airGapMissInPartialCellUsesVoxelMode() {
 		BlockPos origin = new BlockPos(0, 0, 0);
-		Vec3d center = new Vec3d(0.5, 0.5, 0.5);
+		Vec3d gap = new Vec3d(0.5, 0.5, 0.5);
+		VoxelShape pane = VoxelShapes.cuboid(0, 0, 0, 0.125, 1, 1);
 
 		ShapeTraversal.Result result = ShapeTraversal.resolve(
-				origin, 1, center, normalize(1, 1, 1), VoxelShapes.empty(), CENTER_STEPPER
+				origin, 1, gap, new Vec3d(1, 0, 0), pane, CENTER_STEPPER
 		);
 
 		assertEquals(ShapeTraversal.Mode.VOXEL, result.mode());
+	}
+
+	@Test
+	void externalPaneHitRecordsEntryStepForReflectionPlane() {
+		BlockPos origin = new BlockPos(0, 0, 0);
+		Vec3d position = new Vec3d(0.2, 0.5, 0.5);
+		VoxelShape pane = VoxelShapes.cuboid(0, 0, 0, 0.125, 1, 1);
+
+		ShapeTraversal.Result result = ShapeTraversal.resolve(
+				origin, 1, position, new Vec3d(-1, 0, 0), pane, CENTER_STEPPER
+		);
+
+		assertEquals(ShapeTraversal.Mode.SHAPE, result.mode());
+		assertTrue(result.entryStep() != null);
+		assertTrue(
+				result.entryStep().plane().getX() != 0
+						|| result.entryStep().plane().getY() != 0
+						|| result.entryStep().plane().getZ() != 0
+		);
 	}
 
 	private static Vec3d normalize(double x, double y, double z) {

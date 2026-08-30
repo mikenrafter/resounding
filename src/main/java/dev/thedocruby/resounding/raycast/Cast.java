@@ -64,6 +64,8 @@ public class Cast {
     public int lastBranchSize;
     /** Human-readable material tag for the branch entered, for telemetry/debug readouts. */
     public @Nullable String lastMaterialLabel;
+    /** Whether this bounce resolved via sub-voxel VoxelShape geometry rather than full-cube stepping. */
+    public boolean lastShapeMode;
 
     public Cast(@NotNull World world, @Nullable Branch tree, @Nullable ChunkChain chunk, @Nullable Vec3d targetPos) {
         this.world = world;
@@ -105,6 +107,7 @@ public class Cast {
         // should be nudged — nudging a grid-exact boundary knocks it off the whole number that
         // Cast.normalize()'s sign-of-vector octant pick depends on for the next cast.
         boolean gridAlignedReflect = false;
+        @Nullable Step shapeEntryStep = null;
 
         VoxelShape shape = branch.shape;
         if (shape == null) {
@@ -118,6 +121,7 @@ public class Cast {
         if (geometry.mode() == ShapeTraversal.Mode.SHAPE) {
             step = geometry.step();
             rstep = geometry.reflectStep();
+            shapeEntryStep = geometry.entryStep();
             pdistance = geometry.permeationDistance();
             pposition = geometry.transmitPosition();
             rdistance = geometry.reflectDistance();
@@ -130,7 +134,9 @@ public class Cast {
             rdistance = 0;
             rposition = position;
             gridAlignedReflect = true;
-            if (branch.size == 1) {
+            if (branch.size == 1
+                    && ShapeTraversal.isPartialSolid(shape)
+                    && ShapeTraversal.containsLocalPoint(shape, branch.start, position)) {
                 Step next = bounce(branch, position, vector);
                 if (next != null) {
                     rstep = next;
@@ -147,7 +153,7 @@ public class Cast {
             branchMaterial = material(state);
         }
         Material interactionMaterial = interactionMaterial(
-                branchMaterial, shape, branch.start, position, geometry.mode(), impeded
+                branchMaterial, shape, branch.start, position, geometry.mode()
         );
 
         // Skip reflectivity on the first cast so a sound originating inside a block does not
@@ -169,15 +175,16 @@ public class Cast {
                 : (1 - reflectivity) * permeationFactor;
 
         boolean shapeMode = geometry.mode() == ShapeTraversal.Mode.SHAPE;
+        this.lastShapeMode = shapeMode;
         Vec3i transmitPlane = shapeMode ? rstep.plane() : step.plane();
-        // step.plane() is the FAR (exit) face of the cell position just entered — correct for the
-        // transmitted ray, which keeps going. A full-cube reflection instead bounces right where it
-        // stands, off the face it just crossed to get here, so it needs the NEAR (entry) face's
-        // normal, not the exit face's — using the exit face here mirrors the ray across the wrong
-        // wall entirely, which is what was producing nonsensical bounce directions.
-        Vec3i reflectPlane = gridAlignedReflect
-                ? entryPlane(position, blockToVec(branch.start), branch.size, vector)
-                : rstep.plane();
+        Vec3i reflectPlane;
+        if (gridAlignedReflect) {
+            reflectPlane = entryPlane(position, blockToVec(branch.start), branch.size, vector);
+        } else if (shapeMode && shapeEntryStep != null) {
+            reflectPlane = shapeEntryStep.plane();
+        } else {
+            reflectPlane = rstep.plane();
+        }
         @Nullable Vec3d reflected = reflectivity > 0 ? Physics.pseudoReflect(vector, reflectPlane) : null;
         @Nullable Vec3d transmitted = Physics.pseudoReflect(vector, transmitPlane, transmission / 5);
         Vec3d reflectStart = gridAlignedReflect ? rposition : nudgeReflectOrigin(rposition, reflected, rdistance);
@@ -193,18 +200,18 @@ public class Cast {
     }
 
     /**
-     * Partial solids (doors, panes, etc.) can contain open air inside the 1³ cell. When the
-     * <em>first</em> cast from a sound source crosses that air without intersecting solid geometry,
-     * treat the medium as air so sound can leave the cell. Later casts that permeate through the
-     * same cell must keep the block material so thin geometry (panes) is not phased through.
+     * Partial solids (doors, panes, etc.) can contain open air inside the 1³ cell. When the ray
+     * is in that air — whether on the first cast or while permeating through the cell — use air
+     * impedance so it can voxel-step out instead of reflecting off interior geometry. Inside solid
+     * sub-voxel geometry (SHAPE mode or a point inside the collision boxes) keeps the block
+     * material.
      */
     static Material interactionMaterial(
             Material branchMaterial,
             VoxelShape shape,
             BlockPos origin,
             Vec3d position,
-            ShapeTraversal.Mode mode,
-            @Nullable Double priorImpedance
+            ShapeTraversal.Mode mode
     ) {
         if (!ShapeTraversal.isPartialSolid(shape)) {
             return branchMaterial;
@@ -212,13 +219,10 @@ public class Cast {
         if (mode == ShapeTraversal.Mode.SHAPE) {
             return branchMaterial;
         }
-        if (priorImpedance != null) {
-            return branchMaterial;
+        if (!ShapeTraversal.containsLocalPoint(shape, origin, position)) {
+            return MaterialRegistry.DEFAULT;
         }
-        if (ShapeTraversal.containsLocalPoint(shape, origin, position)) {
-            return branchMaterial;
-        }
-        return MaterialRegistry.DEFAULT;
+        return branchMaterial;
     }
 
     private static final double REFLECT_NUDGE = 1e-4;
@@ -427,7 +431,9 @@ public class Cast {
         if (shape == CUBE || shape == EMPTY) return null;
 
         BlockHitResult hit = shape.raycast(start, start.add(vector.multiply(2)), branch.start);
-        return hit == null ? null : new Step(hit.getPos(), hit.getSide().getVector());
+        if (hit == null) return null;
+        Vec3i side = hit.getSide().getVector();
+        return new Step(ShapeTraversal.snapHitPosition(hit.getPos(), side, branch.start), side);
     }
     // } */
     //* mutate {

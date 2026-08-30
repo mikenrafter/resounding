@@ -209,9 +209,13 @@ public class Engine {
 	@Environment(EnvType.CLIENT)
 	private static @NotNull LinkedList<Hit> raycast(@NotNull Pair<Vec3d,Integer> input, double amplitude, SoundEvalContext ctx) {
 		return raycast(input, amplitude, pConfig.maxTraceDist, null,
-				(Cast cast, LinkedList<Hit> results) -> cast.reflected.power() > cast.transmitted.power()
-						// TODO use better method for permeation preference near start
-						* (2 - (pConfig.nRayBounces - results.size()) / (double) pConfig.nRayBounces),
+				(Cast cast, LinkedList<Hit> results) -> {
+					if (cast.lastReflectivity != null && cast.lastReflectivity <= 0.0) {
+						return false;
+					}
+					return cast.reflected.power() > cast.transmitted.power()
+							* (2 - (pConfig.nRayBounces - results.size()) / (double) pConfig.nRayBounces);
+				},
 				ctx
 		);
 	}
@@ -227,9 +231,15 @@ public class Engine {
 		Vec3d vector = input.getLeft();
 		LinkedList<Hit> results = new LinkedList<>();
 		Cast cast = new Cast(mc.world, null, ctx.soundChunk(), targetPosition);
+		String terminationReason = "ok";
+		// Only kept when dLog is on, so the consecutive-reflect guard can show whether a ray made
+		// real geometric progress between bounces or was stuck re-resolving the same spot.
+		java.util.ArrayList<Vec3d> trail = pConfig.dLog ? new java.util.ArrayList<>() : null;
+		if (trail != null) trail.add(ctx.soundPos());
 
 		cast.raycast(ctx.soundPos(), vector, amplitude);
 		if (cast.transmitted == null || cast.transmitted.vector() == null) {
+			logRayTermination(id, "initial cast left the known world", results, ctx.soundPos());
 			return results;
 		}
 		cast.commitPermeation();
@@ -243,19 +253,29 @@ public class Engine {
 		debugTail.emit(ctx, cast, id, prior, cast.transmitted.position(), amplitude, results.size(),
 				!(ray.power() > 1 && maxLength > pathLength && results.size() < pConfig.nRayBounces));
 		prior = cast.transmitted.position();
-		while (ray.power() > 1 && maxLength > pathLength && results.size() < pConfig.nRayBounces) {
+		while (true) {
+			if (!(ray.power() > 1 && maxLength > pathLength && results.size() < pConfig.nRayBounces)) {
+				terminationReason = "budget exhausted";
+				break;
+			}
+			if (trail != null) trail.add(ray.position());
 			cast.raycast(ray.position(), ray.vector(), ray.power());
 			if (cast.transmitted == null) {
 				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true);
+				terminationReason = "left the known world";
 				break;
 			}
 
-			if (pConfig.dLog && id < 4) {
+			// Always log during a reflect run (reflected > 0), regardless of id, so a stuck run's
+			// material/impedance is visible for every ray, not just the id<4 sample.
+			if (pConfig.dLog && (id < 4 || reflected > 0)) {
 				Utils.LOGGER.info(
-						"Resounding: ray #{} bounce #{} node={}³ material={} Zprev={} Z={} R={} T={} power={}",
+						"Resounding: ray #{} bounce #{} node={}³ mode={} pos={} material={} Zprev={} Z={} R={} T={} power={}",
 						id,
 						results.size(),
 						cast.lastBranchSize,
+						cast.lastShapeMode ? "SHAPE" : "VOXEL",
+						formatPos(ray.position()),
 						cast.lastMaterialLabel == null ? "?" : cast.lastMaterialLabel,
 						String.format("%.1f", cast.lastPriorImpedance),
 						cast.lastMaterial == null ? "-" : String.format("%.1f", cast.lastMaterial.impedance()),
@@ -268,6 +288,10 @@ public class Engine {
 			if (reflect.apply(cast, results)) {
 				if (reflected++ > 2) {
 					debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true);
+					terminationReason = trail != null
+							? "3 consecutive reflects (" + (cast.lastShapeMode ? "SHAPE" : "VOXEL")
+									+ ") trail=" + formatTrail(trail)
+							: "3 consecutive reflects";
 					break;
 				}
 				results.add(new Hit
@@ -285,6 +309,7 @@ public class Engine {
 				ray = cast.reflected;
 				if (ray == null || ray.vector() == null) {
 					debugTail.emit(ctx, cast, id, prior, prior, ray == null ? 0 : ray.power(), results.size(), true);
+					terminationReason = "reflected ray had no direction";
 					break;
 				}
 				boolean continues = ray.power() > 1
@@ -293,12 +318,14 @@ public class Engine {
 				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), !continues);
 				prior = ray.position();
 				if (!continues) {
+					terminationReason = "budget exhausted after reflect";
 					break;
 				}
 				continue;
 			}
 			if (cast.transmitted.vector() == null) {
 				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true);
+				terminationReason = "transmitted ray had no direction";
 				break;
 			}
 			double advance = cast.transmitted.length();
@@ -314,11 +341,46 @@ public class Engine {
 			prior = ray.position();
 			reflected = 0;
 			if (!continues) {
+				terminationReason = "budget exhausted after transmit";
 				break;
 			}
 		}
 		debugTail.overlayTerminator(ctx, cast, id);
+		logRayTermination(id, terminationReason, results, prior);
 		return results;
+	}
+
+	/** Per-ray lifetime summary — logged for every ray (not just the id&lt;4 sample) so a ray that
+	 *  dies unexpectedly (e.g. the 3-consecutive-reflect guard) can be attributed to a position and
+	 *  mode without reconstructing it from the id-gated per-bounce lines. */
+	@Environment(EnvType.CLIENT)
+	private static void logRayTermination(int id, String reason, LinkedList<Hit> results, Vec3d lastPosition) {
+		if (!pConfig.dLog) {
+			return;
+		}
+		Utils.LOGGER.info(
+				"Resounding: ray #{} terminated ({}) bounces={} pos={}",
+				id,
+				reason,
+				results.size(),
+				formatPos(lastPosition)
+		);
+	}
+
+	private static String formatPos(Vec3d pos) {
+		return String.format(java.util.Locale.ROOT, "%.4f,%.4f,%.4f", pos.x, pos.y, pos.z);
+	}
+
+	/** Last few breadcrumb positions, oldest first, so a stuck ray shows as repeated/near-identical
+	 *  entries and a genuinely-progressing one shows as distinct positions. */
+	private static String formatTrail(java.util.List<Vec3d> trail) {
+		int start = Math.max(0, trail.size() - 6);
+		StringBuilder sb = new StringBuilder();
+		for (int i = start; i < trail.size(); i++) {
+			if (i > start) sb.append(" -> ");
+			sb.append(formatPos(trail.get(i)));
+		}
+		return sb.toString();
 	}
 
 	/** Tracks the last debug segment per ray so a white overlay can mark the true path end. */
