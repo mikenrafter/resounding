@@ -30,6 +30,17 @@ treat it as exiting back into the same medium the ray started from — skip
 the reflection event for that boundary (`R=0, T=1`) instead of computing a
 fresh mismatch against the medium it's mid-transit through.
 
+**Follow-up same day**: the first cut of this had no distance gate, so it
+also fired for a ray that traveled a long way through a *thick* medium and
+then hit another surface with similar impedance far away (e.g. two separate
+stone walls several blocks apart) — indistinguishable from a real second
+surface, but treated as a thin-partition pass-through, i.e. rays "phasing
+through" blocks they should have reflected off. Added `enteredThickness`
+(the distance traveled through the medium being exited) and only treat it
+as a thin partition when that's below `THIN_MEMBRANE_MAX_THICKNESS` (1.5
+blocks, covering a diagonal crossing of a single voxel). Logic extracted to
+`Cast.isThinMembraneExit()` for direct unit testing.
+
 This only detects the "went in, came right back out into the same kind of
 medium" case. It does not model partial reflection off a thin membrane
 (which real glass does have, just far less than two chained full-mismatch

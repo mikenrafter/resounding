@@ -48,8 +48,14 @@ public class Cast {
      *  next boundary detect "exited straight back into the same medium" (a thin partition) instead of
      *  paying a second full impedance-mismatch reflection on the way out. See research/transmission-upgrade.md. */
     private @Nullable Double enteredFrom = null;
+    /** Distance traveled through the {@link #impeded} medium before this boundary — the "thickness" the
+     *  next call checks against so a thin-partition exit isn't confused with a real second surface reached
+     *  after traveling a long way through a thick, similarly-impedanced medium (e.g. two separate stone walls). */
+    private @Nullable Double enteredThickness = null;
     /** Relative tolerance for treating two impedances as "the same medium" when detecting thin-partition exits. */
     private static final double THIN_MEMBRANE_RELATIVE_TOLERANCE = 0.25;
+    /** Max thickness (blocks) a medium can be for exiting it to count as a thin-partition pass-through. */
+    private static final double THIN_MEMBRANE_MAX_THICKNESS = 1.5;
     public @Nullable Double lastReflectivity;
     public @Nullable Double lastTransmission;
     public @Nullable Material lastMaterial;
@@ -164,7 +170,7 @@ public class Cast {
         // Exiting straight back into (about) the medium we entered the last branch from means this
         // was a thin partition, not a fresh semi-infinite boundary — skip the second full-mismatch
         // reflection instead of nearly soundproofing every 1-block wall/pane. See research/transmission-upgrade.md.
-        final boolean exitingThinMembrane = enteredFrom != null && withinRelativeTolerance(newImpedance, enteredFrom);
+        final boolean exitingThinMembrane = isThinMembraneExit(enteredFrom, enteredThickness, newImpedance);
 
         double reflectivity = exitingThinMembrane ? 0.0 : Physics.reflection(priorImpedance, newImpedance);
         double transmission = exitingThinMembrane
@@ -191,7 +197,14 @@ public class Cast {
         this.lastTransmission = transmission;
         this.lastMaterial = branch.material;
         this.enteredFrom = priorImpedance;
+        this.enteredThickness = pdistance;
         this.impeded = newImpedance;
+    }
+
+    static boolean isThinMembraneExit(@Nullable Double enteredFrom, @Nullable Double enteredThickness, double newImpedance) {
+        return enteredFrom != null
+                && enteredThickness != null && enteredThickness <= THIN_MEMBRANE_MAX_THICKNESS
+                && withinRelativeTolerance(newImpedance, enteredFrom);
     }
 
     static boolean withinRelativeTolerance(double a, double b) {

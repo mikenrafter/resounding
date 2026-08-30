@@ -220,13 +220,17 @@ public class Engine {
 
 	@Environment(EnvType.CLIENT)
 	private static @NotNull LinkedList<Hit> raycast(@NotNull Pair<Vec3d,Integer> input, double amplitude, double maxLength, Vec3d targetPosition, BiFunction<Cast, LinkedList<Hit>, Boolean> reflect, SoundEvalContext ctx) {
-		int id = input.getRight(); // for debug purposes
+		int id = input.getRight();
 		Vec3d vector = input.getLeft();
 		LinkedList<Hit> results = new LinkedList<>();
 		Cast cast = new Cast(mc.world, null, ctx.soundChunk(), targetPosition);
+		int permeateSteps = 0;
+		String terminationReason;
+
 		// launch initial ray & always permeate first
 		cast.raycast(ctx.soundPos(), vector, amplitude);
 		if (cast.transmitted == null || cast.transmitted.vector() == null) {
+			logRayTermination(id, "initial cast left the known world", results, permeateSteps, 0, amplitude);
 			return results;
 		}
 		Ray ray = new Ray(amplitude, cast.transmitted.position(), cast.transmitted.vector(), cast.transmitted.length());
@@ -234,7 +238,19 @@ public class Engine {
 		double length = cast.transmitted.length();
 		Vec3d prior = ctx.soundPos(); // used solely for debugging
 		// while power, within max search range & iterate bounces
-		while (ray.power() > 1 && maxLength > length && results.size() < pConfig.nRayBounces) {
+		while (true) {
+			if (!(ray.power() > 1)) {
+				terminationReason = "power exhausted";
+				break;
+			}
+			if (!(maxLength > length)) {
+				terminationReason = "max trace distance";
+				break;
+			}
+			if (!(results.size() < pConfig.nRayBounces)) {
+				terminationReason = "max bounces";
+				break;
+			}
 			// debugging output
 			if (pConfig.dRays) Renderer.addSoundBounceRay(
 					prior, ray.position(),
@@ -254,13 +270,16 @@ public class Engine {
 			// cast ray
 			cast.raycast(ray.position(), ray.vector(), ray.power());
 			if (cast.transmitted == null) {
+				terminationReason = "left the known world (unloaded chunk/section)";
 				break;
 			}
 
 			if (pConfig.dLog) {
 				Utils.LOGGER.info(
-						"Resounding: bounce #{} node={}³ material={} Zprev={} Z={} R={} T={} power={}",
+						"Resounding: ray #{} bounce #{} permeates={} node={}³ material={} Zprev={} Z={} R={} T={} power={}",
+						id,
 						results.size(),
+						permeateSteps,
 						cast.lastBranchSize,
 						cast.lastMaterial == null ? "PASS" : (cast.lastMaterialLabel == null ? "?" : cast.lastMaterialLabel),
 						String.format("%.1f", cast.lastPriorImpedance),
@@ -292,22 +311,44 @@ public class Engine {
 
 				ray = cast.reflected;
 				if (ray == null || ray.vector() == null) {
+					terminationReason = "reflected ray had no direction";
 					break;
 				}
 				continue;
 			}
 			if (cast.transmitted.vector() == null) {
+				terminationReason = "transmitted ray had no direction";
 				break;
 			}
 			double advance = cast.transmitted.length();
 			if (advance < 1e-6) {
+				terminationReason = "transmitted step was zero-length";
 				break;
 			}
 			ray = cast.transmitted;
 			length += advance;
+			permeateSteps++;
 			// } */
 		}
+		logRayTermination(id, terminationReason, results, permeateSteps, length, ray.power());
 		return results;
+	}
+
+	/** Per-ray lifetime summary, so a ray that dies early can be diagnosed without reconstructing its bounces from interleaved log lines. */
+	@Environment(EnvType.CLIENT)
+	private static void logRayTermination(int id, String reason, LinkedList<Hit> results, int permeateSteps, double length, double power) {
+		if (!pConfig.dLog) {
+			return;
+		}
+		Utils.LOGGER.info(
+				"Resounding: ray #{} terminated ({}) bounces={} permeates={} length={} power={}",
+				id,
+				reason,
+				results.size(),
+				permeateSteps,
+				String.format("%.2f", length),
+				String.format("%.1f", power)
+		);
 	}
 
 	@Environment(EnvType.CLIENT)

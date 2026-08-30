@@ -39,4 +39,27 @@ class CastReflectionPowerTest {
 	void withinRelativeToleranceRejectsARealMaterialMismatch() {
 		assertFalse(Cast.withinRelativeTolerance(426.9, 32_676_640.0));
 	}
+
+	// A 1-block glass pane: entered from air, thin, exits back to air-like impedance -> pass-through.
+	@Test
+	void thinMembraneExitDetectedForAShortTraversalBackToTheOriginalMedium() {
+		assertTrue(Cast.isThinMembraneExit(412.0, 1.0, 426.9));
+	}
+
+	// Traveling deep through a thick cavern of similarly-impedanced stone and hitting another stone
+	// surface far later must NOT be treated as "the same thin partition" — that's a real second wall.
+	@Test
+	void thickTraversalIsNotTreatedAsAThinMembraneEvenWithMatchingImpedance() {
+		assertFalse(Cast.isThinMembraneExit(8_000_000.0, 40.0, 8_000_000.0));
+	}
+
+	@Test
+	void thinMembraneExitRequiresMatchingImpedance() {
+		assertFalse(Cast.isThinMembraneExit(412.0, 1.0, 8_000_000.0));
+	}
+
+	@Test
+	void thinMembraneExitRequiresAPreviousEntry() {
+		assertFalse(Cast.isThinMembraneExit(null, 1.0, 426.9));
+	}
 }
