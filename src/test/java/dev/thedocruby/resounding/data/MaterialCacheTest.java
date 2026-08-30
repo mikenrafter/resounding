@@ -18,6 +18,21 @@ class MaterialCacheTest {
     }
 
     @Test
+    void writesNonFiniteGranularityAsFiniteJson() throws Exception {
+        Map<Ident, Material> materials = Map.of(
+                id("minecraft:sculk"), new Material(6000.0, 0.0, 1.0, Double.POSITIVE_INFINITY));
+
+        StringWriter out = new StringWriter();
+        assertDoesNotThrow(() -> MaterialCache.write(out, materials));
+
+        Map<Ident, Material> read = MaterialCache.read(new StringReader(out.toString()));
+        Material sculk = read.get(id("minecraft:sculk"));
+        assertNotNull(sculk);
+        assertTrue(Double.isFinite(sculk.granularity()));
+        assertEquals(0.0, sculk.granularity());
+    }
+
+    @Test
     void roundTripsThroughWriteAndRead() throws Exception {
         Map<Ident, Material> original = Map.of(
                 id("minecraft:stone"), new Material(1.5e7, 0.98, -0.69),

@@ -1910,7 +1910,7 @@
     }
   },
   "sculks": {
-    "granularity": 1.0e309,
+    "granularity": 0,
     "melt": 120,
     "boil": 140,
     "swave": 4000,

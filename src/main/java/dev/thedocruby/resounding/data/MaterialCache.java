@@ -89,9 +89,23 @@ public final class MaterialCache {
      * and in version control for no reason.
      */
     public static void write(Writer writer, Map<Ident, Material> materials) throws IOException {
-        Map<String, Material> sorted = new TreeMap<>();
-        materials.forEach((ident, material) -> sorted.put(ident.toString(), material));
+        Map<String, JsonObject> sorted = new TreeMap<>();
+        materials.forEach((ident, material) -> sorted.put(ident.toString(), toJson(material)));
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
         writer.write(gson.toJson(sorted));
+    }
+
+    /** Gson rejects non-finite doubles; infinity is a bake-time sentinel only. */
+    private static JsonObject toJson(Material material) {
+        JsonObject object = new JsonObject();
+        object.addProperty("impedance", finite(material.impedance(), DEFAULT_IMPEDANCE));
+        object.addProperty("permeation", finite(material.permeation(), DEFAULT_PERMEATION));
+        object.addProperty("state", finite(material.state(), DEFAULT_STATE));
+        object.addProperty("granularity", finite(material.granularity(), 0.0));
+        return object;
+    }
+
+    private static double finite(double value, double fallback) {
+        return Double.isFinite(value) ? value : fallback;
     }
 }

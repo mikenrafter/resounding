@@ -384,7 +384,8 @@ public final class MaterialResolver {
             permeation = Acoustics.clamp(permeation, 0.0, 1.0);
         }
 
-        Material baked = new Material(impedance, permeation, state, gran);
+        double storedGran = Double.isFinite(gran) ? gran : 0.0;
+        Material baked = new Material(impedance, permeation, state, storedGran);
         bakedMaterials.put(id, baked);
         bakePath.remove(bakePath.size() - 1);
         bakeState.put(id, 2);
