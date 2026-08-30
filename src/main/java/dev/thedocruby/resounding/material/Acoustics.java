@@ -43,15 +43,13 @@ public final class Acoustics {
     }
 
     /**
-     * Fraction of permeation coefficient retained after traveling {@code distance} blocks through a
-     * medium — {@code permeation^(granularity × distance)}. Lower granularity lets more energy
-     * through per block (e.g. a thin pane) without changing the base coefficient.
+     * Permeation retained after traveling {@code distance} blocks — {@code permeation^distance}.
      */
-    public static double permeationOverDistance(double permeation, double granularity, double distance) {
+    public static double permeationOverDistance(double permeation, double distance) {
         if (distance <= 0.0) {
             return 1.0;
         }
-        return Math.pow(permeation, granularity * distance);
+        return Math.pow(permeation, distance);
     }
 
     /**

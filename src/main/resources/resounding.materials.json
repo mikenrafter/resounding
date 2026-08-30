@@ -31,6 +31,23 @@
         ],
         "composition": [
           1
+        ],
+        "granularity": 5
+      },
+      "mineral": {
+        "solute": [
+          "sand"
+        ],
+        "composition": [
+          1
+        ]
+      },
+      "organic": {
+        "solute": [
+          "crop"
+        ],
+        "composition": [
+          1
         ]
       },
       "mushroom": {
@@ -1067,7 +1084,8 @@
         "composition": [
           1,
           1
-        ]
+        ],
+        "granularity": 6
       },
       "saprolite": {
         "solute": [
@@ -1089,7 +1107,8 @@
         "composition": [
           1,
           1
-        ]
+        ],
+        "granularity": 5
       },
       "dusty": {
         "solute": [
@@ -1287,7 +1306,8 @@
           1,
           1,
           1
-        ]
+        ],
+        "granularity": 5
       },
       "damp": {
         "solute": [
@@ -1359,6 +1379,46 @@
           1
         ]
       },
+      "wool": {
+        "granularity": 30,
+        "swave": 118.2
+      },
+      "carpet": {
+        "solute": [
+          "wool"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 9
+      },
+      "hay_block": {
+        "solute": [
+          "crop"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 8
+      },
+      "cobweb": {
+        "solute": [
+          "crop"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 15
+      },
+      "bed": {
+        "solute": [
+          "wool"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 6
+      },
       "leaves": {
         "solute": [
           "crop"
@@ -1366,7 +1426,7 @@
         "composition": [
           1
         ],
-        "granularity": 5.0
+        "granularity": 6
       },
       "barrel": {
         "solute": [
@@ -1395,7 +1455,67 @@
         "composition": [
           1
         ],
-        "granularity": 5.0
+        "granularity": 8
+      },
+      "moss": {
+        "solute": [
+          "crop",
+          "dirt"
+        ],
+        "composition": [
+          1,
+          1
+        ],
+        "granularity": 8
+      },
+      "sponge": {
+        "solute": [
+          "crop"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 12
+      },
+      "wet_sponge": {
+        "solute": [
+          "sponge",
+          "water"
+        ],
+        "composition": [
+          1,
+          1
+        ],
+        "granularity": 10
+      },
+      "soul_sand": {
+        "solute": [
+          "sand",
+          "soul"
+        ],
+        "composition": [
+          1,
+          1
+        ],
+        "granularity": 6
+      },
+      "powder_snow": {
+        "solute": [
+          "snow_block"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 10
+      },
+      "snow_block": {
+        "solute": [
+          "water"
+        ],
+        "composition": [
+          1
+        ],
+        "granularity": 4
       },
       "shelves": {
         "solute": [
@@ -1428,7 +1548,7 @@
           1,
           1
         ],
-        "granularity": 15
+        "granularity": 22
       },
       "grass": {
         "solute": [
@@ -1446,7 +1566,7 @@
         "composition": [
           1
         ],
-        "granularity": 0.8
+        "granularity": 0.6
       },
       "innate": {
         "children": {
@@ -1508,10 +1628,6 @@
             "swave": 171,
             "melt": -63.5,
             "boil": 61.15
-          },
-          "wool": {
-            "swave": 118.2,
-            "granularity": 36
           },
           "wood": {
             "lwave": 3960,
@@ -1647,9 +1763,11 @@
         "composition": [
           90,
           10
-        ]
+        ],
+        "granularity": 5
       },
       "air": {
+        "granularity": 0.3,
         "solute": [
           "N",
           "O",
@@ -1791,6 +1909,22 @@
       }
     }
   },
+  "sculks": {
+    "granularity": 1.0e309,
+    "melt": 120,
+    "boil": 140,
+    "swave": 4000,
+    "lwave": 4000,
+    "density": 1.5
+  },
+  "concrete_powder": {
+    "granularity": 9,
+    "melt": 120,
+    "boil": 140,
+    "density": 2.26,
+    "swave": 18350,
+    "lwave": 18350
+  },
   "granularity": {
     "weight": 0,
     "children": {
@@ -1799,7 +1933,7 @@
         "weight": 100
       },
       "air": {
-        "granularity": 0.5
+        "granularity": 0.3
       },
       "block": {
         "granularity": 0.2
@@ -1814,7 +1948,7 @@
         "granularity": 0.5
       },
       "powder": {
-        "granularity": 0.8
+        "granularity": 9.0
       },
       "fence": {
         "granularity": 0.2

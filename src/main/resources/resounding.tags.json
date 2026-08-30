@@ -4,6 +4,13 @@
       "wool"
     ]
   },
+  "wools": {
+    "tags": [
+      "wool",
+      "carpet",
+      "bed"
+    ]
+  },
   "crude_oil": {
     "patterns": [
       "crude_oil"
@@ -225,8 +232,11 @@
     ]
   },
   "concrete": {
+    "patterns": [
+      "_concrete$"
+    ],
     "tagPatterns": [
-      "concrete"
+      "_concrete$"
     ]
   },
   "terracotta": {
@@ -417,6 +427,9 @@
   "mud": {
     "tags": [
       "mud"
+    ],
+    "patterns": [
+      "(^|:)(mud|packed_mud|muddy_mangrove_roots)$"
     ]
   },
   "ancient_debris": {
@@ -472,6 +485,9 @@
   "leaves": {
     "tags": [
       "leaves"
+    ],
+    "patterns": [
+      "leaves"
     ]
   },
   "honey": {
@@ -504,6 +520,68 @@
     ],
     "tagPatterns": [
       "farmland"
+    ]
+  },
+  "carpet": {
+    "patterns": [
+      "carpet"
+    ]
+  },
+  "hay_block": {
+    "patterns": [
+      "hay_block"
+    ]
+  },
+  "cobweb": {
+    "patterns": [
+      "cobweb"
+    ]
+  },
+  "bed": {
+    "patterns": [
+      "_bed"
+    ]
+  },
+  "moss": {
+    "patterns": [
+      "moss_block",
+      "moss_carpet"
+    ]
+  },
+  "sponge": {
+    "patterns": [
+      "(^|:)sponge$"
+    ]
+  },
+  "wet_sponge": {
+    "patterns": [
+      "wet_sponge"
+    ]
+  },
+  "sculks": {
+    "patterns": [
+      "sculk"
+    ]
+  },
+  "soul_sand": {
+    "patterns": [
+      "soul_sand",
+      "soul_soil"
+    ]
+  },
+  "powder_snow": {
+    "patterns": [
+      "powder_snow"
+    ]
+  },
+  "snow_block": {
+    "patterns": [
+      "(^|:)snow_block$"
+    ]
+  },
+  "concrete_powder": {
+    "patterns": [
+      "concrete_powder"
     ]
   },
   "glow": {
@@ -1809,8 +1887,7 @@
       "basalt",
       "coal",
       "end_stones",
-      "meteor",
-      "wools"
+      "meteor"
     ]
   },
   "aura": {
@@ -1877,11 +1954,6 @@
     "tags": [
       "certus",
       "redstone"
-    ]
-  },
-  "insulators": {
-    "tags": [
-      "wools"
     ]
   }
 }

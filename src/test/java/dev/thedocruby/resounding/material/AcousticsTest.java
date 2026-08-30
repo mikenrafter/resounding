@@ -50,10 +50,10 @@ class AcousticsTest {
     }
 
     @Test
-    void permeationOverDistanceScalesByGranularity() {
-        assertEquals(0.9, Acoustics.permeationOverDistance(0.9, 1.0, 1.0), 1e-9);
-        assertEquals(0.9240210865, Acoustics.permeationOverDistance(0.9, 0.75, 1.0), 1e-6);
-        assertEquals(0.7175693906, Acoustics.permeationOverDistance(0.9, 0.75, 4.2), 1e-6);
+    void permeationOverDistanceScalesByDistanceOnly() {
+        assertEquals(0.9, Acoustics.permeationOverDistance(0.9, 1.0), 1e-9);
+        assertEquals(0.81, Acoustics.permeationOverDistance(0.9, 2.0), 1e-9);
+        assertEquals(Math.pow(0.9, 4.2), Acoustics.permeationOverDistance(0.9, 4.2), 1e-6);
     }
 
     @Test

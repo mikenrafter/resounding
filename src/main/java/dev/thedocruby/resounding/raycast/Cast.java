@@ -211,14 +211,12 @@ public class Cast {
             }
         } else if (thinExit) {
             reflectivity = 0;
-            double permeationFactor = Acoustics.permeationOverDistance(
-                    interactionMaterial.permeation(), interactionMaterial.granularity(), pdistance);
-            transmission = permeationFactor;
+            transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
         } else {
-            reflectivity = Physics.reflection(priorImpedance, newImpedance);
-            double permeationFactor = Acoustics.permeationOverDistance(
-                    interactionMaterial.permeation(), interactionMaterial.granularity(), pdistance);
-            transmission = (1 - reflectivity) * permeationFactor;
+            reflectivity = impedancesClose(priorImpedance, newImpedance)
+                    ? 0
+                    : Physics.reflection(priorImpedance, newImpedance);
+            transmission = transmissionForBoundary(reflectivity, interactionMaterial.permeation(), pdistance);
         }
 
         boolean shapeMode = geometry.mode() == ShapeTraversal.Mode.SHAPE;
@@ -226,7 +224,11 @@ public class Cast {
         Vec3i transmitPlane = shapeMode ? rstep.plane() : step.plane();
         Vec3i reflectPlane;
         if (gridAlignedReflect) {
-            reflectPlane = entryPlane(position, blockToVec(branch.start), branch.size, vector);
+            if (emissionCast && reflectivity > 0) {
+                reflectPlane = step.plane();
+            } else {
+                reflectPlane = entryPlane(position, blockToVec(branch.start), branch.size, vector);
+            }
         } else if (shapeMode && shapeEntryStep != null) {
             reflectPlane = shapeEntryStep.plane();
         } else {
@@ -413,6 +415,27 @@ public class Cast {
             return true;
         }
         return Math.abs(a - b) / max < IMPEDANCE_MATCH_TOLERANCE;
+    }
+
+    /**
+     * Transmission after traversing {@code distance} blocks, including reflection loss and
+     * permeation attenuation ({@code permeation^distance}).
+     */
+    static double transmissionForBoundary(double reflectivity, double permeation, double distance) {
+        double permeationFactor = Acoustics.permeationOverDistance(permeation, distance);
+        return (1 - reflectivity) * permeationFactor;
+    }
+
+    static double transmissionForBoundary(
+            double priorImpedance,
+            double newImpedance,
+            double permeation,
+            double distance
+    ) {
+        double reflectivity = impedancesClose(priorImpedance, newImpedance)
+                ? 0
+                : Physics.reflection(priorImpedance, newImpedance);
+        return transmissionForBoundary(reflectivity, permeation, distance);
     }
 
     static boolean isSolidImpedance(double impedance) {

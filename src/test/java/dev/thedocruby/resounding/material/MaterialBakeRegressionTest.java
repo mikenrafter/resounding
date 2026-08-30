@@ -40,7 +40,12 @@ class MaterialBakeRegressionTest {
         return resource("vanilla-block-ids.txt").lines().filter(s -> !s.isBlank()).toList();
     }
 
-    private record Run(Resolution tags, MaterialResolver.Baked baked, int blocks) {}
+    private record Run(
+            Resolution tags,
+            MaterialResolver.Baked baked,
+            Map<Ident, RawMaterialDef> mergedMaterials,
+            int blocks
+    ) {}
 
     /** Runs index -> resolve tags -> shells -> merge -> bake, exactly as the mod's adapter does. */
     private static Run pipeline() throws Exception {
@@ -62,13 +67,14 @@ class MaterialBakeRegressionTest {
             blockTags.forEach(tag -> resolvedBuilder.tagged(block, tag));
         });
         BlockIndex resolved = resolvedBuilder.build();
-        Map<Ident, RawMaterialDef> shells = MaterialResolver.shells(resolved);
+        Map<Ident, RawMaterialDef> shells = MaterialResolver.shells(
+                resolved, materialLayer.materials().keySet());
 
         Layer merged = LayeredSource.merge(
                 new Layer("shells", Map.of(), shells, List.of()),
                 List.of(materialLayer));
 
-        return new Run(tags, MaterialResolver.resolve(merged.materials()), ids.size());
+        return new Run(tags, MaterialResolver.resolve(merged.materials()), merged.materials(), ids.size());
     }
 
     private static Material requireMaterial(MaterialResolver.Baked baked, Ident block) {
@@ -80,11 +86,24 @@ class MaterialBakeRegressionTest {
     @Test
     void shippedStoneImpedanceInPhysicalRange() throws Exception {
         Run run = pipeline();
-        Material stone = requireMaterial(run.baked(), id("minecraft:stone"));
+        Ident stoneId = id("minecraft:stone");
+        Material stone = requireMaterial(run.baked(), stoneId);
+        RawMaterialDef raw = run.mergedMaterials().get(stoneId);
 
         assertTrue(stone.impedance() >= 1e6 && stone.impedance() <= 1e8,
                 "stone impedance must lie in [1e6, 1e8] Rayl (physical stone ~1e7), was "
-                        + stone.impedance());
+                        + stone.impedance()
+                        + "; merged solvent=" + (raw == null ? null : raw.solvent())
+                        + " gran=" + (raw == null ? null : raw.granularity()));
+        assertTrue(stone.permeation() > 0.0,
+                "stone baked permeation must be positive; was " + stone.permeation()
+                        + " (solvent=" + (raw == null ? null : raw.solvent()) + ")");
+        assertTrue(stone.granularity() > 0 && stone.granularity() <= 10,
+                "stone granularity must stay a small tuning value, not molar-weight blowup; was "
+                        + stone.granularity());
+        assertTrue(stone.permeation() > 0.5,
+                "stone with pseudo-solvent should bake permeation well above zero; was "
+                        + stone.permeation());
     }
 
     @Test

@@ -263,7 +263,8 @@ public final class MaterialResolver {
 
             weight.add(soluteDef.weight(), 1.0, count, ratioUpdate);
             double coeff = soluteDef.weight() == null ? 1.0 : soluteDef.weight();
-            granularity.add(soluteDef.granularity(), coeff, count, ratioUpdate);
+            // Granularity is a dimensionless acoustic tuning knob, not an extensive molar property.
+            granularity.add(soluteDef.granularity(), 1.0, count, ratioUpdate);
             melt.add(soluteDef.melt(), coeff, count, ratioUpdate);
             boil.add(soluteDef.boil(), coeff, count, ratioUpdate);
             temperature.add(soluteDef.temperature(), coeff, count, ratioUpdate);
@@ -275,7 +276,8 @@ public final class MaterialResolver {
         }
 
         Double w = weight.get() != null ? weight.get() : def.weight();
-        Double g = granularity.get() != null ? granularity.get() : def.granularity();
+        // Authored granularity is an explicit override; solute blends only fill it in when unset.
+        Double g = def.granularity() != null ? def.granularity() : granularity.get();
         Double m = melt.get() != null ? melt.get() : def.melt();
         Double b = boil.get() != null ? boil.get() : def.boil();
         Double t = temperature.get() != null ? temperature.get() : def.temperature();
