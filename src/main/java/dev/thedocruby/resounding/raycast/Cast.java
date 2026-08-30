@@ -1,6 +1,7 @@
 package dev.thedocruby.resounding.raycast;
 
 import dev.thedocruby.resounding.debug.math.OctantColor;
+import dev.thedocruby.resounding.material.Acoustics;
 import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.MaterialRegistry;
 import dev.thedocruby.resounding.Physics;
@@ -8,7 +9,6 @@ import dev.thedocruby.resounding.toolbox.ChunkChain;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
 import net.minecraft.util.Pair;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
@@ -44,18 +44,16 @@ public class Cast {
 
     public @Nullable Step stood = null; // prior position
     public @Nullable Double impeded = null; // prior impedance
-    /** Impedance the ray was in immediately before crossing into the {@link #impeded} medium — lets the
-     *  next boundary detect "exited straight back into the same medium" (a thin partition) instead of
-     *  paying a second full impedance-mismatch reflection on the way out. See research/transmission-upgrade.md. */
-    private @Nullable Double enteredFrom = null;
-    /** Distance traveled through the {@link #impeded} medium before this boundary — the "thickness" the
-     *  next call checks against so a thin-partition exit isn't confused with a real second surface reached
-     *  after traveling a long way through a thick, similarly-impedanced medium (e.g. two separate stone walls). */
-    private @Nullable Double enteredThickness = null;
-    /** Relative tolerance for treating two impedances as "the same medium" when detecting thin-partition exits. */
-    private static final double THIN_MEMBRANE_RELATIVE_TOLERANCE = 0.25;
-    /** Max thickness (blocks) a medium can be for exiting it to count as a thin-partition pass-through. */
-    private static final double THIN_MEMBRANE_MAX_THICKNESS = 1.5;
+    /** Impedance of the medium the ray was in before entering the current solid transit. */
+    @Nullable Double enteredFrom = null;
+    /** Distance permeated through the current solid transit (blocks). */
+    double solidTransitDistance = 0.0;
+    double lastPermeationDistance = 0.0;
+
+    static final double THIN_MEMBRANE_MAX_THICKNESS = 1.5;
+    static final double IMPEDANCE_MATCH_TOLERANCE = 0.15;
+    static final double SOLID_IMPEDANCE_MIN = 10_000.0;
+
     public @Nullable Double lastReflectivity;
     public @Nullable Double lastTransmission;
     public @Nullable Material lastMaterial;
@@ -66,8 +64,6 @@ public class Cast {
     public int lastBranchSize;
     /** Human-readable material tag for the branch entered, for telemetry/debug readouts. */
     public @Nullable String lastMaterialLabel;
-
-//    public static Material air = Cache.material(Blocks.AIR.getDefaultState());
 
     public Cast(@NotNull World world, @Nullable Branch tree, @Nullable ChunkChain chunk, @Nullable Vec3d targetPos) {
         this.world = world;
@@ -86,8 +82,7 @@ public class Cast {
     }
     public void raycast(@NotNull Vec3d position, @NotNull Vec3d vector, double power) {
         //* access branch {
-        // assert vector != null; // the power check above will catch this
-        final Vec3d normalized = normalize(position,vector);
+        final Vec3d normalized = normalize(position, vector);
         chunk = chunk.access((int) normalized.x >> 4, (int) normalized.z >> 4);
         if (chunk != null) tree = chunk.getBranch((int) normalized.y >> 4);
         Branch branch = getBlock(normalized);
@@ -98,17 +93,18 @@ public class Cast {
         this.lastOctantColor = OctantColor.forNode(branch.start, branch.size);
         this.lastBranchSize = branch.size;
         this.lastMaterialLabel = branch.materialLabel;
-        // priorImpedance is the medium the ray was previously traveling through; recorded on every
-        // path (even pass-throughs) so telemetry can show what a reflection was actually computed against.
-        final double priorImpedance = impeded == null
-                ? material(Blocks.AIR.getDefaultState()).impedance()
-                : impeded;
-        this.lastPriorImpedance = priorImpedance;
+        this.lastPriorImpedance = impeded == null ? 0.0 : impeded;
         // } */
         // prepare variables
         Step step, rstep;
-        Vec3d  pposition, rposition;
+        Vec3d pposition, rposition;
         double pdistance, rdistance;
+        // Full-cube reflections resolve rposition to the exact integer boundary the ray is
+        // already standing on; sub-voxel (SHAPE / bounce) reflections resolve it to real
+        // floating-point surface geometry that may need an off-surface nudge. Only the latter
+        // should be nudged — nudging a grid-exact boundary knocks it off the whole number that
+        // Cast.normalize()'s sign-of-vector octant pick depends on for the next cast.
+        boolean gridAlignedReflect = false;
 
         VoxelShape shape = branch.shape;
         if (shape == null) {
@@ -119,16 +115,6 @@ public class Cast {
                 branch.start, branch.size, position, vector, shape, this::getStep
         );
 
-        if (geometry.mode() == ShapeTraversal.Mode.AIR_CELL) {
-            transmit(power, geometry.transmitPosition(), vector, geometry.permeationDistance());
-            reflect(0, position, null, 0);
-            stood = geometry.step();
-            this.lastReflectivity = 0.0;
-            this.lastTransmission = 1.0;
-            this.lastMaterial = null;
-            return;
-        }
-
         if (geometry.mode() == ShapeTraversal.Mode.SHAPE) {
             step = geometry.step();
             rstep = geometry.reflectStep();
@@ -137,91 +123,230 @@ public class Cast {
             rdistance = geometry.reflectDistance();
             rposition = geometry.reflectPosition();
         } else {
-            //* true voxel handling {
             step = getStep(blockToVec(branch.start), branch.size, position, vector);
             pdistance = step.step().length();
-            pposition = ShapeTraversal.truncate(position.add(step.step()));
-            // } */
+            pposition = exitPosition(position, step, blockToVec(branch.start), branch.size);
             rstep = step;
             rdistance = 0;
             rposition = position;
+            gridAlignedReflect = true;
             if (branch.size == 1) {
                 Step next = bounce(branch, position, vector);
                 if (next != null) {
                     rstep = next;
                     rdistance = rstep.step().subtract(position).length();
                     rposition = rstep.step();
+                    gridAlignedReflect = false;
                 }
             }
         }
         //* amplitude and vector {
-        // material properties — skip attenuation when passing through open cell space
-        if (branch.material == null) {
-            transmit(power, pposition, vector, pdistance);
-            reflect(0, rposition, null, rdistance);
-            stood = step;
-            this.lastReflectivity = 0.0;
-            this.lastTransmission = 1.0;
-            this.lastMaterial = null;
-            return;
+        Material branchMaterial = branch.material;
+        if (branchMaterial == null) {
+            BlockState state = ((WorldChunk) this.chunk).getBlockState(BlockPos.ofFloored(normalized));
+            branchMaterial = material(state);
         }
+        Material interactionMaterial = interactionMaterial(
+                branchMaterial, shape, branch.start, position, geometry.mode(), impeded
+        );
 
-        final double newImpedance = branch.material.impedance();
-        // Exiting straight back into (about) the medium we entered the last branch from means this
-        // was a thin partition, not a fresh semi-infinite boundary — skip the second full-mismatch
-        // reflection instead of nearly soundproofing every 1-block wall/pane. See research/transmission-upgrade.md.
-        final boolean exitingThinMembrane = isThinMembraneExit(enteredFrom, enteredThickness, newImpedance);
-
-        double reflectivity = exitingThinMembrane ? 0.0 : Physics.reflection(priorImpedance, newImpedance);
-        double transmission = exitingThinMembrane
-                ? Math.pow(branch.material.permeation(), pdistance)
-                : (1 - reflectivity) * Math.pow(branch.material.permeation(), pdistance);
-
-        // if reflection / permeation -> calculate -> bounce / refract
-        @Nullable Vec3d reflected = reflectivity > 0 ? Physics.pseudoReflect(vector,rstep.plane()) : null;
-        // use single-surface refraction here, unpredictable effects with larger objects & permeation coefficients
-        // TODO: remove fresnel in favor of atmospheric effects
-        // TODO: branch here to avoid calculations on last raycast
-        @Nullable Vec3d transmitted = transmission > 0
-                ? Physics.pseudoReflect(vector, step.plane(), transmission / 5)
-                : null;
-        if (transmitted == null) {
-            transmitted = vector;
+        // Skip reflectivity on the first cast so a sound originating inside a block does not
+        // immediately reflect back into that same block.
+        double newImpedance = interactionMaterial.impedance();
+        boolean thinExit = impeded != null && isThinMembraneExit(newImpedance);
+        double reflectivity;
+        if (impeded == null) {
+            reflectivity = 0;
+        } else if (thinExit) {
+            reflectivity = 0;
+        } else {
+            reflectivity = Physics.reflection(impeded, newImpedance);
         }
+        double permeationFactor = Acoustics.permeationOverDistance(
+                interactionMaterial.permeation(), interactionMaterial.granularity(), pdistance);
+        double transmission = thinExit
+                ? permeationFactor
+                : (1 - reflectivity) * permeationFactor;
+
+        boolean shapeMode = geometry.mode() == ShapeTraversal.Mode.SHAPE;
+        Vec3i transmitPlane = shapeMode ? rstep.plane() : step.plane();
+        // step.plane() is the FAR (exit) face of the cell position just entered — correct for the
+        // transmitted ray, which keeps going. A full-cube reflection instead bounces right where it
+        // stands, off the face it just crossed to get here, so it needs the NEAR (entry) face's
+        // normal, not the exit face's — using the exit face here mirrors the ray across the wrong
+        // wall entirely, which is what was producing nonsensical bounce directions.
+        Vec3i reflectPlane = gridAlignedReflect
+                ? entryPlane(position, blockToVec(branch.start), branch.size, vector)
+                : rstep.plane();
+        @Nullable Vec3d reflected = reflectivity > 0 ? Physics.pseudoReflect(vector, reflectPlane) : null;
+        @Nullable Vec3d transmitted = Physics.pseudoReflect(vector, transmitPlane, transmission / 5);
+        Vec3d reflectStart = gridAlignedReflect ? rposition : nudgeReflectOrigin(rposition, reflected, rdistance);
         // } */
         // apply movement
-        reflect(reflectedPower(reflectivity, power), rposition, reflected, rdistance);
-        transmit(transmission*power, pposition, transmitted, pdistance);
-        stood = step; // TODO ?
+        reflect(reflectivity * power, reflectStart, reflected, rdistance);
+        transmit(transmission * power, pposition, transmitted, pdistance);
+        stood = step;
+        this.lastPermeationDistance = pdistance;
         this.lastReflectivity = reflectivity;
         this.lastTransmission = transmission;
-        this.lastMaterial = branch.material;
-        this.enteredFrom = priorImpedance;
-        this.enteredThickness = pdistance;
-        this.impeded = newImpedance;
+        this.lastMaterial = interactionMaterial;
     }
 
-    static boolean isThinMembraneExit(@Nullable Double enteredFrom, @Nullable Double enteredThickness, double newImpedance) {
-        return enteredFrom != null
-                && enteredThickness != null && enteredThickness <= THIN_MEMBRANE_MAX_THICKNESS
-                && withinRelativeTolerance(newImpedance, enteredFrom);
+    /**
+     * Partial solids (doors, panes, etc.) can contain open air inside the 1³ cell. When the
+     * <em>first</em> cast from a sound source crosses that air without intersecting solid geometry,
+     * treat the medium as air so sound can leave the cell. Later casts that permeate through the
+     * same cell must keep the block material so thin geometry (panes) is not phased through.
+     */
+    static Material interactionMaterial(
+            Material branchMaterial,
+            VoxelShape shape,
+            BlockPos origin,
+            Vec3d position,
+            ShapeTraversal.Mode mode,
+            @Nullable Double priorImpedance
+    ) {
+        if (!ShapeTraversal.isPartialSolid(shape)) {
+            return branchMaterial;
+        }
+        if (mode == ShapeTraversal.Mode.SHAPE) {
+            return branchMaterial;
+        }
+        if (priorImpedance != null) {
+            return branchMaterial;
+        }
+        if (ShapeTraversal.containsLocalPoint(shape, origin, position)) {
+            return branchMaterial;
+        }
+        return MaterialRegistry.DEFAULT;
     }
 
-    static boolean withinRelativeTolerance(double a, double b) {
-        double scale = Math.max(Math.abs(a), Math.abs(b));
-        return scale > 0 && Math.abs(a - b) <= THIN_MEMBRANE_RELATIVE_TOLERANCE * scale;
+    private static final double REFLECT_NUDGE = 1e-4;
+
+    static Vec3d nudgeReflectOrigin(Vec3d origin, @Nullable Vec3d reflected, double reflectDistance) {
+        if (reflectDistance > REFLECT_NUDGE || reflected == null) {
+            return origin;
+        }
+        double length = reflected.length();
+        if (length <= REFLECT_NUDGE) {
+            return origin;
+        }
+        return origin.add(reflected.multiply(REFLECT_NUDGE / length));
+    }
+
+    static boolean impedancesClose(double a, double b) {
+        double max = Math.max(Math.abs(a), Math.abs(b));
+        if (max < 1e-6) {
+            return true;
+        }
+        return Math.abs(a - b) / max < IMPEDANCE_MATCH_TOLERANCE;
+    }
+
+    static boolean isSolidImpedance(double impedance) {
+        return impedance >= SOLID_IMPEDANCE_MIN;
+    }
+
+    /**
+     * Exiting a thin solid back into the same medium the ray entered from — skip the second
+     * full half-space mismatch (see {@code research/transmission-upgrade.md}).
+     */
+    boolean isThinMembraneExit(double newImpedance) {
+        if (enteredFrom == null || solidTransitDistance > THIN_MEMBRANE_MAX_THICKNESS) {
+            return false;
+        }
+        if (impeded == null || !isSolidImpedance(impeded)) {
+            return false;
+        }
+        return impedancesClose(newImpedance, enteredFrom);
+    }
+
+    /** Commits the entered branch impedance after the caller chooses permeation (not reflection). */
+    public void commitPermeation() {
+        if (lastMaterial == null) {
+            return;
+        }
+        double newImpedance = lastMaterial.impedance();
+        double step = lastPermeationDistance;
+
+        if (impeded != null && enteredFrom == null
+                && isSolidImpedance(newImpedance) && !isSolidImpedance(impeded)) {
+            enteredFrom = impeded;
+            solidTransitDistance = 0.0;
+        }
+
+        if (isSolidImpedance(newImpedance)) {
+            solidTransitDistance += step;
+        }
+
+        impeded = newImpedance;
+
+        if (enteredFrom != null && impedancesClose(newImpedance, enteredFrom)) {
+            enteredFrom = null;
+            solidTransitDistance = 0.0;
+        }
     }
     // } */
 
     //* fetch {
     public static Vec3d normalize(@NotNull Vec3d pos, @NotNull Vec3d vector) {
-        //return pos;
         return new Vec3d(
                 vector.x < 0 ? Math.ceil(pos.x) - 1 : Math.floor(pos.x),
                 vector.y < 0 ? Math.ceil(pos.y) - 1 : Math.floor(pos.y),
                 vector.z < 0 ? Math.ceil(pos.z) - 1 : Math.floor(pos.z));
-        // */
     }
+
+    static Vec3d truncate(Vec3d position) {
+        return ShapeTraversal.truncate(position);
+    }
+
+    /**
+     * Position where a ray leaves the current octree branch. The axis {@code step} crossed on is
+     * set to the branch's exact edge coordinate (not the float arithmetic's result, which can be a
+     * hair off it) so the ray lands precisely on the whole number {@link #normalize} needs to pick
+     * the correct adjacent octant by sign. The other two axes get 5-decimal rounding, same as
+     * before — they're genuinely continuous, not edge-exact.
+     * <p>Only valid when {@code step}'s plane came from the branch boundary rather than this cast's
+     * target position (see {@link #stepFinder}); skipped whenever a target is in play.
+     */
+    private Vec3d exitPosition(Vec3d position, Step step, Vec3d base, int size) {
+        Vec3d raw = position.add(step.step());
+        if (targetPos != null) {
+            return ShapeTraversal.truncate(raw);
+        }
+        Vec3i plane = step.plane();
+        return new Vec3d(
+                plane.getX() != 0 ? (plane.getX() < 0 ? base.x + size : base.x) : round5(raw.x),
+                plane.getY() != 0 ? (plane.getY() < 0 ? base.y + size : base.y) : round5(raw.y),
+                plane.getZ() != 0 ? (plane.getZ() < 0 ? base.z + size : base.z) : round5(raw.z)
+        );
+    }
+
+    private static double round5(double value) {
+        return Math.round(value * 1e5) / 1e5;
+    }
+
+    /**
+     * Normal of the branch face {@code position} is currently standing on — the boundary the ray
+     * just crossed to get here — found by matching {@code position} against the branch's own edges
+     * rather than probing forward like {@link #getStep} does for the exit face. Trig-free: axis
+     * normals are always exactly one of the six unit directions, so this is a sign check per axis.
+     * Only meaningful once {@code position} is guaranteed edge-exact (see {@link #exitPosition}); on
+     * the very first cast from a sound source it won't match anything, but reflectivity is forced to
+     * 0 there anyway so the caller never uses the result.
+     */
+    private static Vec3i entryPlane(Vec3d position, Vec3d base, int size, Vec3d vector) {
+        if (position.x == base.x || position.x == base.x + size) {
+            return new Vec3i(MathHelper.floor(-Math.signum(vector.x)), 0, 0);
+        }
+        if (position.y == base.y || position.y == base.y + size) {
+            return new Vec3i(0, MathHelper.floor(-Math.signum(vector.y)), 0);
+        }
+        if (position.z == base.z || position.z == base.z + size) {
+            return new Vec3i(0, 0, MathHelper.floor(-Math.signum(vector.z)));
+        }
+        return Vec3i.ZERO;
+    }
+
     public Branch getBlock(Vec3d pos) {
         if (this.chunk == null || this.tree == null) return null;
         final BlockPos block = BlockPos.ofFloored(pos);
@@ -230,19 +355,15 @@ public class Cast {
         Material mat = material(state);
 
         final Branch branch = this.tree.get(block);
-        // Fall through to live block data only at 1³ leaves; null material on a large node
-        // means heterogeneous — tree.get() should have descended, or siblings still use coarse cells.
         if (branch.material == null && branch.size == 1) {
             return liveLeaf(block, shape, mat, state);
         }
         if (branch.size > 1) {
             return branch;
         }
-        // 1³ cached leaf — always use live collision geometry for ray/shape tests.
         return liveLeaf(block, shape, mat, state);
     }
 
-    /** 1³ leaves are always re-fetched live (see above); stamp the debug label too, or telemetry shows "?" for nearly every bounce. */
     private static Branch liveLeaf(BlockPos block, VoxelShape shape, Material mat, BlockState state) {
         Branch leaf = new Branch(block, 1, shape, mat);
         leaf.materialLabel = MaterialRegistry.describe(state);
@@ -251,26 +372,17 @@ public class Cast {
     public static Vec3d blockToVec(BlockPos pos) { return new Vec3d(pos.getX(), pos.getY(), pos.getZ()); }
     // } */
     //* getBoundStep injections {
-    // could be static if other constraints weren't here.
     private Pair<Double, Vec3i> noTarget(Vec3d position, Vec3d vector) { return new Pair<>(Double.POSITIVE_INFINITY, Vec3i.ZERO); }
     private Pair<Double, Vec3i> target(Vec3d position, Vec3d vector) {
-        // TODO consider (== soundChunk) check
-        // NOTE unnecessary - final & handled in constructor. This fn isn't used when this value is null
-        // assert this.targetPos != null;
         return getStepPair(this.targetPos, 0, position, vector);
     }
     // } */
     //* physics {
-    // runtime dependency injection pattern prevents this from being static
     private Step getStep(Vec3d base, int size, Vec3d position, Vec3d vector) {
-        /* return a new position, based on which bounding wall will be hit first
-         * this is for path tracing using an octree
-         */
         final Pair<Double, Vec3i> pair = getStepPair(base, size, position, vector);
         final Pair<Double, Vec3i> target = stepFinder.apply(position, vector);
         double coefficient = pair.getLeft();
-        Vec3i  planarIndex = pair.getRight();
-        // this does not belong inside getStepPair
+        Vec3i planarIndex = pair.getRight();
         if (target.getLeft() < coefficient) {
             coefficient = target.getLeft();
             planarIndex = target.getRight();
@@ -278,58 +390,36 @@ public class Cast {
         return new Step(vector.multiply(coefficient), planarIndex);
     }
     private static Pair<Double,Vec3i> getStepPair(Vec3d base, int size, Vec3d position, Vec3d vector) {
-        /*
-         ** base     = diquad start position
-         ** size     = diquad size
-         ** position = ray position
-         ** vector   = ray trajectory
-         */
-
-        // TODO profile intercalating comparisons vs separated approach
-        // normalize magnitude to closest wall
         double coefficient = boundAxis(base.x, position.x, size, vector.x);
         double ystep       = boundAxis(base.y, position.y, size, vector.y);
         double zstep       = boundAxis(base.z, position.z, size, vector.z);
 
         Vec3i planarIndex  = new Vec3i(MathHelper.floor(-Math.signum(vector.x)), 0, 0);
 
-        // branch hint: 1/3 probability -> NO
-        // same as min(x,min(y,z)) + planar index
         if (ystep < coefficient) {
             coefficient = ystep;
-            planarIndex = new Vec3i(0,MathHelper.floor(-Math.signum(vector.y)),0);
+            planarIndex = new Vec3i(0, MathHelper.floor(-Math.signum(vector.y)), 0);
         }
         if (zstep < coefficient) {
             coefficient = zstep;
-            planarIndex = new Vec3i(0,0,MathHelper.floor(-Math.signum(vector.z)));
+            planarIndex = new Vec3i(0, 0, MathHelper.floor(-Math.signum(vector.z)));
         }
         if (coefficient == Double.POSITIVE_INFINITY) {
             LOGGER.warn("invalid coefficient");
-            // coefficient = epsilon;
         }
-        // closest wall -> magnitude
-        return new Pair(coefficient,planarIndex);
+        return new Pair<>(coefficient, planarIndex);
     }
     private static double boundAxis(double base, double pos, double size, double dir) {
-        // normalize position, determine distance, apply direction & normalize coefficient
-        double value = (base - pos  +  (dir > 0 ? size : 0)) / dir;
-        // theoretically zeroes/negatives shouldn't ever happen, but they did extensively during debugging
-        // (and were promptly fixed!) But you can't ever be too sure.
-        if (value <= 0 || Double.isNaN(value)) value = Double.POSITIVE_INFINITY; // endless loops -> always bigger
+        double value = (base - pos + (dir > 0 ? size : 0)) / dir;
+        if (value <= 0 || Double.isNaN(value)) value = Double.POSITIVE_INFINITY;
         return value;
-        /*     (dist + (   size   )) / vector = magnitude
-         *     (   1 + (16  * 0   )) / -2     = -1/2
-         *     (   7 + (16  * 1   )) /  2     = 14/2
-         */
     }
 
     private @Nullable Step bounce(Branch branch, Vec3d start, Vec3d vector) {
         final long posl = branch.start.asLong();
         Map<Long, VoxelShape> shapes = chunk.getShapes();
         VoxelShape shape = shapes.get(posl);
-        // TODO evaluate actual benefit for shape cache
         if (shape == null) {
-            // if (pConfig.dRays) world.addParticle(ParticleTypes.END_ROD, false, branch.start.getX() + 0.5d, branch.start.getY() + 1d, branch.start.getZ() + 0.5d, vector.x, vector.y, vector.z);
             shape = branch.shape;
             if (shape == null) return null;
             shapes.put(posl, shape);
@@ -337,7 +427,7 @@ public class Cast {
         if (shape == CUBE || shape == EMPTY) return null;
 
         BlockHitResult hit = shape.raycast(start, start.add(vector.multiply(2)), branch.start);
-        return hit == null ? null : new Step(hit.getPos(),hit.getSide().getVector());
+        return hit == null ? null : new Step(hit.getPos(), hit.getSide().getVector());
     }
     // } */
     //* mutate {
@@ -345,21 +435,10 @@ public class Cast {
         this.reflected = new Ray(0, position, null, 0);
         this.transmitted = new Ray(0, position, null, 0);
     }
-    private void reflect(/*MaterialData material,*/ double power, Vec3d position, Vec3d angle, double distance) {
+    private void reflect(double power, Vec3d position, Vec3d angle, double distance) {
         this.reflected = new Ray(power, position, angle, distance);
     }
-    /**
-     * Reflected power follows the impedance-derived power reflection coefficient directly.
-     * {@code reflectivity} already is the fraction of incident power reflected at the boundary
-     * (see {@link dev.thedocruby.resounding.material.Acoustics#reflection}); softer materials
-     * already lose more energy here because they have lower reflectivity. Applying an extra
-     * sqrt(reflectivity)-derived absorption on top double-counts that loss and made rays die out
-     * after only a few bounces off anything but a near-perfect reflector.
-     */
-    public static double reflectedPower(double reflectivity, double incidentPower) {
-        return reflectivity * incidentPower;
-    }
-    private void transmit(/*MaterialData material,*/ double power, Vec3d position, Vec3d angle, double distance) {
+    private void transmit(double power, Vec3d position, Vec3d angle, double distance) {
         this.transmitted = new Ray(power, position, angle, distance);
     }
     // } */

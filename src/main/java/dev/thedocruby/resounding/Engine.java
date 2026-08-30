@@ -74,6 +74,9 @@ public class Engine {
 	public static Vec3d playerPos;
 	public static boolean hasLoaded = false;
 
+	/** Cap debug line segments per sound so a burst of effects cannot flood the live buffer. */
+	private static final int MAX_DEBUG_TRACE_RAYS = 128;
+
 	public static void setRoot(Context context) {root=context;}
 
 	@Environment(EnvType.CLIENT)
@@ -224,65 +227,36 @@ public class Engine {
 		Vec3d vector = input.getLeft();
 		LinkedList<Hit> results = new LinkedList<>();
 		Cast cast = new Cast(mc.world, null, ctx.soundChunk(), targetPosition);
-		int permeateSteps = 0;
-		int consecutiveStalls = 0;
-		String terminationReason;
 
-		// launch initial ray & always permeate first
 		cast.raycast(ctx.soundPos(), vector, amplitude);
 		if (cast.transmitted == null || cast.transmitted.vector() == null) {
-			logRayTermination(id, "initial cast left the known world", results, permeateSteps, 0, amplitude);
 			return results;
 		}
+		cast.commitPermeation();
 		Ray ray = new Ray(amplitude, cast.transmitted.position(), cast.transmitted.vector(), cast.transmitted.length());
 
-		double length = cast.transmitted.length();
-		Vec3d prior = ctx.soundPos(); // used solely for debugging
-		// while power, within max search range & iterate bounces
-		while (true) {
-			if (!(ray.power() > 1)) {
-				terminationReason = "power exhausted";
-				break;
-			}
-			if (!(maxLength > length)) {
-				terminationReason = "max trace distance";
-				break;
-			}
-			if (!(results.size() < pConfig.nRayBounces)) {
-				terminationReason = "max bounces";
-				break;
-			}
-			// debugging output
-			if (pConfig.dRays) Renderer.addSoundBounceRay(
-					prior, ray.position(),
-					cast.lastOctantColor,
-					results.size(),
-					ctx.sourceID(),
-					cast.lastMaterial,
-					cast.lastReflectivity == null ? 0.0 : cast.lastReflectivity,
-					cast.lastTransmission == null ? 0.0 : cast.lastTransmission,
-					ray.power(),
-					cast.lastPriorImpedance,
-					cast.lastBranchSize,
-					cast.lastMaterialLabel
-			);
-			prior = ray.position();
-
-			// cast ray
+		double pathLength = cast.transmitted.length();
+		double segmentLength = pathLength;
+		Vec3d prior = ctx.soundPos();
+		byte reflected = 0;
+		RayDebugTail debugTail = new RayDebugTail();
+		debugTail.emit(ctx, cast, id, prior, cast.transmitted.position(), amplitude, results.size(),
+				!(ray.power() > 1 && maxLength > pathLength && results.size() < pConfig.nRayBounces));
+		prior = cast.transmitted.position();
+		while (ray.power() > 1 && maxLength > pathLength && results.size() < pConfig.nRayBounces) {
 			cast.raycast(ray.position(), ray.vector(), ray.power());
 			if (cast.transmitted == null) {
-				terminationReason = "left the known world (unloaded chunk/section)";
+				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true);
 				break;
 			}
 
-			if (pConfig.dLog) {
+			if (pConfig.dLog && id < 4) {
 				Utils.LOGGER.info(
-						"Resounding: ray #{} bounce #{} permeates={} node={}³ material={} Zprev={} Z={} R={} T={} power={}",
+						"Resounding: ray #{} bounce #{} node={}³ material={} Zprev={} Z={} R={} T={} power={}",
 						id,
 						results.size(),
-						permeateSteps,
 						cast.lastBranchSize,
-						cast.lastMaterial == null ? "PASS" : (cast.lastMaterialLabel == null ? "?" : cast.lastMaterialLabel),
+						cast.lastMaterialLabel == null ? "?" : cast.lastMaterialLabel,
 						String.format("%.1f", cast.lastPriorImpedance),
 						cast.lastMaterial == null ? "-" : String.format("%.1f", cast.lastMaterial.impedance()),
 						String.format("%.3f", cast.lastReflectivity == null ? 0.0 : cast.lastReflectivity),
@@ -291,107 +265,124 @@ public class Engine {
 				);
 			}
 
-			//* handle properties {
-			// TODO handle splits & replace:
-			//  reflect instead of permeate, when logical
 			if (reflect.apply(cast, results)) {
-				// cumulative path length must include this reflection leg too, not just permeation legs —
-				// otherwise every hit after the first bounce reports a stale, frozen length downstream
-				// (bounceEnergy falloff, bounceTime/RT60 binning) instead of true distance traveled.
-				length += cast.reflected.length();
-				// record bounce results
+				if (reflected++ > 2) {
+					debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true);
+					break;
+				}
 				results.add(new Hit
-						/*end pos  */( ray.position()
-						/*length   */, length
-						/*shared   */, 0 // TODO figure out & populate
-						/*distance */, cast.reflected.position().distanceTo(ctx.listenerPos())
-						/*segment  */, cast.reflected.length()
-						/*surface  */, cast.reflected.power()/ray.power()
-						/*amplitude*/, cast.reflected.power()
+						(/*end pos  */ ray.position()
+						,/*length   */ pathLength
+						,/*shared   */ 0
+						,/*distance */ cast.reflected.position().distanceTo(ctx.listenerPos())
+						,/*segment  */ segmentLength
+						,/*surface  */ cast.reflected.power() / ray.power()
+						,/*amplitude*/ cast.reflected.power()
 						));
 
+				pathLength += cast.reflected.length();
+				segmentLength = 0;
 				ray = cast.reflected;
 				if (ray == null || ray.vector() == null) {
-					terminationReason = "reflected ray had no direction";
+					debugTail.emit(ctx, cast, id, prior, prior, ray == null ? 0 : ray.power(), results.size(), true);
+					break;
+				}
+				boolean continues = ray.power() > 1
+						&& maxLength > pathLength
+						&& results.size() < pConfig.nRayBounces;
+				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), !continues);
+				prior = ray.position();
+				if (!continues) {
 					break;
 				}
 				continue;
 			}
 			if (cast.transmitted.vector() == null) {
-				terminationReason = "transmitted ray had no direction";
+				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true);
 				break;
 			}
 			double advance = cast.transmitted.length();
-			if (advance < 1e-6) {
-				terminationReason = "transmitted step was zero-length";
+			pathLength += advance;
+			segmentLength += advance;
+			ray = cast.transmitted;
+			cast.commitPermeation();
+			boolean continues = ray.power() > 1
+					&& maxLength > pathLength
+					&& results.size() < pConfig.nRayBounces
+					&& cast.transmitted.vector() != null;
+			debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), !continues);
+			prior = ray.position();
+			reflected = 0;
+			if (!continues) {
 				break;
 			}
-			consecutiveStalls = advance < STALL_ADVANCE_THRESHOLD ? consecutiveStalls + 1 : 0;
-			if (isGrazingStall(consecutiveStalls)) {
-				// A ray traveling nearly tangent to a flat surface keeps re-detecting that same
-				// boundary a hair away each cell crossing (shape.raycast returns a near-zero exit
-				// distance every time), so it never accumulates real distance or a bounce — it just
-				// burns its permeate budget on epsilon-scale slivers until the zero-length guard above
-				// kills it early with ~0 travel and 0 bounces. Force a real step along the ray's own
-				// direction to escape the degenerate boundary region instead of chasing it forever.
-				if (pConfig.dLog) Utils.LOGGER.info(
-						"Resounding: ray #{} escaping grazing stall after {} near-zero permeate steps",
-						id, consecutiveStalls
-				);
-				ray = escapeGrazingStall(ray);
-				length += STALL_ESCAPE_DISTANCE;
-				consecutiveStalls = 0;
-				permeateSteps++;
-				continue;
-			}
-			ray = cast.transmitted;
-			length += advance;
-			permeateSteps++;
-			// } */
 		}
-		logRayTermination(id, terminationReason, results, permeateSteps, length, ray.power());
+		debugTail.overlayTerminator(ctx, cast, id);
 		return results;
 	}
 
-	/** Per-ray lifetime summary, so a ray that dies early can be diagnosed without reconstructing its bounces from interleaved log lines. */
-	@Environment(EnvType.CLIENT)
-	private static void logRayTermination(int id, String reason, LinkedList<Hit> results, int permeateSteps, double length, double power) {
-		if (!pConfig.dLog) {
-			return;
+	/** Tracks the last debug segment per ray so a white overlay can mark the true path end. */
+	private static final class RayDebugTail {
+		private Vec3d start;
+		private Vec3d end;
+		private double power;
+		private int bounce;
+		private boolean terminated;
+
+		void emit(
+				SoundEvalContext ctx,
+				Cast cast,
+				int rayId,
+				Vec3d segmentStart,
+				Vec3d segmentEnd,
+				double segmentPower,
+				int bounceIndex,
+				boolean segmentTerminated
+		) {
+			if (!pConfig.dRays || rayId >= MAX_DEBUG_TRACE_RAYS) {
+				return;
+			}
+			emitDebugSegment(ctx, cast, segmentStart, segmentEnd, segmentPower, bounceIndex, segmentTerminated);
+			this.start = segmentStart;
+			this.end = segmentEnd;
+			this.power = segmentPower;
+			this.bounce = bounceIndex;
+			this.terminated = segmentTerminated;
 		}
-		Utils.LOGGER.info(
-				"Resounding: ray #{} terminated ({}) bounces={} permeates={} length={} power={}",
-				id,
-				reason,
-				results.size(),
-				permeateSteps,
-				String.format("%.2f", length),
-				String.format("%.1f", power)
+
+		void overlayTerminator(SoundEvalContext ctx, Cast cast, int rayId) {
+			if (!pConfig.dRays || rayId >= MAX_DEBUG_TRACE_RAYS || end == null || terminated) {
+				return;
+			}
+			Renderer.addTerminatorCross(end);
+		}
+	}
+
+	@Environment(EnvType.CLIENT)
+	private static void emitDebugSegment(
+			SoundEvalContext ctx,
+			Cast cast,
+			Vec3d start,
+			Vec3d end,
+			double power,
+			int bounceIndex,
+			boolean terminated
+	) {
+		Renderer.addSoundBounceRay(
+				start,
+				end,
+				cast.lastOctantColor,
+				bounceIndex,
+				ctx.sourceID(),
+				cast.lastMaterial,
+				cast.lastReflectivity == null ? 0.0 : cast.lastReflectivity,
+				cast.lastTransmission == null ? 0.0 : cast.lastTransmission,
+				power,
+				cast.lastPriorImpedance,
+				cast.lastBranchSize,
+				cast.lastMaterialLabel,
+				terminated
 		);
-	}
-
-	/** A permeate step shorter than this doesn't count as real travel — see {@link #isGrazingStall}. */
-	private static final double STALL_ADVANCE_THRESHOLD = 1e-3;
-	/** Consecutive near-zero permeate steps before a ray is considered stuck grazing a boundary. */
-	private static final int MAX_CONSECUTIVE_STALLS = 8;
-	/** Distance (blocks) a stalled ray is bumped forward along its own direction to escape. */
-	private static final double STALL_ESCAPE_DISTANCE = 0.05;
-
-	static boolean isGrazingStall(int consecutiveStalls) {
-		return consecutiveStalls >= MAX_CONSECUTIVE_STALLS;
-	}
-
-	/**
-	 * A ray traveling nearly tangent to a flat surface can keep re-detecting that same boundary a
-	 * hair away on every cell crossing (see {@link #isGrazingStall}); nudging perpendicular to the
-	 * surface (as {@code ShapeTraversal}'s exit epsilon does) barely changes which cell a
-	 * near-parallel ray is considered in. Stepping forward along the ray's own direction instead is
-	 * angle-independent, so it reliably escapes the degenerate boundary region.
-	 */
-	static Ray escapeGrazingStall(Ray ray) {
-		Vec3d direction = ray.vector().normalize();
-		Vec3d escaped = ray.position().add(direction.multiply(STALL_ESCAPE_DISTANCE));
-		return new Ray(ray.power(), escaped, ray.vector(), STALL_ESCAPE_DISTANCE);
 	}
 
 	@Environment(EnvType.CLIENT)
@@ -438,6 +429,7 @@ public class Engine {
 			traveled += step;
 			power = cast.transmitted.power();
 			position = cast.transmitted.position();
+			cast.commitPermeation();
 		}
 
 		double permeation = MathHelper.clamp(power / 128.0, 0.0, 1.0);
@@ -468,13 +460,11 @@ public class Engine {
 	private static @NotNull EnvData evalEnv(SoundEvalContext ctx) {
 		CaptureBuffer.INSTANCE.onSoundEvalStart();
 		try {
-		// Throw rays around
-		// TODO implement tagging system here
 		Consumer<String> logger = pConfig.log ? (pConfig.eLog ? Utils.LOGGER::info : Utils.LOGGER::debug) : x -> {};
 		List<LinkedList<Hit>> reflRays = List.of();
 		if (pConfig.reverbEnabled) {
 			logger.accept("Sampling environment with "+pConfig.nRays+" seed rays...");
-			reflRays = rays.stream().map((ray) -> Engine.raycast(ray, 128, ctx)).toList();
+			reflRays = rays.stream().parallel().unordered().map((ray) -> Engine.raycast(ray, 128, ctx)).toList();
 			if (pConfig.eLog) {
 				int rayCount = 0;
 				for (LinkedList<Hit> reflRay : reflRays) {
@@ -575,31 +565,49 @@ public class Engine {
 					}
 				}
 
+				final double legLength = Math.max(hit.segment(), 1e-6);
+				final double pathLength = Math.max(hit.length(), 1e-6);
+
 				final double playerEnergy =
 						MathHelper.clamp(
 						hit.amplitude() * (
 								pConfig.fastShared
-								? Math.pow(airAbsorptionHF, hit.length() + hit.distance())
-								/ Math.pow(Math.max(hit.length() + hit.distance(), 1e-6), distanceAttenuationExponent())
+								? Math.pow(airAbsorptionHF, pathLength + hit.distance())
+								/ Math.pow(pathLength + hit.distance(), 2.0D * missed)
 
 								: smoothSharedEnergy
-								* Math.pow(airAbsorptionHF, hit.length() + smoothSharedDistance)
-								/ Math.pow(Math.max(hit.length() + smoothSharedDistance, 1e-6), distanceAttenuationExponent())
+								* Math.pow(airAbsorptionHF, pathLength + smoothSharedDistance)
+								/ Math.pow(pathLength + smoothSharedDistance, 2.0D * missed)
 							),
 						0, 1);
 
 				final double bounceEnergy = MathHelper.clamp(
 						(hit.amplitude() / 128.0)
-								* Math.pow(airAbsorptionHF, hit.length())
-								/ Math.pow(Math.max(hit.length(), 1e-6), distanceAttenuationExponent()),
-						1e-12, 1.0 - 1e-12);
+								* Math.pow(airAbsorptionHF, legLength)
+								/ Math.pow(Math.max(legLength, 1.0), 2.0D * missed),
+						java.lang.Double.MIN_VALUE, 1);
 
-				// TODO modify to use individual speed of sound in mediums
-				final double bounceTime = hit.length() / speedOfSound;
+				final double bounceTime = pathLength / speedOfSound;
+				final double acousticPath = pathLength + hit.distance();
+				final double logPath = Math.log1p(acousticPath);
+				final double logMaxPath = Math.log1p(pConfig.maxTraceDist);
+				final int timeBin = MathHelper.clamp(
+						(int) (logPath / logMaxPath * pConfig.resolution),
+						0, pConfig.resolution);
 
-				sendGain[
-						bounceEnergyBin(bounceEnergy, bounceTime)
-						] += playerEnergy;
+				double energyForBin = Math.pow(
+						Math.max(bounceEnergy, java.lang.Double.MIN_VALUE),
+						pConfig.maxDecayTime / Math.max(bounceTime, 1e-4) * pConfig.energyFix
+				);
+				int energyBin = energyForBin >= 1.0 - 1e-9
+						? pConfig.resolution
+						: MathHelper.clamp(
+								(int) (1 / Utils.logBase(
+										Math.max(energyForBin, minEnergy),
+										minEnergy) * pConfig.resolution),
+								0, pConfig.resolution);
+
+				sendGain[Math.max(timeBin, energyBin)] += playerEnergy;
 
 			}
 		}
@@ -621,7 +629,7 @@ public class Engine {
 		double permeation = amplitude / 128;
 
 		directGain *= Math.pow(airAbsorptionHF, ctx.listenerPos().distanceTo(ctx.soundPos()))
-				/ Math.pow(Math.max(ctx.listenerPos().distanceTo(ctx.soundPos()), 1e-6), distanceAttenuationExponent())
+				/ Math.pow(ctx.listenerPos().distanceTo(ctx.soundPos()), 2 * missed)
 				* MathHelper.lerp(permeation, 1, sharedSum);
 		directCutoff = Math.pow(MathHelper.clamp(directGain, 1e-6, 1.0), pConfig.globalAbsHFRcp);
 
@@ -657,11 +665,29 @@ public class Engine {
 
 		if (pConfig.eLog || pConfig.dLog) {
 			Utils.LOGGER.info("Final reverb settings:\n{}", finalSend);
+			if (pConfig.reverbEnabled) {
+				int peakBin = 0;
+				double peakGain = profile.sendGain()[0];
+				for (int i = 1; i <= pConfig.resolution; i++) {
+					if (profile.sendGain()[i] > peakGain) {
+						peakGain = profile.sendGain()[i];
+						peakBin = i;
+					}
+				}
+				Utils.LOGGER.info(
+						"Resounding: reverb peak bin={} gain={} cutoff={} direct={}/{}",
+						peakBin,
+						String.format("%.4f", peakGain),
+						String.format("%.4f", profile.sendCutoff()[peakBin]),
+						String.format("%.4f", profile.directGain()),
+						String.format("%.4f", profile.directCutoff())
+				);
+			}
 		}
 
 		context.update(finalSend, profile, isGentle);
 
-		if (pConfig.dRays) {
+		if (pConfig.dRays || pConfig.eLog) {
 			dev.thedocruby.resounding.debug.SoundEffectReadout.publish(
 					soundTag,
 					soundCategory,
@@ -679,29 +705,17 @@ public class Engine {
 	@Environment(EnvType.CLIENT)
 	public static @NotNull SlotProfile selectSlot(double[] sendGain, double[] sendCutoff) {
 		if (pConfig.fastPick) { // TODO: find cause of block.lava.ambient NaN
-			int slot = 0;
-			double max = sendGain[0];
-			for (int i = 1; i <= pConfig.resolution; i++) if (sendGain[i] > max) {
-				slot=i;
-				max = sendGain[i];
+			double sum = 0.0;
+			double weightedSum = 0.0;
+			for (int i = 0; i <= pConfig.resolution; i++) {
+				sum += sendGain[i];
+				weightedSum += i * sendGain[i];
 			}
-
-			final int iavg = slot;
-			// Different fast selection method, can't decide which one is better.
-			// TODO: Do something with this.
-            /* if (false) {
-				double sum = 0;
-				double weightedSum = 0;
-				for (int i = 1; i <= pConfig.resolution; i++) {
-					sum += sendGain[i];
-					weightedSum += i * sendGain[i];
-				}
-				iavg = (int) Math.round(MathHelper.clamp(weightedSum / sum, 0, pConfig.resolution));
-			} */
-
-			return iavg > 0
-				? new SlotProfile(iavg, sendGain[iavg], sendCutoff[iavg])
-				: new SlotProfile(0, sendGain[0], sendCutoff[0]);
+			if (sum <= 0.0) {
+				return new SlotProfile(0, sendGain[0], sendCutoff[0]);
+			}
+			int slot = (int) Math.round(MathHelper.clamp(weightedSum / sum, 0, pConfig.resolution));
+			return new SlotProfile(slot, sendGain[slot], sendCutoff[slot]);
 		}
 		// TODO: Slot selection logic will go here. See https://www.desmos.com/calculator/v5bt1gdgki
         /*
@@ -709,26 +723,6 @@ public class Engine {
 		double selected = factorial(m)/(factorial(k)-factorial(mk))*Math.pow(1-x,mk)*Math.min(1,Math.max(0,Math.pow(x,k)));
 		 */
 		return new SlotProfile(0, 0, 0);
-	}
-
-	/** Inverse-square distance rolloff for air paths (not scaled by missed-ray count). */
-	@Environment(EnvType.CLIENT)
-	static double distanceAttenuationExponent() {
-		return 2.0;
-	}
-
-	/** Maps bounce energy and path time to a reverb preset bin without log(1.0) singularities. */
-	@Environment(EnvType.CLIENT)
-	static int bounceEnergyBin(double bounceEnergy, double bounceTime) {
-		if (bounceTime < 1e-9) {
-			return 0;
-		}
-		double energy = MathHelper.clamp(bounceEnergy, 1e-12, 1.0 - 1e-12);
-		double rt60 = energy >= 1.0 - 1e-12
-				? pConfig.maxDecayTime
-				: Math.min(pConfig.maxDecayTime, -bounceTime / Math.log(energy));
-		double fraction = rt60 / pConfig.maxDecayTime;
-		return MathHelper.clamp((int) Math.round(fraction * pConfig.resolution), 0, Math.max(0, pConfig.resolution - 1));
 	}
 
 }

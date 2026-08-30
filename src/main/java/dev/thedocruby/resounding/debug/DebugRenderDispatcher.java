@@ -40,6 +40,10 @@ public final class DebugRenderDispatcher {
 		return octree;
 	}
 
+	public CaptureLayer capture() {
+		return capture;
+	}
+
 	private void render(WorldRenderContext context) {
 		if (!Engine.isActive) {
 			return;

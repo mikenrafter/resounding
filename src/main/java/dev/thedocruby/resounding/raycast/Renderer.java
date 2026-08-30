@@ -1,5 +1,6 @@
 package dev.thedocruby.resounding.raycast;
 
+import dev.thedocruby.resounding.debug.BounceRayLayer;
 import dev.thedocruby.resounding.debug.CaptureBuffer;
 import dev.thedocruby.resounding.debug.DebugRenderDispatcher;
 import dev.thedocruby.resounding.material.Material;
@@ -27,20 +28,29 @@ public class Renderer {
 			double power,
 			double priorImpedance,
 			int branchSize,
-			@Nullable String materialLabel
+			@Nullable String materialLabel,
+			boolean terminated
 	) {
 		if (!pConfig.dRays) {
 			return;
 		}
 		DebugRenderDispatcher.INSTANCE.bounceRays().addSoundBounceRay(
-				start, end, color, bounceIndex, sourceID, material, reflectivity, transmission, power
+				start, end, color, bounceIndex, sourceID, material, reflectivity, transmission, power, terminated
 		);
 		if (CaptureBuffer.INSTANCE.isCapturing()) {
 			CaptureBuffer.INSTANCE.offer(new CaptureBuffer.CapturedRay(
-					start, end, color, sourceID, bounceIndex, material, reflectivity, transmission, power,
-					priorImpedance, branchSize, materialLabel
+					start, end, terminated ? BounceRayLayer.TERMINATED_COLOR : color,
+					sourceID, bounceIndex, material, reflectivity, transmission, power,
+					priorImpedance, branchSize, materialLabel, terminated
 			));
 		}
+	}
+
+	public static void addTerminatorCross(Vec3d center) {
+		if (!pConfig.dRays) {
+			return;
+		}
+		DebugRenderDispatcher.INSTANCE.bounceRays().addTerminatorCross(center);
 	}
 
 	public static void addOcclusionRay(Vec3d start, Vec3d end, int color) {

@@ -30,7 +30,8 @@ public final class CaptureBuffer {
 			double priorImpedance,
 			/** Octree node size (in blocks) the boundary was resolved at; >1 means a coarse cached node. */
 			int branchSize,
-			@Nullable String materialLabel
+			@Nullable String materialLabel,
+			boolean terminated
 	) {}
 
 	private final int maxSegments;

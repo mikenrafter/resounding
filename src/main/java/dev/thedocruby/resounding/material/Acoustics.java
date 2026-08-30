@@ -43,6 +43,18 @@ public final class Acoustics {
     }
 
     /**
+     * Fraction of permeation coefficient retained after traveling {@code distance} blocks through a
+     * medium — {@code permeation^(granularity × distance)}. Lower granularity lets more energy
+     * through per block (e.g. a thin pane) without changing the base coefficient.
+     */
+    public static double permeationOverDistance(double permeation, double granularity, double distance) {
+        if (distance <= 0.0) {
+            return 1.0;
+        }
+        return Math.pow(permeation, granularity * distance);
+    }
+
+    /**
      * Baked phase coordinate on {@code [0, 1]} from temperature and phase points.
      *
      * <p>Melt and boil are authored in degrees Celsius in the shipped pack; they are converted to

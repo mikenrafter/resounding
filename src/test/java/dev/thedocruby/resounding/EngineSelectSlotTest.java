@@ -45,7 +45,41 @@ class EngineSelectSlotTest {
 	}
 
 	@Test
-	void highestGainInBin1SelectsSlot1() {
+	void fallsBackToBinZeroWhenOnlyDryBinHasEnergy() {
+		int resolution = PrecomputedConfig.pConfig.resolution;
+		double[] sendGain = new double[resolution + 1];
+		double[] sendCutoff = new double[resolution + 1];
+
+		sendGain[0] = 0.8;
+		for (int i = 1; i <= resolution; i++) {
+			sendGain[i] = 0.0;
+		}
+
+		SlotProfile profile = Engine.selectSlot(sendGain, sendCutoff);
+
+		assertEquals(0, profile.slot());
+		assertEquals(0.8, profile.gain(), 1e-9);
+	}
+
+	@Test
+	void weightedAverageSelectsHigherSlotWhenEnergySpreads() {
+		int resolution = PrecomputedConfig.pConfig.resolution;
+		double[] sendGain = new double[resolution + 1];
+		double[] sendCutoff = new double[resolution + 1];
+
+		sendGain[0] = 0.5;
+		sendGain[resolution] = 0.5;
+		for (int i = 1; i < resolution; i++) {
+			sendGain[i] = 0.0;
+		}
+
+		SlotProfile profile = Engine.selectSlot(sendGain, sendCutoff);
+
+		assertEquals(resolution / 2, profile.slot());
+	}
+
+	@Test
+	void highestGainInBin1SelectsSlotNearWeightedCenter() {
 		int resolution = PrecomputedConfig.pConfig.resolution;
 		double[] sendGain = new double[resolution + 1];
 		double[] sendCutoff = new double[resolution + 1];
@@ -59,7 +93,7 @@ class EngineSelectSlotTest {
 
 		SlotProfile profile = Engine.selectSlot(sendGain, sendCutoff);
 
-		assertEquals(1, profile.slot(), "bin 1 has the highest gain and must be selected");
+		assertEquals(1, profile.slot(), "weighted center favors bin 1 when it dominates");
 		assertEquals(0.9, profile.gain(), 1e-9);
 	}
 }

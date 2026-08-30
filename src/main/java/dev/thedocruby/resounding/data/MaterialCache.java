@@ -36,6 +36,7 @@ public final class MaterialCache {
     private static final double DEFAULT_IMPEDANCE = 412.0D;
     private static final double DEFAULT_PERMEATION = 1.0D;
     private static final double DEFAULT_STATE = 0.0D;
+    private static final double DEFAULT_GRANULARITY = 1.0D;
 
     /**
      * Reads a cache document.
@@ -62,7 +63,8 @@ public final class MaterialCache {
                 out.put(Ident.parse(entry.getKey()), new Material(
                         number(value, "impedance", DEFAULT_IMPEDANCE),
                         number(value, "permeation", DEFAULT_PERMEATION),
-                        number(value, "state", DEFAULT_STATE)));
+                        number(value, "state", DEFAULT_STATE),
+                        number(value, "granularity", DEFAULT_GRANULARITY)));
             } catch (IllegalArgumentException e) {
                 // malformed id: skip this entry, keep the rest
             }

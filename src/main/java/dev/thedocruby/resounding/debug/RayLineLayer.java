@@ -30,11 +30,28 @@ abstract class RayLineLayer implements DebugLayer {
 	}
 
 	void addSegment(Vec3d start, Vec3d end, int color, float width) {
+		addSegment(start, end, color, width, false);
+	}
+
+	void addSegment(Vec3d start, Vec3d end, int color, float width, boolean terminator) {
 		if (!pConfig.dRays) {
 			return;
 		}
 		synchronized (segments) {
-			segments.offer(new LineSegment(start, end, color, width));
+			segments.offer(new LineSegment(start, end, color, width, terminator));
+		}
+		buffer.markDirty();
+	}
+
+	List<LineSegment> segmentSnapshot() {
+		synchronized (segments) {
+			return segments.asList();
+		}
+	}
+
+	void clear() {
+		synchronized (segments) {
+			segments.clear();
 		}
 		buffer.markDirty();
 	}
@@ -67,7 +84,9 @@ abstract class RayLineLayer implements DebugLayer {
 			byWidth.computeIfAbsent(segment.width, ignored -> new ArrayList<>()).add(segment);
 		}
 
-		for (Map.Entry<Float, List<LineSegment>> entry : byWidth.entrySet()) {
+		for (Map.Entry<Float, List<LineSegment>> entry : byWidth.entrySet().stream()
+				.sorted(Map.Entry.comparingByKey())
+				.toList()) {
 			float width = entry.getKey();
 			List<LineSegment> group = entry.getValue();
 			buffer.markDirty();
@@ -85,5 +104,5 @@ abstract class RayLineLayer implements DebugLayer {
 		}
 	}
 
-	private record LineSegment(Vec3d start, Vec3d end, int color, float width) {}
+	record LineSegment(Vec3d start, Vec3d end, int color, float width, boolean terminator) {}
 }

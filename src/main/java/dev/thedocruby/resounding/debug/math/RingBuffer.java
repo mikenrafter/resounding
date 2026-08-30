@@ -44,6 +44,12 @@ public final class RingBuffer<T> {
         return size;
     }
 
+    public void clear() {
+        head = 0;
+        size = 0;
+        java.util.Arrays.fill(buffer, null);
+    }
+
     public int capacity() {
         return capacity;
     }

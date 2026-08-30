@@ -50,6 +50,13 @@ class AcousticsTest {
     }
 
     @Test
+    void permeationOverDistanceScalesByGranularity() {
+        assertEquals(0.9, Acoustics.permeationOverDistance(0.9, 1.0, 1.0), 1e-9);
+        assertEquals(0.9240210865, Acoustics.permeationOverDistance(0.9, 0.75, 1.0), 1e-6);
+        assertEquals(0.7175693906, Acoustics.permeationOverDistance(0.9, 0.75, 4.2), 1e-6);
+    }
+
+    @Test
     void clampLimitsToRange() {
         assertEquals(0.0, Acoustics.clamp(-1.0, 0.0, 1.0), 1e-12);
         assertEquals(1.0, Acoustics.clamp(2.0, 0.0, 1.0), 1e-12);

@@ -333,6 +333,7 @@ public final class MaterialResolver {
             density /= 1000.0;
         }
         double impedance = clampImpedance(velocity * density);
+        double gran = raw.granularity() != null ? raw.granularity() : 1.0;
 
         double solventImpedance;
         if (raw.solvent() == null || raw.solvent().equals(id)) {
@@ -381,7 +382,7 @@ public final class MaterialResolver {
             permeation = Acoustics.clamp(permeation, 0.0, 1.0);
         }
 
-        Material baked = new Material(impedance, permeation, state);
+        Material baked = new Material(impedance, permeation, state, gran);
         bakedMaterials.put(id, baked);
         bakePath.remove(bakePath.size() - 1);
         bakeState.put(id, 2);

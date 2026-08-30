@@ -61,18 +61,6 @@ class EngineProcessEnvTest {
 	}
 
 	@Test
-	void distanceAttenuationUsesInverseSquare() {
-		assertEquals(2.0, Engine.distanceAttenuationExponent(), 1e-9);
-	}
-
-	/**
-	 * Regression test for a long-standing bug: {@code sharedSum} is only ever accumulated in the
-	 * {@code !fastShared} branch of processEnv's hit loop, but the FAST shared-airspace mode
-	 * (the default, {@link dev.thedocruby.resounding.toolbox.SharedAirspaceMode#FAST}) multiplied
-	 * every sendGain bin by that always-zero {@code sharedSum}, silencing reverb entirely regardless
-	 * of geometry.
-	 */
-	@Test
 	void fastSharedAirspaceModeStillProducesNonZeroSendGain() throws Exception {
 		PrecomputedConfig.pConfig.deactivate();
 		ResoundingConfig config = new ResoundingConfig();

@@ -7,10 +7,10 @@ import java.util.Objects;
 
 public record Hit(
         Vec3d position,  // end position of ray
-        double length,   // length of ray (including prior bounces) when hit
+        double length,   // cumulative path distance from source (for reverb time / RT60 binning)
         double shared,   // ??
         double distance, // distance from listener
-        double segment,  // length of individual segment
+        double segment,  // distance since last reflection (for per-leg air absorption)
         double reflect,  // reflectivity of surface
         double amplitude // amplitude of ray
 ) {

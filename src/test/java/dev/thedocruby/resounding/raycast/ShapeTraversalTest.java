@@ -16,7 +16,7 @@ class ShapeTraversalTest {
 			(base, size, position, vector) -> new Step(vector.multiply(1.0), new Vec3i(1, 0, 0));
 
 	@Test
-	void emptyShapePassesThroughCellWithoutMaterialInteraction() {
+	void emptyShapeFallsBackToVoxelMode() {
 		BlockPos origin = new BlockPos(0, 0, 0);
 		Vec3d position = new Vec3d(0.5, 0.5, 0.5);
 		Vec3d vector = new Vec3d(1, 0, 0);
@@ -25,8 +25,21 @@ class ShapeTraversalTest {
 				origin, 1, position, vector, VoxelShapes.empty(), UNIT_STEPPER
 		);
 
-		assertEquals(ShapeTraversal.Mode.AIR_CELL, result.mode());
-		assertTrue(result.permeationDistance() > 0);
+		assertEquals(ShapeTraversal.Mode.VOXEL, result.mode());
+	}
+
+	@Test
+	void unitFullCubeUsesVoxelMode() {
+		BlockPos origin = new BlockPos(0, 0, 0);
+		Vec3d position = new Vec3d(0.5, 0.5, 0.5);
+		Vec3d vector = new Vec3d(1, 0, 0);
+		VoxelShape cube = VoxelShapes.fullCube();
+
+		ShapeTraversal.Result result = ShapeTraversal.resolve(
+				origin, 1, position, vector, cube, UNIT_STEPPER
+		);
+
+		assertEquals(ShapeTraversal.Mode.VOXEL, result.mode());
 	}
 
 	@Test

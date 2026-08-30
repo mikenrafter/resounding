@@ -11,6 +11,10 @@ import org.jetbrains.annotations.NotNull;
 public record Material(
         @NotNull Double impedance,   // impedance of material
         @NotNull Double permeation,  // permeation of material (inverse of absorption)
-        @NotNull Double state        // state of matter [0 absent, .25 plasma, .5 gas, .75 liquid, 1 solid]
+        @NotNull Double state,       // state of matter [0 absent, .25 plasma, .5 gas, .75 liquid, 1 solid]
+        @NotNull Double granularity  // scales distance exponent when ray permeates this medium
 ) {
+    public Material(@NotNull Double impedance, @NotNull Double permeation, @NotNull Double state) {
+        this(impedance, permeation, state, 1.0);
+    }
 }

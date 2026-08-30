@@ -13,6 +13,10 @@ import static dev.thedocruby.resounding.OctreeManager.EMPTY;
 /**
  * Resolves how far a ray travels through a block cell, using {@link VoxelShape#raycast} for
  * partial blocks (panes, stairs, etc.) instead of treating the whole 1³ cell as solid.
+ *
+ * <p>Empty cells, full cubes, and misses use {@link Mode#VOXEL} so the caller applies normal
+ * octree stepping and full material interaction (air included). Partial solids (panes, stairs,
+ * etc.) use {@link Mode#SHAPE}.
  */
 final class ShapeTraversal {
 
@@ -21,11 +25,9 @@ final class ShapeTraversal {
 	private ShapeTraversal() {}
 
 	enum Mode {
-		/** Use standard octree / full-cube stepping. */
+		/** Standard octree / full-cube stepping through the whole cell. */
 		VOXEL,
-		/** No solid geometry in this cell; pass through without material interaction. */
-		AIR_CELL,
-		/** Hit partial or full solid geometry via shape raycast. */
+		/** Partial solid geometry resolved via shape raycast (entry/exit positions). */
 		SHAPE
 	}
 
@@ -40,10 +42,6 @@ final class ShapeTraversal {
 	) {
 		static Result voxel() {
 			return new Result(Mode.VOXEL, null, null, 0, null, 0, null);
-		}
-
-		static Result airCell(Step cellStep, Vec3d transmitPosition) {
-			return new Result(Mode.AIR_CELL, cellStep, null, cellStep.step().length(), transmitPosition, 0, null);
 		}
 
 		static Result shape(
@@ -64,9 +62,9 @@ final class ShapeTraversal {
 		double cellReach = cellStep.step().length() + EPS;
 
 		if (shape == null || shape.isEmpty() || shape == EMPTY) {
-			return Result.airCell(cellStep, transmitPosition);
+			return Result.voxel();
 		}
-		if (shape == CUBE && size > 1) {
+		if (shape == CUBE) {
 			return Result.voxel();
 		}
 
@@ -79,7 +77,7 @@ final class ShapeTraversal {
 		BlockHitResult hit = shape.raycast(position, rayEnd, origin);
 
 		if (!inside && hit == null) {
-			return Result.airCell(cellStep, transmitPosition);
+			return Result.voxel();
 		}
 
 		if (inside) {
@@ -157,11 +155,27 @@ final class ShapeTraversal {
 	}
 
 	static Vec3d truncate(Vec3d position) {
+		// Round (not floor/truncate) so a step that lands within float noise of a whole-number
+		// voxel edge snaps exactly onto it. Cast.normalize()'s sign-of-vector octant pick only
+		// diverges from the wrong answer when the coordinate is precisely integral; a truncating
+		// cast systematically undershoots toward zero and leaves the ray a hair off the boundary,
+		// silently defeating that sign check on the next cast.
 		return new Vec3d(
-				((long) (position.x * 1e5)) / 1e5,
-				((long) (position.y * 1e5)) / 1e5,
-				((long) (position.z * 1e5)) / 1e5
+				Math.round(position.x * 1e5) / 1e5,
+				Math.round(position.y * 1e5) / 1e5,
+				Math.round(position.z * 1e5) / 1e5
 		);
+	}
+
+	static boolean isPartialSolid(VoxelShape shape) {
+		return shape != null && !shape.isEmpty() && shape != EMPTY && shape != CUBE;
+	}
+
+	static boolean containsLocalPoint(VoxelShape shape, BlockPos origin, Vec3d position) {
+		double lx = position.x - origin.getX();
+		double ly = position.y - origin.getY();
+		double lz = position.z - origin.getZ();
+		return containsPoint(shape, lx, ly, lz);
 	}
 
 	private static boolean containsPoint(VoxelShape shape, double lx, double ly, double lz) {

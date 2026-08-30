@@ -14,4 +14,14 @@ class BounceRayLayerTest {
 		assertEquals(1.0F, BounceRayLayer.lineWidthFor(32.0, 2), 1e-6);
 		assertEquals(1.0F, BounceRayLayer.lineWidthFor(1.0, 10), 1e-6);
 	}
+
+	@Test
+	void terminatedColorIsMagenta() {
+		assertEquals(0xFFFF00FF, BounceRayLayer.TERMINATED_COLOR);
+	}
+
+	@Test
+	void terminatedMarkersUseDedicatedLineWidth() {
+		assertEquals(3.0F, BounceRayLayer.TERMINATED_LINE_WIDTH, 1e-6);
+	}
 }

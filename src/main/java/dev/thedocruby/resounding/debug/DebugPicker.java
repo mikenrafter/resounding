@@ -36,10 +36,11 @@ public final class DebugPicker {
 
 	private static void pick(MinecraftClient client) {
 		boolean showSoundEffects = pConfig != null && pConfig.dRays;
+		boolean showReadout = showSoundEffects || (pConfig != null && pConfig.eLog);
 		boolean capturePeekable = CaptureBuffer.INSTANCE.isCapturing()
-				|| !CaptureBuffer.INSTANCE.asCapturedList().isEmpty();
+				&& DebugRenderDispatcher.INSTANCE.capture().isEnabled();
 		boolean octreePeekable = DebugRenderDispatcher.INSTANCE.octree().isEnabled();
-		if (!showSoundEffects && !capturePeekable && !octreePeekable) {
+		if (!showReadout && !capturePeekable && !octreePeekable) {
 			return;
 		}
 
@@ -47,7 +48,7 @@ public final class DebugPicker {
 		profiler.push("resounding_debug_pick");
 		try {
 			String message = null;
-			if (showSoundEffects) {
+			if (showReadout) {
 				SoundEffectReadout.Snapshot snapshot = SoundEffectReadout.latest();
 				if (snapshot != null) {
 					message = SoundEffectReadout.format(snapshot);
@@ -131,14 +132,15 @@ public final class DebugPicker {
 			StringBuilder builder = new StringBuilder(128);
 			builder.append(String.format(
 					Locale.ROOT,
-					"Ray b=%d id=%d R=%.2f T=%.2f pow=%.1f node=%d³ %s",
+					"Ray b=%d id=%d R=%.2f T=%.2f pow=%.1f node=%d³ %s%s",
 					ray.bounceIndex(),
 					ray.soundEventId(),
 					ray.reflectivity(),
 					ray.transmission(),
 					ray.power(),
 					ray.branchSize(),
-					ray.materialLabel() == null ? "?" : ray.materialLabel()
+					ray.materialLabel() == null ? "?" : ray.materialLabel(),
+					ray.terminated() ? " END" : ""
 			));
 			builder.append(String.format(Locale.ROOT, " Zprev=%.2f", ray.priorImpedance()));
 			Material material = ray.material();
