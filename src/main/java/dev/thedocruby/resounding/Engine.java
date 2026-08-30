@@ -225,6 +225,7 @@ public class Engine {
 		LinkedList<Hit> results = new LinkedList<>();
 		Cast cast = new Cast(mc.world, null, ctx.soundChunk(), targetPosition);
 		int permeateSteps = 0;
+		int consecutiveStalls = 0;
 		String terminationReason;
 
 		// launch initial ray & always permeate first
@@ -325,6 +326,24 @@ public class Engine {
 				terminationReason = "transmitted step was zero-length";
 				break;
 			}
+			consecutiveStalls = advance < STALL_ADVANCE_THRESHOLD ? consecutiveStalls + 1 : 0;
+			if (isGrazingStall(consecutiveStalls)) {
+				// A ray traveling nearly tangent to a flat surface keeps re-detecting that same
+				// boundary a hair away each cell crossing (shape.raycast returns a near-zero exit
+				// distance every time), so it never accumulates real distance or a bounce — it just
+				// burns its permeate budget on epsilon-scale slivers until the zero-length guard above
+				// kills it early with ~0 travel and 0 bounces. Force a real step along the ray's own
+				// direction to escape the degenerate boundary region instead of chasing it forever.
+				if (pConfig.dLog) Utils.LOGGER.info(
+						"Resounding: ray #{} escaping grazing stall after {} near-zero permeate steps",
+						id, consecutiveStalls
+				);
+				ray = escapeGrazingStall(ray);
+				length += STALL_ESCAPE_DISTANCE;
+				consecutiveStalls = 0;
+				permeateSteps++;
+				continue;
+			}
 			ray = cast.transmitted;
 			length += advance;
 			permeateSteps++;
@@ -349,6 +368,30 @@ public class Engine {
 				String.format("%.2f", length),
 				String.format("%.1f", power)
 		);
+	}
+
+	/** A permeate step shorter than this doesn't count as real travel — see {@link #isGrazingStall}. */
+	private static final double STALL_ADVANCE_THRESHOLD = 1e-3;
+	/** Consecutive near-zero permeate steps before a ray is considered stuck grazing a boundary. */
+	private static final int MAX_CONSECUTIVE_STALLS = 8;
+	/** Distance (blocks) a stalled ray is bumped forward along its own direction to escape. */
+	private static final double STALL_ESCAPE_DISTANCE = 0.05;
+
+	static boolean isGrazingStall(int consecutiveStalls) {
+		return consecutiveStalls >= MAX_CONSECUTIVE_STALLS;
+	}
+
+	/**
+	 * A ray traveling nearly tangent to a flat surface can keep re-detecting that same boundary a
+	 * hair away on every cell crossing (see {@link #isGrazingStall}); nudging perpendicular to the
+	 * surface (as {@code ShapeTraversal}'s exit epsilon does) barely changes which cell a
+	 * near-parallel ray is considered in. Stepping forward along the ray's own direction instead is
+	 * angle-independent, so it reliably escapes the degenerate boundary region.
+	 */
+	static Ray escapeGrazingStall(Ray ray) {
+		Vec3d direction = ray.vector().normalize();
+		Vec3d escaped = ray.position().add(direction.multiply(STALL_ESCAPE_DISTANCE));
+		return new Ray(ray.power(), escaped, ray.vector(), STALL_ESCAPE_DISTANCE);
 	}
 
 	@Environment(EnvType.CLIENT)
