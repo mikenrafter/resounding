@@ -285,6 +285,8 @@ public class Engine {
 				);
 			}
 
+			recordReflectHitIfAny(cast, results, ray, pathLength, segmentLength, ctx.listenerPos());
+
 			if (reflect.apply(cast, results)) {
 				if (reflected++ > 2) {
 					debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true);
@@ -294,16 +296,6 @@ public class Engine {
 							: "3 consecutive reflects";
 					break;
 				}
-				results.add(new Hit
-						(/*end pos  */ ray.position()
-						,/*length   */ pathLength
-						,/*shared   */ 0
-						,/*distance */ cast.reflected.position().distanceTo(ctx.listenerPos())
-						,/*segment  */ segmentLength
-						,/*surface  */ cast.reflected.power() / ray.power()
-						,/*amplitude*/ cast.reflected.power()
-						));
-
 				pathLength += cast.reflected.length();
 				segmentLength = 0;
 				ray = cast.reflected;
@@ -348,6 +340,34 @@ public class Engine {
 		debugTail.overlayTerminator(ctx, cast, id);
 		logRayTermination(id, terminationReason, results, prior);
 		return results;
+	}
+
+	/**
+	 * Records reflected energy for reverb binning whenever this cast produced a reflective boundary,
+	 * regardless of whether propagation follows the reflected or transmitted branch.
+	 */
+	@Environment(EnvType.CLIENT)
+	private static void recordReflectHitIfAny(
+			Cast cast,
+			LinkedList<Hit> results,
+			Ray ray,
+			double pathLength,
+			double segmentLength,
+			Vec3d listenerPos
+	) {
+		if (cast.lastReflectivity == null || cast.lastReflectivity <= 0.0
+				|| cast.reflected == null || cast.reflected.power() <= 0.0) {
+			return;
+		}
+		results.add(new Hit(
+				ray.position(),
+				pathLength,
+				0,
+				cast.reflected.position().distanceTo(listenerPos),
+				segmentLength,
+				cast.lastReflectivity,
+				cast.reflected.power()
+		));
 	}
 
 	/** Per-ray lifetime summary — logged for every ray (not just the id&lt;4 sample) so a ray that
@@ -643,33 +663,11 @@ public class Engine {
 							),
 						0, 1);
 
-				final double bounceEnergy = MathHelper.clamp(
-						(hit.amplitude() / 128.0)
-								* Math.pow(airAbsorptionHF, legLength)
-								/ Math.pow(Math.max(legLength, 1.0), 2.0D * missed),
-						java.lang.Double.MIN_VALUE, 1);
+				final double bounceEnergy = bounceEnergyForHit(hit, missed, airAbsorptionHF, legLength);
+				final int timeBin = timeBinForAcousticPath(pathLength, hit.distance());
+				final double energyWeight = energyWeightForHit(bounceEnergy, pathLength);
 
-				final double bounceTime = pathLength / speedOfSound;
-				final double acousticPath = pathLength + hit.distance();
-				final double logPath = Math.log1p(acousticPath);
-				final double logMaxPath = Math.log1p(pConfig.maxTraceDist);
-				final int timeBin = MathHelper.clamp(
-						(int) (logPath / logMaxPath * pConfig.resolution),
-						0, pConfig.resolution);
-
-				double energyForBin = Math.pow(
-						Math.max(bounceEnergy, java.lang.Double.MIN_VALUE),
-						pConfig.maxDecayTime / Math.max(bounceTime, 1e-4) * pConfig.energyFix
-				);
-				int energyBin = energyForBin >= 1.0 - 1e-9
-						? pConfig.resolution
-						: MathHelper.clamp(
-								(int) (1 / Utils.logBase(
-										Math.max(energyForBin, minEnergy),
-										minEnergy) * pConfig.resolution),
-								0, pConfig.resolution);
-
-				sendGain[Math.max(timeBin, energyBin)] += playerEnergy;
+				sendGain[timeBin] += playerEnergy * energyWeight;
 
 			}
 		}
@@ -706,6 +704,37 @@ public class Engine {
 		if (pConfig.log) Utils.LOGGER.info("Processed sound profile:\n{}", profile);
 
 		return new ProcessedSound(profile, directPermeation);
+	}
+
+	static double bounceEnergyForHit(Hit hit, double missed, double airAbsorptionHF, double legLength) {
+		return Math.max(
+				(hit.amplitude() / 128.0)
+						* Math.pow(airAbsorptionHF, legLength)
+						/ Math.pow(Math.max(legLength, 1.0), 2.0D * missed),
+				java.lang.Double.MIN_VALUE);
+	}
+
+	static double energyWeightForHit(double bounceEnergy, double pathLength) {
+		double bounceTime = pathLength / speedOfSound;
+		double energyForBin = Math.pow(
+				Math.max(bounceEnergy, java.lang.Double.MIN_VALUE),
+				pConfig.maxDecayTime / Math.max(bounceTime, 1e-4) * pConfig.energyFix
+		);
+		if (energyForBin >= 1.0) {
+			return 1.0;
+		}
+		return MathHelper.clamp(
+				1.0 / Utils.logBase(Math.max(energyForBin, minEnergy), minEnergy) / pConfig.resolution,
+				0, 1);
+	}
+
+	static int timeBinForAcousticPath(double pathLength, double listenerDistance) {
+		double acousticPath = pathLength + listenerDistance;
+		double logPath = Math.log1p(acousticPath);
+		double logMaxPath = Math.log1p(pConfig.maxTraceDist);
+		return MathHelper.clamp(
+				(int) (logPath / logMaxPath * pConfig.resolution),
+				0, pConfig.resolution);
 	}
 
 	@Environment(EnvType.CLIENT)

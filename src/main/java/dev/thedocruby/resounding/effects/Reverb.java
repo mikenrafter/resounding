@@ -115,9 +115,9 @@ public class Reverb extends Effect {
 
 @Override
 	public boolean init() {
-		for (int i = 1; i <= pConfig.resolution; i++) {
+		for (int i = 0; i <= pConfig.resolution; i++) {
 			double t = presetT(i, pConfig.resolution);
-			apply(i - 1,
+			apply(i,
 					(float) Math.max(t * pConfig.maxDecayTime, 0.1),             // decayTime
 					(float) (t * 0.5 + 0.5),                                // density
 					(float) MathHelper.lerp(pConfig.rvrbDiff, 1 - t, 1), // diffusion
