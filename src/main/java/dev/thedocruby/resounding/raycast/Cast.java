@@ -70,6 +70,17 @@ public class Cast {
     /** Block cell the sound was born in; emission always exits this 1³ cell as a cube. */
     public @Nullable BlockPos originBlock;
 
+    /** Face-neighbor impedances sampled before launch, indexed by {@link #FACE_OFFSETS}. */
+    @Nullable double[] emissionNeighborImpedances;
+    double emissionNeighborAverageImpedance = Double.NaN;
+    double emissionSourceImpedance = Double.NaN;
+
+    static final Vec3i[] FACE_OFFSETS = {
+            new Vec3i(1, 0, 0), new Vec3i(-1, 0, 0),
+            new Vec3i(0, 1, 0), new Vec3i(0, -1, 0),
+            new Vec3i(0, 0, 1), new Vec3i(0, 0, -1),
+    };
+
     static final double EMISSION_EXIT_NUDGE = 1e-4;
 
     public Cast(@NotNull World world, @Nullable Branch tree, @Nullable ChunkChain chunk, @Nullable Vec3d targetPos) {
@@ -188,8 +199,16 @@ public class Cast {
         double reflectivity;
         double transmission;
         if (emissionCast) {
-            reflectivity = 0;
-            transmission = 1;
+            Vec3i exitPlane = step.plane();
+            if (shouldReflectAtEmissionExit(exitPlane)) {
+                double targetImpedance = neighborImpedanceForExitPlane(exitPlane);
+                this.lastPriorImpedance = emissionSourceImpedance;
+                reflectivity = Physics.reflection(emissionSourceImpedance, targetImpedance);
+                transmission = 1 - reflectivity;
+            } else {
+                reflectivity = 0;
+                transmission = 1;
+            }
         } else if (thinExit) {
             reflectivity = 0;
             double permeationFactor = Acoustics.permeationOverDistance(
@@ -236,6 +255,85 @@ public class Cast {
      */
     static double priorImpedanceForCast(@Nullable Double impeded, double mediumImpedance) {
         return impeded != null ? impeded : mediumImpedance;
+    }
+
+    /**
+     * Samples the six face neighbors of {@link #originBlock} and the born-in medium impedance
+     * before any rays launch, so the first emission exit can reflect into stiffer neighbors
+     * instead of permeating freely.
+     */
+    public void prepareEmissionContext(Vec3d soundPos) {
+        emissionNeighborImpedances = new double[FACE_OFFSETS.length];
+        emissionNeighborAverageImpedance = Double.NaN;
+        emissionSourceImpedance = Double.NaN;
+        if (originBlock == null || world == null || chunk == null) {
+            return;
+        }
+
+        chunk = chunk.access(originBlock.getX() >> 4, originBlock.getZ() >> 4);
+        if (chunk == null) {
+            return;
+        }
+
+        BlockState originState = ((WorldChunk) chunk).getBlockState(originBlock);
+        VoxelShape originShape = originState.getCollisionShape(world, originBlock);
+        Material originMaterial = material(originState);
+        emissionSourceImpedance = interactionMaterial(
+                originMaterial, originShape, originBlock, soundPos, ShapeTraversal.Mode.VOXEL
+        ).impedance();
+
+        double sum = 0.0;
+        for (int i = 0; i < FACE_OFFSETS.length; i++) {
+            double neighborImpedance = impedanceAtBlock(originBlock.add(FACE_OFFSETS[i]));
+            emissionNeighborImpedances[i] = neighborImpedance;
+            sum += neighborImpedance;
+        }
+        emissionNeighborAverageImpedance = sum / FACE_OFFSETS.length;
+    }
+
+    static BlockPos neighborOffsetForExitPlane(Vec3i plane) {
+        return new BlockPos(-plane.getX(), -plane.getY(), -plane.getZ());
+    }
+
+    static boolean shouldReflectAtEmissionExit(double targetImpedance, double neighborAverage, double sourceImpedance) {
+        return Double.isFinite(targetImpedance)
+                && Double.isFinite(neighborAverage)
+                && Double.isFinite(sourceImpedance)
+                && targetImpedance > neighborAverage
+                && targetImpedance > sourceImpedance;
+    }
+
+    boolean shouldReflectAtEmissionExit(Vec3i exitPlane) {
+        return shouldReflectAtEmissionExit(
+                neighborImpedanceForExitPlane(exitPlane),
+                emissionNeighborAverageImpedance,
+                emissionSourceImpedance
+        );
+    }
+
+    double neighborImpedanceForExitPlane(Vec3i plane) {
+        if (emissionNeighborImpedances == null) {
+            return Double.NaN;
+        }
+        BlockPos offset = neighborOffsetForExitPlane(plane);
+        for (int i = 0; i < FACE_OFFSETS.length; i++) {
+            if (FACE_OFFSETS[i].equals(offset)) {
+                return emissionNeighborImpedances[i];
+            }
+        }
+        return Double.NaN;
+    }
+
+    private double impedanceAtBlock(BlockPos pos) {
+        if (chunk == null || world == null) {
+            return MaterialRegistry.DEFAULT.impedance();
+        }
+        chunk = chunk.access(pos.getX() >> 4, pos.getZ() >> 4);
+        if (chunk == null) {
+            return MaterialRegistry.DEFAULT.impedance();
+        }
+        BlockState state = ((WorldChunk) chunk).getBlockState(pos);
+        return material(state).impedance();
     }
 
     static boolean isVacuumImpedance(double impedance) {

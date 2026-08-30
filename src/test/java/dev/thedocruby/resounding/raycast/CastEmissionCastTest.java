@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -109,5 +110,38 @@ class CastEmissionCastTest {
 		);
 
 		assertSame(MaterialRegistry.DEFAULT, material);
+	}
+
+	@Test
+	void neighborOffsetForExitPlanePointsAtEnteredCell() {
+		assertEquals(new BlockPos(1, 0, 0), Cast.neighborOffsetForExitPlane(new net.minecraft.util.math.Vec3i(-1, 0, 0)));
+		assertEquals(new BlockPos(0, -1, 0), Cast.neighborOffsetForExitPlane(new net.minecraft.util.math.Vec3i(0, 1, 0)));
+	}
+
+	@Test
+	void emissionReflectsIntoStifferNeighborAboveAverageAndSource() {
+		double air = AIR;
+		double stone = 32_676_640.0;
+		double avg = (air * 5 + stone) / 6.0;
+
+		assertTrue(Cast.shouldReflectAtEmissionExit(stone, avg, air));
+		assertTrue(Acoustics.reflection(air, stone) > 0.99);
+	}
+
+	@Test
+	void emissionPermeatesIntoLowerImpedanceNeighborDespiteHighAverage() {
+		double air = AIR;
+		double stone = WOOD.impedance();
+		double avg = (air + stone * 5) / 6.0;
+
+		assertFalse(Cast.shouldReflectAtEmissionExit(air, avg, stone));
+	}
+
+	@Test
+	void emissionPermeatesIntoMatchedNeighborAtSourceImpedance() {
+		double stone = WOOD.impedance();
+		double avg = (stone * 4 + AIR * 2) / 6.0;
+
+		assertFalse(Cast.shouldReflectAtEmissionExit(stone, avg, stone));
 	}
 }

@@ -233,31 +233,72 @@ public class Engine {
 		LinkedList<Hit> results = new LinkedList<>();
 		Cast cast = new Cast(mc.world, null, ctx.soundChunk(), targetPosition);
 		cast.originBlock = BlockPos.ofFloored(ctx.soundPos());
+		cast.prepareEmissionContext(ctx.soundPos());
 		String terminationReason = "ok";
 		// Only kept when dLog is on, so the consecutive-reflect guard can show whether a ray made
 		// real geometric progress between bounces or was stuck re-resolving the same spot.
 		java.util.ArrayList<Vec3d> trail = pConfig.dLog ? new java.util.ArrayList<>() : null;
 		if (trail != null) trail.add(ctx.soundPos());
 
-		cast.raycast(ctx.soundPos(), vector, amplitude);
-		if (cast.transmitted == null || cast.transmitted.vector() == null) {
-			logRayTermination(id, "initial cast left the known world", results, ctx.soundPos());
-			return results;
-		}
-		if (!cast.commitEmissionExit(cast.transmitted.position(), cast.transmitted.vector())) {
-			logRayTermination(id, "emission exited into vacuum", results, cast.transmitted.position());
-			return results;
-		}
-		Ray ray = new Ray(amplitude, cast.transmitted.position(), cast.transmitted.vector(), cast.transmitted.length());
-
-		double pathLength = cast.transmitted.length();
-		double segmentLength = pathLength;
-		Vec3d prior = ctx.soundPos();
-		byte reflected = 0;
 		RayDebugTail debugTail = new RayDebugTail();
-		debugTail.emit(ctx, cast, id, prior, cast.transmitted.position(), amplitude, results.size(),
-				!(ray.power() > 1 && maxLength > pathLength && results.size() < pConfig.nRayBounces));
-		prior = cast.transmitted.position();
+		Vec3d emissionPos = ctx.soundPos();
+		Vec3d emissionDir = vector;
+		double emissionPower = amplitude;
+		double pathLength = 0.0;
+		byte emissionReflects = 0;
+		Ray ray = null;
+		Vec3d prior = ctx.soundPos();
+
+		while (cast.impeded == null) {
+			cast.raycast(emissionPos, emissionDir, emissionPower);
+			if (cast.transmitted == null || cast.transmitted.vector() == null) {
+				logRayTermination(id, "initial cast left the known world", results, emissionPos);
+				return results;
+			}
+
+			if (cast.lastReflectivity != null && cast.lastReflectivity > 0.0
+					&& cast.reflected != null && cast.reflected.vector() != null
+					&& reflect.apply(cast, results)) {
+				Ray segment = new Ray(emissionPower, emissionPos, emissionDir, cast.reflected.length());
+				recordReflectHitIfAny(cast, results, segment, pathLength, pathLength, ctx.listenerPos());
+				if (emissionReflects++ > 2) {
+					logRayTermination(id, "3 consecutive emission reflects", results, cast.reflected.position());
+					return results;
+				}
+				pathLength += cast.reflected.length();
+				debugTail.emit(ctx, cast, id, emissionPos, cast.reflected.position(), cast.reflected.power(),
+						results.size(), false);
+				emissionPos = cast.reflected.position();
+				emissionDir = cast.reflected.vector();
+				emissionPower = cast.reflected.power();
+				if (trail != null) trail.add(emissionPos);
+				continue;
+			}
+
+			if (!cast.commitEmissionExit(cast.transmitted.position(), cast.transmitted.vector())) {
+				logRayTermination(id, "emission exited into vacuum", results, cast.transmitted.position());
+				return results;
+			}
+			ray = new Ray(
+					cast.transmitted.power(),
+					cast.transmitted.position(),
+					cast.transmitted.vector(),
+					cast.transmitted.length()
+			);
+			pathLength = cast.transmitted.length();
+			debugTail.emit(ctx, cast, id, prior, cast.transmitted.position(), ray.power(), results.size(),
+					!(ray.power() > 1 && maxLength > pathLength && results.size() < pConfig.nRayBounces));
+			prior = cast.transmitted.position();
+			break;
+		}
+
+		if (ray == null) {
+			logRayTermination(id, "emission never exited the source cell", results, prior);
+			return results;
+		}
+
+		double segmentLength = pathLength;
+		byte reflected = 0;
 		while (true) {
 			if (!(ray.power() > 1 && maxLength > pathLength && results.size() < pConfig.nRayBounces)) {
 				terminationReason = "budget exhausted";
