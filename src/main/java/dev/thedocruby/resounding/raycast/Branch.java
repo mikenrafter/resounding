@@ -47,6 +47,11 @@ public class Branch {
      */
     public double blendCoefficient = Double.NaN;
 
+    // TODO(perf): HashMap<Long,Branch> costs a BlockPos.asLong() box+hash+bucket walk on every
+    // octree level, per ray-cell step. A flat children[8]-style array indexed by octant (each
+    // node knowing its own depth/id) would avoid that, but get()/getAtLod()'s recursive
+    // "descend into whichever child" API may not translate cleanly to a flat layout — profile
+    // memory AND CPU before committing to an approach.
     public @NotNull HashMap<Long, Branch> leaves;
 
 
