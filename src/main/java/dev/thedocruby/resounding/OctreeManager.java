@@ -18,6 +18,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static dev.thedocruby.resounding.Engine.mc;
 import static dev.thedocruby.resounding.config.PrecomputedConfig.pConfig;
@@ -31,7 +33,19 @@ public class OctreeManager {
     public final static VoxelShape EMPTY = VoxelShapes.empty();
     public final static VoxelShape CUBE = VoxelShapes.fullCube();
 
-    public final static ExecutorService octreePool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+    /** Named so sampling profilers (spark, async-profiler, JFR) show real thread identity instead of pool-N-thread-M. */
+    private static final ThreadFactory OCTREE_THREAD_FACTORY = new ThreadFactory() {
+        private final AtomicInteger counter = new AtomicInteger();
+
+        @Override
+        public Thread newThread(@NotNull Runnable r) {
+            Thread thread = new Thread(r, "resounding-octree-" + counter.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    };
+    public final static ExecutorService octreePool =
+            Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(), OCTREE_THREAD_FACTORY);
 
     public static final BlockPos[] branchSequence = {
             new BlockPos(1, 0, 0),
