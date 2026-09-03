@@ -19,6 +19,9 @@
   "icon": "assets/resounding/icon.png",
   "environment": "*",
   "entrypoints": {
+    "main": [
+      "dev.thedocruby.resounding.Mod"
+    ],
     "client": [
       "dev.thedocruby.resounding.ModClient"
     ],

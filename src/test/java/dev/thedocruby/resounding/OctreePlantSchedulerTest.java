@@ -8,7 +8,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -18,12 +20,14 @@ class OctreePlantSchedulerTest {
     private final AtomicLong now = new AtomicLong(1_000_000L);
     private ChunkPos player = new ChunkPos(0, 0);
     private int radius = 10;
+    private final Set<Long> nearGen = new HashSet<>();
     private final List<OctreePlantScheduler.PlantJob> planted = new ArrayList<>();
     private OctreePlantScheduler scheduler;
 
     @BeforeEach
     void setUp() {
         planted.clear();
+        nearGen.clear();
         player = new ChunkPos(0, 0);
         radius = 10;
         now.set(1_000_000L);
@@ -31,6 +35,7 @@ class OctreePlantSchedulerTest {
                 now::get,
                 () -> player,
                 () -> radius,
+                (pos, t) -> nearGen.contains(ChunkPos.toLong(pos.x, pos.z)),
                 Runnable::run,
                 planted::add
         );
@@ -70,7 +75,6 @@ class OctreePlantSchedulerTest {
         scheduler.schedule(job(0, 0, 0));
         scheduler.onClientTick();
         assertEquals(2, planted.size());
-        // last scheduled in-ring was addFirst, so (0,0) drains before (1,0)
         assertEquals(new ChunkPos(0, 0), planted.get(0).pos());
         assertEquals(new ChunkPos(1, 0), planted.get(1).pos());
     }
@@ -126,13 +130,40 @@ class OctreePlantSchedulerTest {
                 new ChunkPos(20, 0), 3, 0, new StubChunk(), newer
         ));
         assertEquals(1, scheduler.deferredSize());
-        // No noteChunkLoad yet → quiet vacuously; drain deferred.
         scheduler.onClientTick();
         assertEquals(1, planted.size());
         assertSame(newer, planted.get(0).root());
     }
 
-    /** Minimal stand-in; plant consumer never calls through to the real mixin. */
+    @Test
+    void inRingNearGeneration_goesDeferredAndSkipsDrain() {
+        nearGen.add(ChunkPos.toLong(0, 0));
+        scheduler.noteChunkLoad();
+        scheduler.schedule(job(0, 0, 0));
+        assertEquals(0, scheduler.prioritySize());
+        assertEquals(1, scheduler.deferredSize());
+
+        now.addAndGet(OctreePlantScheduler.QUIET_MS);
+        scheduler.onClientTick();
+        assertTrue(planted.isEmpty(), "must not plant while generation-adjacent");
+        assertEquals(1, scheduler.deferredSize());
+
+        nearGen.clear();
+        scheduler.onClientTick();
+        assertEquals(1, planted.size());
+    }
+
+    @Test
+    void priorityDemotesWhenGenerationAppears() {
+        scheduler.schedule(job(0, 0, 0));
+        assertEquals(1, scheduler.prioritySize());
+        nearGen.add(ChunkPos.toLong(0, 0));
+        scheduler.onClientTick();
+        assertTrue(planted.isEmpty());
+        assertEquals(0, scheduler.prioritySize());
+        assertEquals(1, scheduler.deferredSize());
+    }
+
     private static final class StubChunk implements ChunkChain {
         @Override public Branch getBranch(int y) { return null; }
         @Override public java.util.Map<Long, net.minecraft.util.shape.VoxelShape> getShapes() {

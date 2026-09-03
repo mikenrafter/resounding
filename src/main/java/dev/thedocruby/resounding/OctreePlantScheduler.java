@@ -11,6 +11,7 @@ import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.concurrent.Executor;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
@@ -18,8 +19,9 @@ import java.util.function.Supplier;
 
 /**
  * Gates octree planting: in-ring sections plant ASAP (priority lane, ignores the quiet
- * timer); out-of-ring sections wait in a deferred queue until {@link #QUIET_MS} elapses
- * with no chunk loads. See {@code CHUNK_PLANT_DEBOUNCE.md}.
+ * timer) unless they sit near active chunk generation; out-of-ring sections wait in a
+ * deferred queue until {@link #QUIET_MS} elapses with no chunk loads. See
+ * {@code CHUNK_PLANT_DEBOUNCE.md}.
  */
 @Environment(EnvType.CLIENT)
 public final class OctreePlantScheduler {
@@ -40,6 +42,8 @@ public final class OctreePlantScheduler {
     private final LongSupplier nowMs;
     private final Supplier<@Nullable ChunkPos> playerChunk;
     private final IntSupplier ringRadius;
+    /** (chunkPos, nowMs) → true when planting should wait for generation to settle. */
+    private final BiPredicate<ChunkPos, Long> nearGeneration;
     private final Executor plantExecutor;
     private final Consumer<PlantJob> jobConsumer;
 
@@ -50,12 +54,14 @@ public final class OctreePlantScheduler {
             LongSupplier nowMs,
             Supplier<@Nullable ChunkPos> playerChunk,
             IntSupplier ringRadius,
+            BiPredicate<ChunkPos, Long> nearGeneration,
             Executor plantExecutor,
             Consumer<PlantJob> jobConsumer
     ) {
         this.nowMs = Objects.requireNonNull(nowMs);
         this.playerChunk = Objects.requireNonNull(playerChunk);
         this.ringRadius = Objects.requireNonNull(ringRadius);
+        this.nearGeneration = Objects.requireNonNull(nearGeneration);
         this.plantExecutor = Objects.requireNonNull(plantExecutor);
         this.jobConsumer = Objects.requireNonNull(jobConsumer);
         this.lastChunkLoadMs = nowMs.getAsLong();
@@ -83,7 +89,9 @@ public final class OctreePlantScheduler {
     /** Classifies {@code job} with the shared ring metric; in-ring goes to the priority front. */
     public synchronized void schedule(PlantJob job) {
         removeKey(job.key());
-        if (inRing(playerChunk.get(), job.pos(), ringRadius.getAsInt())) {
+        long now = nowMs.getAsLong();
+        boolean ring = inRing(playerChunk.get(), job.pos(), ringRadius.getAsInt());
+        if (ring && !nearGeneration.test(job.pos(), now)) {
             priority.addFirst(job);
         } else {
             deferred.addLast(job);
@@ -91,10 +99,11 @@ public final class OctreePlantScheduler {
     }
 
     public synchronized void onClientTick() {
-        promoteInRing();
-        drain(priority, DRAIN_PER_TICK);
+        long now = nowMs.getAsLong();
+        promoteInRing(now);
+        drainPriority(now, DRAIN_PER_TICK);
         if (isQuiet()) {
-            drain(deferred, DRAIN_PER_TICK);
+            drainDeferred(now, DRAIN_PER_TICK);
         }
     }
 
@@ -113,26 +122,49 @@ public final class OctreePlantScheduler {
         return nowMs.getAsLong() - lastChunkLoadMs >= QUIET_MS;
     }
 
-    private void promoteInRing() {
+    private void promoteInRing(long now) {
         ChunkPos player = playerChunk.get();
         int radius = ringRadius.getAsInt();
         Iterator<PlantJob> it = deferred.iterator();
         while (it.hasNext()) {
             PlantJob job = it.next();
-            if (inRing(player, job.pos(), radius)) {
+            if (inRing(player, job.pos(), radius) && !nearGeneration.test(job.pos(), now)) {
                 it.remove();
                 priority.addFirst(job);
             }
         }
     }
 
-    private void drain(ArrayDeque<PlantJob> lane, int limit) {
+    private void drainPriority(long now, int limit) {
         for (int i = 0; i < limit; i++) {
-            PlantJob job = lane.pollFirst();
+            PlantJob job = priority.pollFirst();
             if (job == null) {
                 return;
             }
+            if (nearGeneration.test(job.pos(), now)) {
+                deferred.addLast(job);
+                continue;
+            }
             plantExecutor.execute(() -> jobConsumer.accept(job));
+        }
+    }
+
+    private void drainDeferred(long now, int limit) {
+        int planted = 0;
+        int inspected = 0;
+        int maxInspect = deferred.size();
+        while (planted < limit && inspected < maxInspect) {
+            PlantJob job = deferred.pollFirst();
+            if (job == null) {
+                return;
+            }
+            inspected++;
+            if (nearGeneration.test(job.pos(), now)) {
+                deferred.addLast(job);
+                continue;
+            }
+            plantExecutor.execute(() -> jobConsumer.accept(job));
+            planted++;
         }
     }
 

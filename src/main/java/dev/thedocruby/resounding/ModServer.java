@@ -11,4 +11,3 @@ public class ModServer implements DedicatedServerModInitializer {
 		ConfigManager.registerAutoConfig();
 	}
 }
-

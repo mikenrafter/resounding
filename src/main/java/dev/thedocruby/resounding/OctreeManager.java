@@ -75,6 +75,7 @@ public class OctreeManager {
                         System::currentTimeMillis,
                         OctreeManager::playerChunkPos,
                         OctreeManager::plantRingRadius,
+                        ChunkGenerationActivity::nearGeneration,
                         octreePool,
                         OctreeManager::runPlantJob
                 );
