@@ -30,14 +30,14 @@ class CastEmissionCastTest {
 
 	@Test
 	void nullPriorMatchesAirWhenBornInAirGap() {
-		assertEquals(AIR, Cast.priorImpedanceForCast(null, AIR));
+		assertEquals(AIR, Cast.priorImpedanceForCast(false, 0.0, AIR));
 		assertEquals(0.0, Acoustics.reflection(AIR, AIR), 1e-9);
 	}
 
 	@Test
 	void nullPriorMatchesStoneWhenBornInSolid() {
 		double stone = WOOD.impedance();
-		assertEquals(stone, Cast.priorImpedanceForCast(null, stone));
+		assertEquals(stone, Cast.priorImpedanceForCast(false, 0.0, stone));
 		assertEquals(0.0, Acoustics.reflection(stone, stone), 1e-9);
 	}
 

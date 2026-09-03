@@ -12,7 +12,6 @@ import net.minecraft.block.BlockState;
 import net.minecraft.util.Pair;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Vec3i;
 import net.minecraft.util.shape.VoxelShape;
@@ -43,7 +42,9 @@ public class Cast {
     public @Nullable Ray transmitted = null;
 
     public @Nullable Step stood = null; // prior position
-    public @Nullable Double impeded = null; // prior impedance
+    public double impeded; // prior impedance
+    /** False while the ray is still exiting the emission cell (equivalent to the old {@code impeded == null}). */
+    public boolean impededSet = false;
     /** Impedance of the medium the ray was in before entering the current solid transit. */
     @Nullable Double enteredFrom = null;
     /** Distance permeated through the current solid transit (blocks). */
@@ -54,8 +55,12 @@ public class Cast {
     static final double IMPEDANCE_MATCH_TOLERANCE = 0.15;
     static final double SOLID_IMPEDANCE_MIN = 10_000.0;
 
-    public @Nullable Double lastReflectivity;
-    public @Nullable Double lastTransmission;
+    public double lastReflectivity;
+    public double lastTransmission;
+    /** False until {@link #raycast} has resolved a boundary at least once (equivalent to the old
+     *  {@code lastReflectivity == null}/{@code lastTransmission == null}) — both fields are always
+     *  assigned together at the single site in {@link #raycast}, so they share one flag. */
+    public boolean lastBoundaryResolved = false;
     /** Polar alignment {@code (rayNorm·polNorm)²} at the last resolved boundary; 1.0 (unthrottled) when the boundary had no polarization vector. */
     public double lastPolarAlignment = 1.0;
     public @Nullable Material lastMaterial;
@@ -102,6 +107,23 @@ public class Cast {
             new Vec3i(0, 0, 1), new Vec3i(0, 0, -1),
     };
 
+    // Flyweight axis-unit vectors: getStepPair/entryPlane resolve one of only 7 possible planar
+    // indices (±1 on exactly one axis, or ZERO) per call, in the per-ray-step hot path. Caching
+    // these avoids a `new Vec3i` allocation every step instead of requiring a mutable vector type
+    // (MC's Vec3i/Vec3d are immutable).
+    private static final Vec3i UNIT_POS_X = new Vec3i(1, 0, 0);
+    private static final Vec3i UNIT_NEG_X = new Vec3i(-1, 0, 0);
+    private static final Vec3i UNIT_POS_Y = new Vec3i(0, 1, 0);
+    private static final Vec3i UNIT_NEG_Y = new Vec3i(0, -1, 0);
+    private static final Vec3i UNIT_POS_Z = new Vec3i(0, 0, 1);
+    private static final Vec3i UNIT_NEG_Z = new Vec3i(0, 0, -1);
+
+    /** {@code MathHelper.floor(-Math.signum(dir))} as a cached axis-unit vector: {@code dir > 0} steps
+     *  negative on this axis, {@code dir < 0} steps positive, {@code dir == 0} doesn't cross it. */
+    private static Vec3i xUnit(double dir) { return dir > 0 ? UNIT_NEG_X : dir < 0 ? UNIT_POS_X : Vec3i.ZERO; }
+    private static Vec3i yUnit(double dir) { return dir > 0 ? UNIT_NEG_Y : dir < 0 ? UNIT_POS_Y : Vec3i.ZERO; }
+    private static Vec3i zUnit(double dir) { return dir > 0 ? UNIT_NEG_Z : dir < 0 ? UNIT_POS_Z : Vec3i.ZERO; }
+
     static final double EMISSION_EXIT_NUDGE = 1e-4;
 
     public Cast(@NotNull World world, @Nullable Branch tree, @Nullable ChunkChain chunk, @Nullable Vec3d targetPos) {
@@ -113,6 +135,25 @@ public class Cast {
     }
     public Cast(@NotNull World world, @Nullable Branch tree, @Nullable ChunkChain chunk) {
         this(world, tree, chunk, null);
+    }
+
+    /** Falls back to the live block's collision shape when the branch has no baked shape. */
+    private VoxelShape resolveShape(Branch branch) {
+        VoxelShape shape = branch.shape;
+        if (shape == null) {
+            shape = ((WorldChunk) this.chunk).getBlockState(branch.start).getCollisionShape(world, branch.start);
+        }
+        return shape;
+    }
+
+    /** Falls back to the live block state's material when the branch has no baked material. */
+    private Material resolveMaterial(Branch branch, BlockPos pos) {
+        Material branchMaterial = branch.material;
+        if (branchMaterial == null) {
+            BlockState state = ((WorldChunk) this.chunk).getBlockState(pos);
+            branchMaterial = material(state);
+        }
+        return branchMaterial;
     }
     //* raycast {
     public void raycast(@NotNull Vec3d position, @NotNull Vec3d angle) {
@@ -129,7 +170,7 @@ public class Cast {
             return;
         }
 
-        final boolean emissionCast = impeded == null;
+        final boolean emissionCast = !impededSet;
         int requestedLod = emissionCast ? 1 : FrustumLod.stepForSize(frustumSize);
         BlockPos queryPos = BlockPos.ofFloored(normalized);
         Branch lodBranch = tree.getAtLod(queryPos, requestedLod);
@@ -176,10 +217,7 @@ public class Cast {
         boolean gridAlignedReflect = false;
         @Nullable Step shapeEntryStep = null;
 
-        VoxelShape shape = branch.shape;
-        if (shape == null) {
-            shape = ((WorldChunk) this.chunk).getBlockState(branch.start).getCollisionShape(world, branch.start);
-        }
+        VoxelShape shape = resolveShape(branch);
 
         // Sub-voxel shapes only at native 1³ cells; coarser frustum LOD uses the LOD cube.
         ShapeTraversal.Result geometry = emissionCast || cellSize > 1
@@ -225,11 +263,7 @@ public class Cast {
             }
         }
         //* amplitude and vector {
-        Material branchMaterial = branch.material;
-        if (branchMaterial == null) {
-            BlockState state = ((WorldChunk) this.chunk).getBlockState(BlockPos.ofFloored(normalized));
-            branchMaterial = material(state);
-        }
+        Material branchMaterial = resolveMaterial(branch, BlockPos.ofFloored(normalized));
         Material interactionMaterial = interactionMaterialForCast(
                 emissionCast, branchMaterial, shape, branch.start, position, geometry.mode()
         );
@@ -246,9 +280,9 @@ public class Cast {
             blank(position);
             return;
         }
-        double priorImpedance = priorImpedanceForCast(impeded, newImpedance);
+        double priorImpedance = priorImpedanceForCast(impededSet, impeded, newImpedance);
         this.lastPriorImpedance = priorImpedance;
-        boolean thinExit = !emissionCast && impeded != null && isThinMembraneExit(newImpedance);
+        boolean thinExit = !emissionCast && isThinMembraneExit(newImpedance);
         double reflectivity;
         double transmission;
         if (emissionCast) {
@@ -314,13 +348,14 @@ public class Cast {
                 && gridAlignedReflect
                 && step.plane() != Vec3i.ZERO
                 && !isSolidImpedance(newImpedance)) {
-            forwardInteraction = surveyForwardMap(cellOrigin, cellSize, step.plane(), vector, newImpedance);
+            ForwardSurvey survey = surveyForward(cellOrigin, cellSize, step.plane(), vector, newImpedance);
+            forwardInteraction = survey.interaction();
             if (forwardInteraction == FrustumLod.Interaction.GAP) {
                 reflectivity = 0;
                 transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
             } else {
                 if (reflectivity == 0) {
-                    double wallZ = forwardNeighborImpedance(cellOrigin, cellSize, step.plane(), vector);
+                    double wallZ = survey.wallImpedance();
                     if (Double.isFinite(wallZ) && !impedancesClose(priorImpedance, wallZ)) {
                         reflectivity = Physics.reflection(priorImpedance, wallZ);
                         transmission = transmissionForBoundary(
@@ -355,18 +390,27 @@ public class Cast {
         this.lastPermeationDistance = pdistance;
         this.lastReflectivity = reflectivity;
         this.lastTransmission = transmission;
+        this.lastBoundaryResolved = true;
         this.lastPolarAlignment = (branch.polar != null && branch.polar.lengthSquared() > 1e-12)
                 ? Physics.polarAlignment(vector.normalize(), branch.polar.normalize())
                 : 1.0;
         this.lastMaterial = interactionMaterial;
     }
 
+    /** Combined result of {@link #surveyForward}: the four-map interaction classification plus
+     *  the stiffest finite neighbor impedance found during that same survey (or {@link Double#NaN}
+     *  when no neighbor resolved to a finite impedance). */
+    private record ForwardSurvey(FrustumLod.Interaction interaction, double wallImpedance) {}
+
     /**
-     * Surveys N/E/D at the same LOD as {@code cellOrigin} and returns the four-map interaction.
-     * Each neighbor is classified by host→neighbor interaction permeate ({@link FrustumLod#blocksPermeation}),
-     * not raw impedance stiffness. Missing neighbors count as open.
+     * Surveys N/E/D at the same LOD as {@code cellOrigin} in one pass, returning both the
+     * four-map interaction (host→neighbor interaction permeate, {@link FrustumLod#blocksPermeation},
+     * not raw impedance stiffness; missing neighbors count as open) and the wall impedance
+     * ({@code max} of the finite neighbor impedances, or just N's when there's no tangent) needed
+     * to resolve a boundary that turned out non-reflective. Previously these were two separate
+     * methods that each independently walked the same N/E/D octree offsets.
      */
-    FrustumLod.Interaction surveyForwardMap(
+    private ForwardSurvey surveyForward(
             BlockPos cellOrigin,
             int cellSize,
             Vec3i face,
@@ -374,20 +418,34 @@ public class Cast {
             double hostImpedance
     ) {
         FrustumLod.ForwardMap map = FrustumLod.forwardMap(face, rayDir, cellSize);
-        boolean nBlocks = neighborBlocks(cellOrigin, cellSize, map.nOffset(), hostImpedance);
+
+        Branch nBranch = lodAt(cellOrigin.add(map.nOffset().getX(), map.nOffset().getY(), map.nOffset().getZ()), cellSize);
+        double nZ = impedanceOf(nBranch);
+        boolean nBlocks = FrustumLod.blocksPermeation(hostImpedance, nZ, permeationOf(nBranch));
+
+        double eZ = Double.NaN;
+        double dZ = nZ;
         boolean eBlocks = false;
         boolean dBlocks = nBlocks;
         if (map.hasTangent()) {
-            eBlocks = neighborBlocks(cellOrigin, cellSize, map.eOffset(), hostImpedance);
-            dBlocks = neighborBlocks(cellOrigin, cellSize, map.dOffset(), hostImpedance);
-        }
-        return FrustumLod.classify(nBlocks, eBlocks, dBlocks);
-    }
+            Branch eBranch = lodAt(cellOrigin.add(map.eOffset().getX(), map.eOffset().getY(), map.eOffset().getZ()), cellSize);
+            eZ = impedanceOf(eBranch);
+            eBlocks = FrustumLod.blocksPermeation(hostImpedance, eZ, permeationOf(eBranch));
 
-    private boolean neighborBlocks(BlockPos cellOrigin, int cellSize, Vec3i offset, double hostImpedance) {
-        Branch neighbor = lodAt(
-                cellOrigin.add(offset.getX(), offset.getY(), offset.getZ()), cellSize);
-        return FrustumLod.blocksPermeation(hostImpedance, impedanceOf(neighbor), permeationOf(neighbor));
+            Branch dBranch = lodAt(cellOrigin.add(map.dOffset().getX(), map.dOffset().getY(), map.dOffset().getZ()), cellSize);
+            dZ = impedanceOf(dBranch);
+            dBlocks = FrustumLod.blocksPermeation(hostImpedance, dZ, permeationOf(dBranch));
+        }
+
+        FrustumLod.Interaction interaction = FrustumLod.classify(nBlocks, eBlocks, dBlocks);
+
+        double wall = Double.NEGATIVE_INFINITY;
+        if (Double.isFinite(nZ)) wall = Math.max(wall, nZ);
+        if (Double.isFinite(eZ)) wall = Math.max(wall, eZ);
+        if (Double.isFinite(dZ)) wall = Math.max(wall, dZ);
+        double wallImpedance = wall == Double.NEGATIVE_INFINITY ? Double.NaN : wall;
+
+        return new ForwardSurvey(interaction, wallImpedance);
     }
 
     private static double permeationOf(@Nullable Branch b) {
@@ -395,24 +453,6 @@ public class Cast {
             return Double.NaN;
         }
         return b.material != null ? b.material.permeation() : 1.0;
-    }
-
-    private double forwardNeighborImpedance(BlockPos cellOrigin, int cellSize, Vec3i face, Vec3d rayDir) {
-        FrustumLod.ForwardMap map = FrustumLod.forwardMap(face, rayDir, cellSize);
-        double nZ = impedanceOf(lodAt(
-                cellOrigin.add(map.nOffset().getX(), map.nOffset().getY(), map.nOffset().getZ()), cellSize));
-        if (!map.hasTangent()) {
-            return nZ;
-        }
-        double eZ = impedanceOf(lodAt(
-                cellOrigin.add(map.eOffset().getX(), map.eOffset().getY(), map.eOffset().getZ()), cellSize));
-        double dZ = impedanceOf(lodAt(
-                cellOrigin.add(map.dOffset().getX(), map.dOffset().getY(), map.dOffset().getZ()), cellSize));
-        double wall = Double.NEGATIVE_INFINITY;
-        if (Double.isFinite(nZ)) wall = Math.max(wall, nZ);
-        if (Double.isFinite(eZ)) wall = Math.max(wall, eZ);
-        if (Double.isFinite(dZ)) wall = Math.max(wall, dZ);
-        return wall == Double.NEGATIVE_INFINITY ? Double.NaN : wall;
     }
 
     private @Nullable Branch lodAt(BlockPos pos, int lod) {
@@ -467,11 +507,11 @@ public class Cast {
 
     /**
      * Prior medium for boundary physics. An unset {@code impeded} means the ray is being born in
-     * {@code mediumImpedance}, so {@code null:air} and {@code null:stone} behave like matched pairs.
+     * {@code mediumImpedance}, so {@code unset:air} and {@code unset:stone} behave like matched pairs.
      * Entering vacuum ({@code stone:null}) is handled separately and must not use this shortcut.
      */
-    static double priorImpedanceForCast(@Nullable Double impeded, double mediumImpedance) {
-        return impeded != null ? impeded : mediumImpedance;
+    static double priorImpedanceForCast(boolean impededSet, double impeded, double mediumImpedance) {
+        return impededSet ? impeded : mediumImpedance;
     }
 
     /**
@@ -563,6 +603,8 @@ public class Cast {
     }
 
     static Vec3d nudgeEmissionExit(Vec3d exitPosition, Vec3d vector) {
+        // TODO(perf): profile sqrt (length()) vs. the branch before switching this guard to
+        // lengthSquared() < 1e-12*1e-12 to skip the sqrt on the common non-degenerate path.
         double length = vector.length();
         if (length < 1e-12) {
             return exitPosition;
@@ -617,6 +659,8 @@ public class Cast {
         if (reflectDistance > REFLECT_NUDGE || reflected == null) {
             return origin;
         }
+        // TODO(perf): profile sqrt (length()) vs. the branch before switching this guard to
+        // lengthSquared() <= REFLECT_NUDGE*REFLECT_NUDGE to skip the sqrt on the common path.
         double length = reflected.length();
         if (length <= REFLECT_NUDGE) {
             return origin;
@@ -665,7 +709,7 @@ public class Cast {
         if (enteredFrom == null || solidTransitDistance > THIN_MEMBRANE_MAX_THICKNESS) {
             return false;
         }
-        if (impeded == null || !isSolidImpedance(impeded)) {
+        if (!impededSet || !isSolidImpedance(impeded)) {
             return false;
         }
         return impedancesClose(newImpedance, enteredFrom);
@@ -693,13 +737,14 @@ public class Cast {
             return false;
         }
         impeded = exitMedium.impedance();
+        impededSet = true;
         enteredFrom = null;
         solidTransitDistance = 0.0;
         return true;
     }
 
     private void commitEnteredImpedance(double newImpedance, double step) {
-        if (impeded != null && enteredFrom == null
+        if (impededSet && enteredFrom == null
                 && isSolidImpedance(newImpedance) && !isSolidImpedance(impeded)) {
             enteredFrom = impeded;
             solidTransitDistance = 0.0;
@@ -710,6 +755,7 @@ public class Cast {
         }
 
         impeded = newImpedance;
+        impededSet = true;
 
         if (enteredFrom != null && impedancesClose(newImpedance, enteredFrom)) {
             enteredFrom = null;
@@ -733,15 +779,8 @@ public class Cast {
         if (branch == null) {
             return null;
         }
-        VoxelShape shape = branch.shape;
-        if (shape == null && chunk != null) {
-            shape = ((WorldChunk) chunk).getBlockState(branch.start).getCollisionShape(world, branch.start);
-        }
-        Material branchMaterial = branch.material;
-        if (branchMaterial == null) {
-            BlockState state = ((WorldChunk) chunk).getBlockState(BlockPos.ofFloored(normalized));
-            branchMaterial = material(state);
-        }
+        VoxelShape shape = resolveShape(branch);
+        Material branchMaterial = resolveMaterial(branch, BlockPos.ofFloored(normalized));
         return interactionMaterial(
                 branchMaterial, shape, branch.start, position, ShapeTraversal.Mode.VOXEL
         );
@@ -797,13 +836,13 @@ public class Cast {
      */
     private static Vec3i entryPlane(Vec3d position, Vec3d base, int size, Vec3d vector) {
         if (position.x == base.x || position.x == base.x + size) {
-            return new Vec3i(MathHelper.floor(-Math.signum(vector.x)), 0, 0);
+            return xUnit(vector.x);
         }
         if (position.y == base.y || position.y == base.y + size) {
-            return new Vec3i(0, MathHelper.floor(-Math.signum(vector.y)), 0);
+            return yUnit(vector.y);
         }
         if (position.z == base.z || position.z == base.z + size) {
-            return new Vec3i(0, 0, MathHelper.floor(-Math.signum(vector.z)));
+            return zUnit(vector.z);
         }
         return Vec3i.ZERO;
     }
@@ -851,20 +890,28 @@ public class Cast {
         return new Step(vector.multiply(coefficient), planarIndex);
     }
     private static Pair<Double,Vec3i> getStepPair(Vec3d base, int size, Vec3d position, Vec3d vector) {
-        double coefficient = boundAxis(base.x, position.x, size, vector.x);
-        double ystep       = boundAxis(base.y, position.y, size, vector.y);
-        double zstep       = boundAxis(base.z, position.z, size, vector.z);
+        double xstep = boundAxis(base.x, position.x, size, vector.x);
+        double ystep = boundAxis(base.y, position.y, size, vector.y);
+        double zstep = boundAxis(base.z, position.z, size, vector.z);
 
-        Vec3i planarIndex  = new Vec3i(MathHelper.floor(-Math.signum(vector.x)), 0, 0);
+        // Argmin over the three axis coefficients via ternaries (no allocation in either branch),
+        // so the JIT can compile this to a conditional move; the winning axis's Vec3i is resolved
+        // via the cached flyweights (xUnit/yUnit/zUnit) only once the argmin is known, instead of
+        // allocating a candidate Vec3i per comparison.
+        boolean yWins = ystep < xstep;
+        double coefficient = yWins ? ystep : xstep;
+        int axis = yWins ? 1 : 0;
 
-        if (ystep < coefficient) {
-            coefficient = ystep;
-            planarIndex = new Vec3i(0, MathHelper.floor(-Math.signum(vector.y)), 0);
-        }
-        if (zstep < coefficient) {
-            coefficient = zstep;
-            planarIndex = new Vec3i(0, 0, MathHelper.floor(-Math.signum(vector.z)));
-        }
+        boolean zWins = zstep < coefficient;
+        coefficient = zWins ? zstep : coefficient;
+        axis = zWins ? 2 : axis;
+
+        Vec3i planarIndex = switch (axis) {
+            case 0 -> xUnit(vector.x);
+            case 1 -> yUnit(vector.y);
+            default -> zUnit(vector.z);
+        };
+
         if (coefficient == Double.POSITIVE_INFINITY) {
             LOGGER.warn("invalid coefficient");
         }

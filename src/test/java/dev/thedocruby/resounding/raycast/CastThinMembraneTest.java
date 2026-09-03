@@ -20,6 +20,7 @@ class CastThinMembraneTest {
 	void thinMembraneExitSkipsSecondMismatchAtStoneAirBoundary() {
 		Cast cast = new Cast(null, null, null);
 		cast.impeded = STONE;
+		cast.impededSet = true;
 		cast.enteredFrom = AIR;
 		cast.solidTransitDistance = 1.0;
 
@@ -30,6 +31,7 @@ class CastThinMembraneTest {
 	void thickSolidTransitStillReflectsAtExit() {
 		Cast cast = new Cast(null, null, null);
 		cast.impeded = STONE;
+		cast.impededSet = true;
 		cast.enteredFrom = AIR;
 		cast.solidTransitDistance = 2.0;
 
@@ -40,6 +42,7 @@ class CastThinMembraneTest {
 	void entryIntoStoneStillUsesFullMismatch() {
 		Cast cast = new Cast(null, null, null);
 		cast.impeded = AIR;
+		cast.impededSet = true;
 
 		assertFalse(cast.isThinMembraneExit(STONE));
 		double reflectivity = Acoustics.reflection(AIR, STONE);
@@ -50,6 +53,7 @@ class CastThinMembraneTest {
 	void commitPermeationTracksEnteredFromAndClearsOnReturnToAir() {
 		Cast cast = new Cast(null, null, null);
 		cast.impeded = AIR;
+		cast.impededSet = true;
 		cast.lastPermeationDistance = 1.0;
 
 		cast.lastMaterial = STONE_MAT;

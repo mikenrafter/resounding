@@ -21,6 +21,7 @@ import net.minecraft.util.Pair;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.profiler.Profiler;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
@@ -30,7 +31,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static dev.thedocruby.resounding.SoundClassifier.adjustSource;
@@ -72,7 +72,8 @@ public class Engine {
 	private static SoundCategory category;
 	private static SoundListener lastSoundListener;
 
-	private static Set<Pair<Vec3d,Integer>> rays;
+	/** Seed ray directions; id is the array index (dense 0..nRays-1), not stored per-element. */
+	private static Vec3d[] rays;
 	public static Vec3d playerPos;
 	public static boolean hasLoaded = false;
 
@@ -95,18 +96,18 @@ public class Engine {
 		final double phiHelper = pConfig.nRays - 1 + 2*epsilon;
 
 		// calculate starting vectors
-		rays = IntStream.range(0, pConfig.nRays).parallel().unordered().mapToObj(i -> {
+		rays = IntStream.range(0, pConfig.nRays).parallel().mapToObj(i -> {
 			// trig stuff
 			final double theta = rate * i;
 			final double phi = Math.acos(1 - 2*(i + epsilon) / phiHelper);
 			final double sP = Math.sin(phi);
 
-			return new Pair<>(new Vec3d(
+			return new Vec3d(
 					Math.cos(theta) * sP,
 					Math.sin(theta) * sP,
 					Math.cos(phi)
-			), i);
-		}).collect(Collectors.toSet());
+			);
+		}).toArray(Vec3d[]::new);
 	}
 
 	@Environment(EnvType.CLIENT)
@@ -185,12 +186,31 @@ public class Engine {
 					+ "\n  }"
 		);
 
-		final EnvData env = evalEnv(evalCtx);
+		Profiler profiler = mc.getProfiler();
+		final EnvData env;
+		profiler.push("resounding_eval_env");
+		try {
+			env = evalEnv(evalCtx);
+		} finally {
+			profiler.pop();
+		}
 
 		// CORE PIPELINE
 		try {
-			ProcessedSound processed = processEnv(env, evalCtx);
-			setEnv(context, processed, isGentle, currentTag, currentCategory);
+			profiler.push("resounding_process_env");
+			ProcessedSound processed;
+			try {
+				processed = processEnv(env, evalCtx);
+			} finally {
+				profiler.pop();
+			}
+
+			profiler.push("resounding_set_env");
+			try {
+				setEnv(context, processed, isGentle, currentTag, currentCategory);
+			} finally {
+				profiler.pop();
+			}
 		} catch (Exception e) {
 			Utils.LOGGER.error("Resounding: failed to apply sound profile", e);
 		}
@@ -212,7 +232,7 @@ public class Engine {
 	private static @NotNull LinkedList<Hit> raycast(@NotNull Pair<Vec3d,Integer> input, double amplitude, SoundEvalContext ctx) {
 		return raycast(input, amplitude, pConfig.maxTraceDist, null,
 				(Cast cast, LinkedList<Hit> results) -> {
-					if (cast.lastReflectivity != null && cast.lastReflectivity <= 0.0) {
+					if (cast.lastBoundaryResolved && cast.lastReflectivity <= 0.0) {
 						return false;
 					}
 					return cast.reflected.power() > cast.transmitted.power()
@@ -267,14 +287,14 @@ public class Engine {
 		Ray ray = null;
 		Vec3d prior = ctx.soundPos();
 
-		while (cast.impeded == null) {
+		while (!cast.impededSet) {
 			cast.raycast(emissionPos, emissionDir, emissionPower);
 			if (cast.transmitted == null || cast.transmitted.vector() == null) {
 				logRayTermination(id, "initial cast left the known world", results, emissionPos);
 				return results;
 			}
 
-			if (cast.lastReflectivity != null && cast.lastReflectivity > 0.0
+			if (cast.lastBoundaryResolved && cast.lastReflectivity > 0.0
 					&& cast.reflected != null && cast.reflected.vector() != null
 					&& reflect.apply(cast, results)) {
 				Ray segment = new Ray(emissionPower, emissionPos, emissionDir, cast.reflected.length());
@@ -345,8 +365,8 @@ public class Engine {
 						cast.lastMaterialLabel == null ? "?" : cast.lastMaterialLabel,
 						String.format("%.1f", cast.lastPriorImpedance),
 						cast.lastMaterial == null ? "-" : String.format("%.1f", cast.lastMaterial.impedance()),
-						String.format("%.3f", cast.lastReflectivity == null ? 0.0 : cast.lastReflectivity),
-						String.format("%.3f", cast.lastTransmission == null ? 0.0 : cast.lastTransmission),
+						String.format("%.3f", cast.lastBoundaryResolved ? cast.lastReflectivity : 0.0),
+						String.format("%.3f", cast.lastBoundaryResolved ? cast.lastTransmission : 0.0),
 						String.format("%.1f", ray.power())
 				);
 			}
@@ -423,7 +443,7 @@ public class Engine {
 			double segmentLength,
 			Vec3d listenerPos
 	) {
-		if (cast.lastReflectivity == null || cast.lastReflectivity <= 0.0
+		if (!cast.lastBoundaryResolved || cast.lastReflectivity <= 0.0
 				|| cast.reflected == null || cast.reflected.power() <= 0.0) {
 			return;
 		}
@@ -527,8 +547,8 @@ public class Engine {
 				ctx.sourceID(),
 				rayId,
 				cast.lastMaterial,
-				cast.lastReflectivity == null ? 0.0 : cast.lastReflectivity,
-				cast.lastTransmission == null ? 0.0 : cast.lastTransmission,
+				cast.lastBoundaryResolved ? cast.lastReflectivity : 0.0,
+				cast.lastBoundaryResolved ? cast.lastTransmission : 0.0,
 				power,
 				cast.lastPriorImpedance,
 				cast.lastBranchSize,
@@ -573,7 +593,7 @@ public class Engine {
 				break;
 			}
 
-			if (cast.lastReflectivity != null && cast.lastReflectivity > 0.001) {
+			if (cast.lastBoundaryResolved && cast.lastReflectivity > 0.001) {
 				blocked += cast.lastReflectivity * (power / 128.0);
 				legs++;
 			}
@@ -613,11 +633,18 @@ public class Engine {
 	private static @NotNull EnvData evalEnv(SoundEvalContext ctx) {
 		CaptureBuffer.INSTANCE.onSoundEvalStart();
 		try {
+		Profiler profiler = mc.getProfiler();
 		Consumer<String> logger = pConfig.log ? (pConfig.eLog ? Utils.LOGGER::info : Utils.LOGGER::debug) : x -> {};
 		List<LinkedList<Hit>> reflRays = List.of();
 		if (pConfig.reverbEnabled) {
 			logger.accept("Sampling environment with "+pConfig.nRays+" seed rays...");
-			reflRays = rays.stream().parallel().unordered().map((ray) -> Engine.raycast(ray, 128, ctx)).toList();
+			profiler.push("resounding_reflection_rays");
+			try {
+				reflRays = IntStream.range(0, rays.length).parallel().unordered()
+						.mapToObj((i) -> Engine.raycast(new Pair<>(rays[i], i), 128, ctx)).toList();
+			} finally {
+				profiler.pop();
+			}
 			if (pConfig.eLog) {
 				int rayCount = 0;
 				for (LinkedList<Hit> reflRay : reflRays) {
@@ -627,9 +654,15 @@ public class Engine {
 			}
 		}
 
-		Set<OccludedRayData> occlRays = pConfig.occlusionEnabled
-				? throwOcclRay(ctx.soundPos(), ctx.listenerPos(), ctx.soundChunk())
-				: Collections.emptySet();
+		profiler.push("resounding_occlusion_ray");
+		Set<OccludedRayData> occlRays;
+		try {
+			occlRays = pConfig.occlusionEnabled
+					? throwOcclRay(ctx.soundPos(), ctx.listenerPos(), ctx.soundChunk())
+					: Collections.emptySet();
+		} finally {
+			profiler.pop();
+		}
 
 		// Pass data to post
 		EnvData data = new EnvData(reflRays, occlRays);
