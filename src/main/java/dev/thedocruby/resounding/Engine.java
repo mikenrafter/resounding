@@ -21,7 +21,6 @@ import net.minecraft.util.Pair;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.profiler.Profiler;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
@@ -186,31 +185,12 @@ public class Engine {
 					+ "\n  }"
 		);
 
-		Profiler profiler = mc.getProfiler();
-		final EnvData env;
-		profiler.push("resounding_eval_env");
-		try {
-			env = evalEnv(evalCtx);
-		} finally {
-			profiler.pop();
-		}
+		final EnvData env = evalEnv(evalCtx);
 
 		// CORE PIPELINE
 		try {
-			profiler.push("resounding_process_env");
-			ProcessedSound processed;
-			try {
-				processed = processEnv(env, evalCtx);
-			} finally {
-				profiler.pop();
-			}
-
-			profiler.push("resounding_set_env");
-			try {
-				setEnv(context, processed, isGentle, currentTag, currentCategory);
-			} finally {
-				profiler.pop();
-			}
+			ProcessedSound processed = processEnv(env, evalCtx);
+			setEnv(context, processed, isGentle, currentTag, currentCategory);
 		} catch (Exception e) {
 			Utils.LOGGER.error("Resounding: failed to apply sound profile", e);
 		}
@@ -633,18 +613,12 @@ public class Engine {
 	private static @NotNull EnvData evalEnv(SoundEvalContext ctx) {
 		CaptureBuffer.INSTANCE.onSoundEvalStart();
 		try {
-		Profiler profiler = mc.getProfiler();
 		Consumer<String> logger = pConfig.log ? (pConfig.eLog ? Utils.LOGGER::info : Utils.LOGGER::debug) : x -> {};
 		List<LinkedList<Hit>> reflRays = List.of();
 		if (pConfig.reverbEnabled) {
 			logger.accept("Sampling environment with "+pConfig.nRays+" seed rays...");
-			profiler.push("resounding_reflection_rays");
-			try {
-				reflRays = IntStream.range(0, rays.length).parallel().unordered()
-						.mapToObj((i) -> Engine.raycast(new Pair<>(rays[i], i), 128, ctx)).toList();
-			} finally {
-				profiler.pop();
-			}
+			reflRays = IntStream.range(0, rays.length).parallel().unordered()
+					.mapToObj((i) -> Engine.raycast(new Pair<>(rays[i], i), 128, ctx)).toList();
 			if (pConfig.eLog) {
 				int rayCount = 0;
 				for (LinkedList<Hit> reflRay : reflRays) {
@@ -654,15 +628,9 @@ public class Engine {
 			}
 		}
 
-		profiler.push("resounding_occlusion_ray");
-		Set<OccludedRayData> occlRays;
-		try {
-			occlRays = pConfig.occlusionEnabled
-					? throwOcclRay(ctx.soundPos(), ctx.listenerPos(), ctx.soundChunk())
-					: Collections.emptySet();
-		} finally {
-			profiler.pop();
-		}
+		Set<OccludedRayData> occlRays = pConfig.occlusionEnabled
+				? throwOcclRay(ctx.soundPos(), ctx.listenerPos(), ctx.soundChunk())
+				: Collections.emptySet();
 
 		// Pass data to post
 		EnvData data = new EnvData(reflRays, occlRays);

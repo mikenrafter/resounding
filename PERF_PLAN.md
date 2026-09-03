@@ -11,18 +11,20 @@ The engine currently has zero real instrumentation — MC's `Profiler` only wrap
 rendering, and the only timer is one opt-in `System.nanoTime()` blob around the whole
 `play()` call. Goal: make spark/F3 legible without touching engine correctness.
 
-- [ ] `OctreeManager.octreePool`: give it a named `ThreadFactory` (e.g. `resounding-octree-%d`)
-      so flame graphs show real thread names instead of `pool-N-thread-M`.
-- [ ] `Engine.play()`: wrap the three real phases with `mc.getProfiler().push(...)`/`pop()`
-      on the calling thread (same push/pop-in-try/finally pattern already used in
-      `debug/DebugPicker.java:47-108`): `resounding_eval_env`, `resounding_process_env`,
-      `resounding_set_env`.
-- [ ] `Engine.evalEnv()`: push/pop around the seed-ray parallel stream
-      (`resounding_reflection_rays`) and around `throwOcclRay` (`resounding_occlusion_ray`).
-      Both calls block on the calling thread before returning, so this is safe — push/pop
-      never crosses into the parallel worker threads themselves (MC's `Profiler` is not
-      thread-safe; do not push/pop from inside `IntStream.parallel()` lambdas or the
-      octree-rebuild pool).
+- [x] `OctreeManager.octreePool`: named `ThreadFactory` (`resounding-octree-N`) so flame
+      graphs show real thread names instead of `pool-N-thread-M`. Safe regardless of caller.
+- [x → reverted] `Engine.play()`/`evalEnv()`: originally wrapped with
+      `mc.getProfiler().push(...)`/`pop()`, matching the pattern in
+      `debug/DebugPicker.java:47-108`. **Reverted** — confirmed by decompiling the mapped MC
+      sources that `Source.play`/`Source.setPosition` (what `SourceMixin` injects into, and
+      therefore what calls `Engine.play()`) always run on Minecraft's dedicated "Sound engine"
+      thread (`SoundExecutor`, single daemon thread owned by `SoundSystem`), never inline on
+      the render/client thread. `mc.getProfiler()` is not thread-safe and is only meant for
+      the render thread's own push/pop stack, so calling it from `Engine.play()`/`evalEnv()`
+      would race with the render thread's real profiler use (F3, spark's tick-profiler view)
+      — a correctness bug, not just an unhelpful marker. Removed entirely; rely on spark's
+      own thread-aware sampling (`--thread *`) to see `Engine`/`Cast` frames under the "Sound
+      engine" thread row instead — that needs no code changes and isn't thread-restricted.
 
 ## 2. Dedupe: Cast.java null-coalescing fallback (scope: Cast.java only)
 
