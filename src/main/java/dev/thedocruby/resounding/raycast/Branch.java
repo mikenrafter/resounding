@@ -2,11 +2,14 @@ package dev.thedocruby.resounding.raycast;
 
 import dev.thedocruby.resounding.OctreeManager;
 import dev.thedocruby.resounding.material.Material;
+import dev.thedocruby.resounding.toolbox.ChunkChain;
 import dev.thedocruby.resounding.toolbox.MaterialData;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.block.BlockState;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.Vec3i;
 import net.minecraft.util.shape.VoxelShape;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -20,6 +23,23 @@ public class Branch {
     public @NotNull VoxelShape shape = OctreeManager.CUBE;
     public @Nullable Material material; // TODO: use!
     public @Nullable String materialLabel;
+
+    // Phase 0 baked descriptor (frustums-plan.md "Baked per-branch descriptor"). Populated by
+    // OctreeManager.growOctree's post-order bake pass; NaN/null until that lands (Phase 0 GREEN).
+    /** Highest impedance represented within this octant (see plan's size-2/">2" high rule). */
+    public double maxImpedance = Double.NaN;
+    /** Lowest impedance represented within this octant (see plan's size-2/">2" low rule). */
+    public double minImpedance = Double.NaN;
+    /** Mean impedance across this octant (leaf-level: same as max/min; internal: mean of all 8 leaves). */
+    public double avgImpedance = Double.NaN;
+    /**
+     * Raw corner-sign-sum polarization vector — the same primitive as Phase 0.5's {@code P},
+     * unnormalized. {@code null} means "no gradient" (octant size 1, or a fully homogeneous
+     * octant with no G_high/G_low split), distinct from a real {@code (0,0,0)} cancellation
+     * (see the checkerboard case in the plan). Never renormalized after the size&gt;2 weighted
+     * average combine, consistent with staying a "polar" rather than a unit normal.
+     */
+    public @Nullable Vec3d polar;
 
     public @NotNull HashMap<Long, Branch> leaves;
 
@@ -98,4 +118,155 @@ public class Branch {
     }
 
     public Branch replace(Long pos, Branch branch) { return leaves.replace(pos, branch); }
+
+    /**
+     * Phase 0 same-size neighbor accessor (frustums-plan.md "Neighbor accessor"): returns a
+     * virtual {@link Branch} of this branch's own {@code size}, representing whatever occupies
+     * the region immediately adjacent along {@code direction} (one of the 6 axis-unit vectors),
+     * even when the neighbor's real tree resolution differs.
+     * <p>Resolution:
+     * <ol>
+     *   <li>shift {@code start} by {@code size} along the crossed axis;</li>
+     *   <li>if the shifted box leaves this octant's chunk/section, hand off to
+     *       {@code chunk.access}/{@code getBranch} to find the right root;</li>
+     *   <li>walk down from that root toward the shifted box, stopping at the requested size or at
+     *       whatever coarser (pruned/homogeneous) branch is found first;</li>
+     *   <li><b>coarser</b>: trivial replication — max = min = avg = that material's impedance,
+     *       {@code polar = null} (no gradient);</li>
+     *   <li><b>at/finer</b>: return the real pre-baked {@link Branch} directly, no aggregation.</li>
+     * </ol>
+     */
+    public @NotNull Branch neighbor(@NotNull Vec3i direction, @Nullable ChunkChain chunk) {
+        BlockPos shiftedStart = start.add(
+                direction.getX() * size,
+                direction.getY() * size,
+                direction.getZ() * size
+        );
+
+        int chunkX = shiftedStart.getX() >> 4;
+        int chunkZ = shiftedStart.getZ() >> 4;
+        int ySection = shiftedStart.getY() >> 4;
+
+        ChunkChain targetChunk = chunk.access(chunkX, chunkZ);
+        Branch sectionRoot = targetChunk.getBranch(ySection);
+
+        Branch current = sectionRoot;
+        while (current.size > this.size && !current.leaves.isEmpty()) {
+            int half = current.size >> 1;
+            int dx = shiftedStart.getX() >= current.start.getX() + half ? half : 0;
+            int dy = shiftedStart.getY() >= current.start.getY() + half ? half : 0;
+            int dz = shiftedStart.getZ() >= current.start.getZ() + half ? half : 0;
+            BlockPos childOrigin = current.start.add(dx, dy, dz);
+            Branch child = current.leaves.get(childOrigin.asLong());
+            if (child == null) break;
+            current = child;
+        }
+
+        if (current.size == this.size) {
+            // at or finer than the requested size: already-baked descriptor, no aggregation.
+            return current;
+        }
+
+        // coarser pruned/homogeneous ancestor found first: trivial replication, positioned at
+        // the accessor's own size within the larger uniform space.
+        Branch virtual = new Branch(shiftedStart, this.size, current.material);
+        virtual.materialLabel = current.materialLabel;
+        if (current.material != null) {
+            double impedance = current.material.impedance();
+            virtual.maxImpedance = impedance;
+            virtual.minImpedance = impedance;
+            virtual.avgImpedance = impedance;
+        }
+        virtual.polar = null;
+        return virtual;
+    }
+
+    /**
+     * Phase 0.5 edge-neighbor arithmetic decision (frustums-plan.md "Neighbor resolution for the
+     * interaction: edges, not vertices"): {@code start % (size*2) == 0} on the axis matching
+     * {@code direction} means this octant is the "low" child there. Stepping further negative
+     * from a low child (or further positive from a high child) exits the immediate parent, which
+     * is exactly the cross-parent case that must fall through to {@link #neighbor}. Not yet
+     * implemented — always throws.
+     */
+    public boolean crossesParentBoundary(@NotNull Vec3i direction) {
+        return axisCrossesParentBoundary(start.getX(), direction.getX())
+                || axisCrossesParentBoundary(start.getY(), direction.getY())
+                || axisCrossesParentBoundary(start.getZ(), direction.getZ());
+    }
+
+    /** {@code start % (size*2) == 0} on this axis -> low child; low crosses only on a negative
+     * step, high only on a positive one. A zero step on this axis never crosses. */
+    private boolean axisCrossesParentBoundary(int axisStart, int axisDirection) {
+        if (axisDirection == 0) return false;
+        boolean low = Math.floorMod(axisStart, size * 2) == 0;
+        return low ? axisDirection < 0 : axisDirection > 0;
+    }
+
+    /**
+     * Phase 0.5 edge-neighbor resolution: the 3 other octants sharing the edge nearest the face
+     * hit in {@code faceDirection} (a 3D edge, like a 2D corner, is shared by exactly 4 cells —
+     * a pinwheel of 4 cubes, so still exactly 3 other octants). {@code parent} is the immediate
+     * parent branch already in hand; when {@link #crossesParentBoundary} is false for the
+     * relevant axes the 3 neighbors are free sibling lookups via {@code parent.leaves} (no
+     * traversal), otherwise this falls through to {@link #neighbor}. Not yet implemented — always
+     * throws.
+     */
+    public @NotNull Branch[] edgeNeighbors(@NotNull Vec3i faceDirection, @Nullable Branch parent, @Nullable ChunkChain chunk) {
+        // faceDirection is a single axis-unit vector (per contract, mirrors Branch.neighbor's own
+        // direction contract). The edge nearest the hit face runs along the one remaining axis not
+        // involved in the pinwheel; pick the "other" axis cyclically (X->Y->Z->X) and walk it
+        // toward this octant's own parent-interior side (nearest edge = center-ward, not the outer
+        // world boundary), matching "walk to the nearest edge of the face" from the plan.
+        int faceAxis = faceDirection.getX() != 0 ? 0 : faceDirection.getY() != 0 ? 1 : 2;
+        int otherAxis = (faceAxis + 1) % 3;
+
+        Vec3i otherDirection = axisUnit(otherAxis, interiorStep(otherAxis));
+        Vec3i diagonalDirection = new Vec3i(
+                faceDirection.getX() + otherDirection.getX(),
+                faceDirection.getY() + otherDirection.getY(),
+                faceDirection.getZ() + otherDirection.getZ()
+        );
+
+        return new Branch[]{
+                resolveEdgeNeighbor(faceDirection, parent, chunk),
+                resolveEdgeNeighbor(otherDirection, parent, chunk),
+                resolveEdgeNeighbor(diagonalDirection, parent, chunk)
+        };
+    }
+
+    /** Which of this branch's own siblings sits toward the parent's interior on {@code axis}:
+     * a low child's interior neighbor is at {@code +size}, a high child's at {@code -size}. */
+    private int interiorStep(int axis) {
+        int axisStart = axis == 0 ? start.getX() : axis == 1 ? start.getY() : start.getZ();
+        boolean low = Math.floorMod(axisStart, size * 2) == 0;
+        return low ? 1 : -1;
+    }
+
+    private static Vec3i axisUnit(int axis, int sign) {
+        return new Vec3i(axis == 0 ? sign : 0, axis == 1 ? sign : 0, axis == 2 ? sign : 0);
+    }
+
+    /**
+     * Resolves a single edge-pinwheel neighbor in {@code direction} (possibly diagonal across two
+     * axes): same-parent case is a free lookup in {@code parent.leaves}; cross-parent falls
+     * through to {@link #neighbor}. {@link #neighbor} can throw if the target chunk/section isn't
+     * reachable through {@code chunk} (e.g. not loaded) -- that's a real possible runtime state
+     * (unlike the same-size accessor's own tests, which always hand it a fully-wired chain), so
+     * this composing method degrades to an empty placeholder positioned where the real neighbor
+     * would be rather than propagating the failure.
+     */
+    private @NotNull Branch resolveEdgeNeighbor(@NotNull Vec3i direction, @Nullable Branch parent, @Nullable ChunkChain chunk) {
+        if (parent != null && !crossesParentBoundary(direction)) {
+            BlockPos childOrigin = start.add(direction.getX() * size, direction.getY() * size, direction.getZ() * size);
+            Branch sibling = parent.leaves.get(childOrigin.asLong());
+            if (sibling != null) return sibling;
+        }
+        try {
+            return neighbor(direction, chunk);
+        } catch (NullPointerException unresolved) {
+            BlockPos shiftedStart = start.add(direction.getX() * size, direction.getY() * size, direction.getZ() * size);
+            return new Branch(shiftedStart, size);
+        }
+    }
 }

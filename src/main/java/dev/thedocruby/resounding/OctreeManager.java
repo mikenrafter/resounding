@@ -2,16 +2,20 @@ package dev.thedocruby.resounding;
 
 import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.raycast.Branch;
+import dev.thedocruby.resounding.raycast.Polarization;
 import dev.thedocruby.resounding.toolbox.ChunkChain;
 import net.minecraft.block.BlockState;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.chunk.WorldChunk;
 import org.apache.commons.lang3.ArrayUtils;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -103,6 +107,7 @@ public class OctreeManager {
             BlockState state = chunk.getBlockState(start);
             root.material = MaterialRegistry.material(state);
             root.materialLabel = MaterialRegistry.describe(state);
+            bakeLeafDescriptor(root);
             return root;
         }
 
@@ -115,9 +120,12 @@ public class OctreeManager {
         if (scale > 1) {
             boolean heterogeneous = false;
             Material siblingMaterial = null;
-            for (BlockPos block : blockSequence) {
+            Branch[] children = new Branch[blockSequence.length];
+            for (int i = 0; i < blockSequence.length; i++) {
+                final BlockPos block = blockSequence[i];
                 final BlockPos position = start.add(block.multiply(scale));
                 Branch leaf = growOctree(chunk, new Branch(position, scale, (Material) null));
+                children[i] = leaf;
                 if (leaf.material == null || !leaf.isEmpty()) {
                     heterogeneous = true;
                     valid = false;
@@ -135,15 +143,29 @@ public class OctreeManager {
             if (!heterogeneous) {
                 root.empty();
             }
+            bakeAggregateDescriptor(root, children);
         } else {
+            Material[] cornerMaterials = new Material[blockSequence.length];
+            BlockState[] cornerStates = new BlockState[blockSequence.length];
+            for (int i = 0; i < blockSequence.length; i++) {
+                final BlockPos position = start.add(blockSequence[i]);
+                BlockState blockState = chunk.getBlockState(position);
+                cornerStates[i] = blockState;
+                cornerMaterials[i] = MaterialRegistry.material(blockState);
+            }
             valid = regionHomogeneous(chunk, start, 2, corner);
+            Polarization.Descriptor descriptor = Polarization.bakeOctant(cornerMaterials);
+            root.maxImpedance = descriptor.maxImpedance();
+            root.minImpedance = descriptor.minImpedance();
+            root.avgImpedance = descriptor.avgImpedance();
+            root.polar = descriptor.polar();
             if (!valid) {
                 root.empty();
-                for (BlockPos block : blockSequence) {
-                    final BlockPos position = start.add(block);
-                    BlockState blockState = chunk.getBlockState(position);
-                    Branch leaf = new Branch(position, 1, MaterialRegistry.material(blockState));
-                    leaf.materialLabel = MaterialRegistry.describe(blockState);
+                for (int i = 0; i < blockSequence.length; i++) {
+                    final BlockPos position = start.add(blockSequence[i]);
+                    Branch leaf = new Branch(position, 1, cornerMaterials[i]);
+                    leaf.materialLabel = MaterialRegistry.describe(cornerStates[i]);
+                    bakeLeafDescriptor(leaf);
                     root.put(position.asLong(), leaf);
                 }
                 root.material = null;
@@ -156,6 +178,56 @@ public class OctreeManager {
             root.materialLabel = null;
         }
         return root;
+    }
+
+    /** Size-1 leaf baked descriptor (frustums-plan.md Phase 0 table): no gradient, max=min=avg. */
+    private static void bakeLeafDescriptor(Branch leaf) {
+        double impedance = leaf.material != null ? leaf.material.impedance() : Double.NaN;
+        leaf.maxImpedance = impedance;
+        leaf.minImpedance = impedance;
+        leaf.avgImpedance = impedance;
+        leaf.polar = null;
+    }
+
+    /**
+     * Size&gt;2 baked-descriptor aggregation (frustums-plan.md Phase 0 table): high/low/avg are
+     * the mean of the 8 children's own already-reduced high/low/avg values (one running pass, not
+     * a second traversal); {@code polar} is the weighted average of the children's own {@code
+     * polar} vectors, weighted by each child's own stiffness (how high-impedance-dominant that
+     * child is, derived from its own baked high/low/avg spread and quantized to quarters via
+     * {@link Polarization#stiffWeight}). Children with no gradient of their own ({@code polar ==
+     * null}) contribute no direction.
+     */
+    private static void bakeAggregateDescriptor(Branch root, Branch[] children) {
+        double sumHigh = 0.0;
+        double sumLow = 0.0;
+        double sumAvg = 0.0;
+        List<Vec3d> childPolar = new ArrayList<>(children.length);
+        List<Double> childWeight = new ArrayList<>(children.length);
+        for (Branch child : children) {
+            sumHigh += child.maxImpedance;
+            sumLow += child.minImpedance;
+            sumAvg += child.avgImpedance;
+            if (child.polar != null) {
+                double range = child.maxImpedance - child.minImpedance;
+                double ratio = range > 0 ? (child.avgImpedance - child.minImpedance) / range : 1.0;
+                ratio = Math.max(0.0, Math.min(1.0, ratio));
+                childPolar.add(child.polar);
+                childWeight.add(Polarization.stiffWeight(ratio));
+            }
+        }
+        root.maxImpedance = sumHigh / children.length;
+        root.minImpedance = sumLow / children.length;
+        root.avgImpedance = sumAvg / children.length;
+        if (childPolar.isEmpty()) {
+            root.polar = null;
+        } else {
+            double[] weights = new double[childWeight.size()];
+            for (int i = 0; i < weights.length; i++) {
+                weights[i] = childWeight.get(i);
+            }
+            root.polar = Polarization.combinePolar(childPolar.toArray(new Vec3d[0]), weights);
+        }
     }
 
     /**
