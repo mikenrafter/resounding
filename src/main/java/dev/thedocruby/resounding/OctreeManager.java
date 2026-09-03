@@ -13,6 +13,7 @@ import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.chunk.WorldChunk;
 import org.apache.commons.lang3.ArrayUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,6 +61,67 @@ public class OctreeManager {
 
     public static long counter = 0;
     public static volatile int materialGeneration = 0;
+
+    private static volatile OctreePlantScheduler plantScheduler;
+
+    private static OctreePlantScheduler plantScheduler() {
+        OctreePlantScheduler existing = plantScheduler;
+        if (existing != null) {
+            return existing;
+        }
+        synchronized (OctreeManager.class) {
+            if (plantScheduler == null) {
+                plantScheduler = new OctreePlantScheduler(
+                        System::currentTimeMillis,
+                        OctreeManager::playerChunkPos,
+                        OctreeManager::plantRingRadius,
+                        octreePool,
+                        OctreeManager::runPlantJob
+                );
+            }
+            return plantScheduler;
+        }
+    }
+
+    private static @Nullable ChunkPos playerChunkPos() {
+        if (mc == null || mc.player == null) {
+            return null;
+        }
+        return mc.player.getChunkPos();
+    }
+
+    private static int plantRingRadius() {
+        if (pConfig == null) {
+            return -1;
+        }
+        return pConfig.soundSimulationDistance + OctreePlantScheduler.RING_BUFFER_CHUNKS;
+    }
+
+    private static void runPlantJob(OctreePlantScheduler.PlantJob job) {
+        if (job.materialGeneration() != materialGeneration) {
+            return;
+        }
+        plantOctree(job.chunk(), job.sectionIndex(), job.root());
+    }
+
+    /** Call from chunk {@code initStorage} so distant deferred plants wait for quiet. */
+    public static void noteChunkLoad() {
+        plantScheduler().noteChunkLoad();
+    }
+
+    /**
+     * Priority if within soundSimulationDistance+2 of the player (ignores 2s quiet);
+     * otherwise deferred until quiet. See {@code CHUNK_PLANT_DEBOUNCE.md}.
+     */
+    public static void schedulePlant(ChunkChain chunk, ChunkPos pos, int index, Branch root) {
+        plantScheduler().schedule(new OctreePlantScheduler.PlantJob(
+                pos, index, materialGeneration, chunk, root
+        ));
+    }
+
+    public static void onClientTick() {
+        plantScheduler().onClientTick();
+    }
 
     public static void onMaterialsPublished() {
         materialGeneration++;

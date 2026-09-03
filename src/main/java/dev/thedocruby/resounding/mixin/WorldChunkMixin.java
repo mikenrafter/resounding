@@ -135,6 +135,7 @@ public abstract class WorldChunkMixin extends Chunk implements ChunkChain {
 
 	public void initStorage() {
 		if (world == null || !world.isClient) return;
+		OctreeManager.noteChunkLoad();
 		//* TODO remove
 		if (!hasLoaded || !MaterialRegistry.isPopulated()) {
 			hasLoaded = Cache.generate();
@@ -179,7 +180,7 @@ public abstract class WorldChunkMixin extends Chunk implements ChunkChain {
 			Branch blank = branches[index];
 			if (MaterialRegistry.isPopulated()) {
 				OctreeManager.counter++;
-				OctreeManager.octreePool.execute(() -> OctreeManager.plantOctree(this, index, blank));
+				OctreeManager.schedulePlant(this, pos, index, blank);
 			} else {
 				LOGGER.warn(
 						"Resounding: skipped octree build for section {} at {}; materials not ready",
@@ -225,13 +226,7 @@ public abstract class WorldChunkMixin extends Chunk implements ChunkChain {
 			int y = heightLimitView.sectionIndexToCoord(i) << 4;
 			final int index = this.yOffset + (y >> 4);
 			Branch root = new Branch(BlockPos.ofFloored(x, y, z), 16);
-			int generation = OctreeManager.materialGeneration;
-			OctreeManager.octreePool.execute(() -> {
-				if (generation != OctreeManager.materialGeneration) {
-					return;
-				}
-				OctreeManager.plantOctree(this, index, root);
-			});
+			OctreeManager.schedulePlant(this, pos, index, root);
 		}
 	}
 
