@@ -121,4 +121,43 @@ public final class OctreeOverlay {
 		}
 		octants.add(toView(node));
 	}
+
+	/**
+	 * Collection mode for beam-visited octants / virtual step boxes (runtime-visual Phase D).
+	 */
+	public static List<OctantView> collectVisited(List<Box> visitedBoxes) {
+		List<OctantView> views = new ArrayList<>(visitedBoxes.size());
+		for (Box box : visitedBoxes) {
+			views.add(toView(box, null, null));
+		}
+		return views;
+	}
+
+	/**
+	 * Same as {@link #collectVisited(List)} but tags virtual vs real leaves when the caller marks
+	 * them.
+	 */
+	public static List<OctantView> collectBeamPath(List<VisitedStep> steps) {
+		List<OctantView> views = new ArrayList<>(steps.size());
+		for (VisitedStep step : steps) {
+			String label = step.label();
+			if (step.virtual()) {
+				label = label == null || label.isEmpty() ? "virtual" : label + " virtual";
+			}
+			views.add(toView(step.box(), step.material(), label));
+		}
+		return views;
+	}
+
+	private static OctantView toView(Box box, Material material, String label) {
+		int size = (int) Math.round(box.maxX - box.minX);
+		int originX = (int) Math.round(box.minX);
+		int originY = (int) Math.round(box.minY);
+		int originZ = (int) Math.round(box.minZ);
+		int color = OctantColor.forNode(originX, originY, originZ, size);
+		return new OctantView(box, material, label, size, color);
+	}
+
+	/** One beam-traversal step for {@link #collectBeamPath(List)}. */
+	public record VisitedStep(Box box, Material material, String label, boolean virtual) {}
 }

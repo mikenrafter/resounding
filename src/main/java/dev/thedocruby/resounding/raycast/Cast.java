@@ -690,4 +690,18 @@ public class Cast {
         this.transmitted = new Ray(power, position, angle, distance);
     }
     // } */
+
+    /**
+     * Virtual frustum step size (runtime-visual Phase B): {@code min(branchSize, footprintTierSize)}
+     * where footprint tiers mirror {@link BeamBudget} — footprint in {@code [1,2)} → step 1,
+     * {@code [2,4)} → 2, {@code [4,8)} → 4, {@code [8,16)} → 8. Homogeneous large leaves stay
+     * pruned; traversal just steps at this finer virtual resolution. Outside every tier, returns
+     * {@code branchSize}.
+     */
+    public static int effectiveStepSize(int branchSize, double footprintRadius) {
+        int tier = BeamBudget.tierIndexForFootprint(footprintRadius);
+        if (tier < 0) return branchSize;
+        int tierStep = 1 << tier;
+        return Math.min(branchSize, tierStep);
+    }
 }

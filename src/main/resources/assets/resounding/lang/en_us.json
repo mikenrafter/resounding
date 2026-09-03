@@ -54,5 +54,6 @@
   "key.resounding.debug.toggle_bounce_rays": "Toggle Bounce Rays",
   "key.resounding.debug.toggle_occlusion_rays": "Toggle Occlusion Rays",
   "key.resounding.debug.toggle_octree": "Toggle Octree Overlay",
+  "key.resounding.debug.toggle_frustum_octree": "Toggle Frustum Octree Overlay",
   "key.resounding.debug.toggle_capture": "Toggle Ray Capture"
 }

@@ -3,6 +3,7 @@ package dev.thedocruby.resounding;
 import dev.thedocruby.resounding.fixture.SectionChunks;
 import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.raycast.Branch;
+import dev.thedocruby.resounding.raycast.Polarization;
 import dev.thedocruby.resounding.tag.Ident;
 import net.minecraft.Bootstrap;
 import net.minecraft.SharedConstants;
@@ -18,7 +19,9 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Phase 0 RED tests for {@link OctreeManager#growOctree}'s baked per-branch descriptor
@@ -155,6 +158,107 @@ class OctreeGrowPolarBakeTest {
         assertEquals(700.0, patch.maxImpedance);
         assertEquals(300.0, patch.minImpedance);
         assertEquals(500.0, patch.avgImpedance, "mean of all 8 corners regardless of the max/min branch");
+    }
+
+    @Test
+    void sizeTwoBranch_retainsDescriptorBlendCoefficientForStiffWeight() {
+        BlockPos sectionOrigin = new BlockPos(0, 0, 0);
+        SectionChunks.SectionFixture fixture = SectionChunks.fixture(sectionOrigin);
+        fillUniform(fixture, airState);
+        // 7 granite : 1 diorite — blendCoefficient = 7/8 = 0.875
+        fixture.setLocal(0, 0, 0, graniteState);
+        fixture.setLocal(1, 0, 0, graniteState);
+        fixture.setLocal(0, 1, 0, graniteState);
+        fixture.setLocal(1, 1, 0, graniteState);
+        fixture.setLocal(0, 0, 1, graniteState);
+        fixture.setLocal(1, 0, 1, graniteState);
+        fixture.setLocal(0, 1, 1, graniteState);
+        fixture.setLocal(1, 1, 1, dioriteState);
+        WorldChunk chunk = fixture.chunk();
+
+        Branch root = new Branch(sectionOrigin, 16);
+        OctreeManager.growOctree(chunk, root);
+
+        Branch patch = descend(root, sectionOrigin, 2);
+        assertEquals(2, patch.size);
+        Material[] corners = {
+                GRANITE, GRANITE, GRANITE, GRANITE, GRANITE, GRANITE, GRANITE, DIORITE
+        };
+        double expectedBlend = Polarization.bakeOctant(corners).blendCoefficient();
+        assertEquals(0.875, expectedBlend, 1e-9);
+        assertEquals(expectedBlend, patch.blendCoefficient, 1e-9,
+                "bake must retain Descriptor.blendCoefficient on the Branch for stiff_weight");
+    }
+
+    @Test
+    void sizeGreaterThanTwoAggregate_stiffWeightFollowsBlendCoefficientNotMidpointIdentity() {
+        // Two adjacent size-2 children inside a size-4 parent:
+        //  - high-dominant ≥4-distinct (blendCoefficient ≠ 0.5; impedance midpoint identity is 0.5)
+        //  - balanced 4:4 stripe (blendCoefficient = 0.5)
+        // Combined polar must weight the high-dominant child more — i.e. stiffWeight(blendCoefficient).
+        BlockPos sectionOrigin = new BlockPos(0, 0, 0);
+        SectionChunks.SectionFixture fixture = SectionChunks.fixture(sectionOrigin);
+        fillUniform(fixture, airState);
+
+        // Child A at (0,0,0) size 2: 5 andesite(800), 1 sandstone(200), 1 tuff(600), 1 cobble(400)
+        // → 4 distinct, highCount=5, blend=5/6; polar biased by corner arrangement
+        fixture.setLocal(0, 0, 0, andesiteState);
+        fixture.setLocal(1, 0, 0, andesiteState);
+        fixture.setLocal(0, 1, 0, andesiteState);
+        fixture.setLocal(1, 1, 0, andesiteState);
+        fixture.setLocal(0, 0, 1, andesiteState);
+        fixture.setLocal(1, 0, 1, tuffState);
+        fixture.setLocal(0, 1, 1, cobblestoneState);
+        fixture.setLocal(1, 1, 1, sandstoneState);
+
+        // Child B at (2,0,0) size 2: axis-striped granite/diorite → blend 0.5, polar (-8,0,0)
+        fixture.setLocal(2, 0, 0, graniteState);
+        fixture.setLocal(3, 0, 0, dioriteState);
+        fixture.setLocal(2, 1, 0, graniteState);
+        fixture.setLocal(3, 1, 0, dioriteState);
+        fixture.setLocal(2, 0, 1, graniteState);
+        fixture.setLocal(3, 0, 1, dioriteState);
+        fixture.setLocal(2, 1, 1, graniteState);
+        fixture.setLocal(3, 1, 1, dioriteState);
+
+        // Fill remaining size-2 children of the (0,0,0) size-4 with homogeneous air so they contribute
+        // no polar (null) and drop out of the weighted combine.
+        WorldChunk chunk = fixture.chunk();
+        Branch root = new Branch(sectionOrigin, 16);
+        OctreeManager.growOctree(chunk, root);
+
+        Branch size4 = descend(root, sectionOrigin, 4);
+        Branch childA = descend(root, sectionOrigin, 2);
+        Branch childB = descend(root, sectionOrigin.add(2, 0, 0), 2);
+
+        assertEquals(4, size4.size);
+        assertEquals(2, childA.size);
+        assertEquals(2, childB.size);
+        assertNotNull(childA.polar);
+        assertNotNull(childB.polar);
+
+        double blendA = Polarization.bakeOctant(new Material[]{
+                ANDESITE, ANDESITE, ANDESITE, ANDESITE, ANDESITE, TUFF, COBBLESTONE, SANDSTONE
+        }).blendCoefficient();
+        double blendB = 0.5;
+        assertTrue(Math.abs(blendA - 0.5) > 1e-6, "precondition: child A blend must differ from 0.5");
+
+        // Impedance-range identity collapses ≥4-distinct children to weight 0.5; real stiff weight
+        // must use blendCoefficient.
+        double wrongA = Polarization.stiffWeight(
+                (childA.avgImpedance - childA.minImpedance) / (childA.maxImpedance - childA.minImpedance));
+        double rightA = Polarization.stiffWeight(blendA);
+        assertTrue(Math.abs(wrongA - rightA) > 1e-6,
+                "precondition: impedance midpoint identity must disagree with blendCoefficient stiff weight");
+
+        Vec3d expected = Polarization.combinePolar(
+                new Vec3d[]{ childA.polar, childB.polar },
+                new double[]{ Polarization.stiffWeight(blendA), Polarization.stiffWeight(blendB) }
+        );
+        assertEquals(expected.x, size4.polar.x, 1e-6,
+                "size>2 polar must weight children by stiffWeight(blendCoefficient), not the midpoint identity");
+        assertEquals(expected.y, size4.polar.y, 1e-6);
+        assertEquals(expected.z, size4.polar.z, 1e-6);
     }
 
     private static void fillUniform(SectionChunks.SectionFixture fixture, BlockState state) {

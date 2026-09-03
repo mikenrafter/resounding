@@ -41,6 +41,14 @@ public final class DebugKeybinds {
 					CATEGORY
 			)
 	);
+	private static final KeyBinding TOGGLE_FRUSTUM_OCTREE = KeyBindingHelper.registerKeyBinding(
+			new KeyBinding(
+					"key.resounding.debug.toggle_frustum_octree",
+					InputUtil.Type.KEYSYM,
+					GLFW.GLFW_KEY_J,
+					CATEGORY
+			)
+	);
 	private static final KeyBinding TOGGLE_CAPTURE = KeyBindingHelper.registerKeyBinding(
 			new KeyBinding(
 					"key.resounding.debug.toggle_capture",
@@ -68,6 +76,7 @@ public final class DebugKeybinds {
 			}
 			while (TOGGLE_OCTREE.wasPressed()) {
 				var layer = DebugRenderDispatcher.INSTANCE.octree();
+				layer.setDisplayMode(OctreeLayer.DisplayMode.NEIGHBORHOOD);
 				layer.setEnabled(!layer.isEnabled());
 				if (layer.isEnabled()) {
 					layer.update();
@@ -75,6 +84,24 @@ public final class DebugKeybinds {
 						client.player.sendMessage(Text.literal(String.format(
 								"Octree overlay: %d octants (7-cell neighborhood)",
 								layer.octantCount()
+						)).formatted(Formatting.AQUA), true);
+					}
+				}
+			}
+			while (TOGGLE_FRUSTUM_OCTREE.wasPressed()) {
+				var layer = DebugRenderDispatcher.INSTANCE.octree();
+				boolean enabling = !layer.isEnabled()
+						|| layer.displayMode() != OctreeLayer.DisplayMode.BEAM_PATH;
+				layer.setDisplayMode(OctreeLayer.DisplayMode.BEAM_PATH);
+				layer.setEnabled(enabling);
+				if (layer.isEnabled()) {
+					layer.update();
+					if (client.player != null) {
+						boolean fromCapture = !CaptureBuffer.INSTANCE.asCapturedList().isEmpty();
+						client.player.sendMessage(Text.literal(String.format(
+								"Frustum octree: %d boxes (%s)",
+								layer.octantCount(),
+								fromCapture ? "captured rays as beams" : "look vector fallback"
 						)).formatted(Formatting.AQUA), true);
 					}
 				}

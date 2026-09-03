@@ -54,6 +54,36 @@ class EchoPrecedenceTest {
         assertTrue(EchoPrecedence.clearsPrecedenceThreshold(aboveThreshold));
     }
 
+    // --- excess over direct source→listener distance ---------------------------------------------
+
+    @Test
+    void pathLengthEqualToDirectDistanceDoesNotClearPrecedence() {
+        double direct = 40.0;
+        Hit alongDirect = hitWithLength(direct, new Vec3d(0, 0, 0));
+        assertFalse(EchoPrecedence.clearsPrecedenceThreshold(alongDirect, direct),
+                "path length == directDistance is zero excess; must not clear precedence");
+    }
+
+    @Test
+    void pathLengthEqualToDirectPlusThresholdClearsPrecedence() {
+        double direct = 40.0;
+        Hit atExcess = hitWithLength(direct + EchoPrecedence.PRECEDENCE_THRESHOLD_METERS, new Vec3d(0, 0, 0));
+        assertTrue(EchoPrecedence.clearsPrecedenceThreshold(atExcess, direct),
+                "path length == direct + threshold is exactly the resolved excess clearance");
+    }
+
+    @Test
+    void isHigherOrderEchoUsesExcessOverDirectDistance() {
+        Vec3d listener = new Vec3d(0, 0, 0);
+        double direct = 40.0;
+        Hit zeroExcessNear = hitWithLength(direct, new Vec3d(0.2, 0, 0));
+        Hit excessNear = hitWithLength(direct + EchoPrecedence.PRECEDENCE_THRESHOLD_METERS, new Vec3d(0.2, 0, 0));
+
+        assertFalse(EchoPrecedence.isHigherOrderEcho(zeroExcessNear, listener, 1.0, direct),
+                "zero excess must not count as higher-order even when near the listener");
+        assertTrue(EchoPrecedence.isHigherOrderEcho(excessNear, listener, 1.0, direct));
+    }
+
     // --- terminatesNearListener: hit.position() vs listener within a tolerance radius ---------------
 
     @Test

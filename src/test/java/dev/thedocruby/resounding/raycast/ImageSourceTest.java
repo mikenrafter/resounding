@@ -94,10 +94,12 @@ class ImageSourceTest {
 
     @Test
     void firstOrderEchoesKeepsOnlyPatchesWithClearLineOfSight() {
+        // Front-side sources with reflection points inside the 1×1 face (centroid±0.5) so only
+        // occlusion decides which candidates survive once geometry filtering lands.
         Patch visible = new Patch(new Vec3d(5, 0, 0), new Vec3i(1, 0, 0), 1.0, STONE);
         Patch blocked = new Patch(new Vec3d(0, 5, 0), new Vec3i(0, 1, 0), 1.0, STONE);
-        Vec3d source = new Vec3d(0, 0, 0);
-        Vec3d listener = new Vec3d(1, 1, 1);
+        Vec3d source = new Vec3d(7, 0.1, 0.1);
+        Vec3d listener = new Vec3d(7, -0.1, -0.1);
 
         ImageSource.Occluder occluder = (from, to) -> from.equals(ImageSource.mirrorSource(source, blocked));
 
@@ -115,5 +117,51 @@ class ImageSourceTest {
                 Vec3d.ZERO, new Vec3d(1, 1, 1), List.of(), (from, to) -> false
         );
         assertTrue(result.isEmpty());
+    }
+
+    // --- first-order geometry: front-side + in-bounds reflection point ---------------------------
+
+    @Test
+    void firstOrderEchoesRejectsWhenSourceIsBehindThePatch() {
+        // Outward +X face at x=5; source at x=4 sits on the solid/back side of the normal.
+        Patch patch = new Patch(new Vec3d(5, 0, 0), new Vec3i(1, 0, 0), 1.0, STONE);
+        Vec3d sourceBehind = new Vec3d(4, 0, 0);
+        Vec3d listener = new Vec3d(8, 0, 0);
+
+        List<ImageSource.Candidate> result = ImageSource.firstOrderEchoes(
+                sourceBehind, listener, List.of(patch), (from, to) -> false
+        );
+
+        assertTrue(result.isEmpty(), "source on the back side of the patch must not yield an echo");
+    }
+
+    @Test
+    void firstOrderEchoesRejectsWhenReflectionPointFallsOutsideFaceBounds() {
+        // 1×1 face centered at (5,0,0) with extents centroid±0.5 on the face axes (y,z ∈ [-0.5,0.5]).
+        Patch patch = new Patch(new Vec3d(5, 0, 0), new Vec3i(1, 0, 0), 1.0, STONE);
+        // Source and listener both far off in +Y so the plane hit lands near y≈10, outside the face.
+        Vec3d source = new Vec3d(2, 10, 0);
+        Vec3d listener = new Vec3d(8, 10, 0);
+
+        List<ImageSource.Candidate> result = ImageSource.firstOrderEchoes(
+                source, listener, List.of(patch), (from, to) -> false
+        );
+
+        assertTrue(result.isEmpty(),
+                "reflection point outside the 1×1 face (centroid±0.5) must be rejected even with clear LOS");
+    }
+
+    @Test
+    void firstOrderEchoesAcceptsFrontSideInBoundsReflection() {
+        Patch patch = new Patch(new Vec3d(5, 0, 0), new Vec3i(1, 0, 0), 1.0, STONE);
+        Vec3d source = new Vec3d(7, 0.1, 0.0);
+        Vec3d listener = new Vec3d(7, -0.1, 0.0);
+
+        List<ImageSource.Candidate> result = ImageSource.firstOrderEchoes(
+                source, listener, List.of(patch), (from, to) -> false
+        );
+
+        assertEquals(1, result.size(), "front-side source with in-bounds reflection point must keep the echo");
+        assertEquals(patch, result.get(0).patch());
     }
 }

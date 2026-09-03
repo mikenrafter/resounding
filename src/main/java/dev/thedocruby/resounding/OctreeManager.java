@@ -159,6 +159,7 @@ public class OctreeManager {
             root.minImpedance = descriptor.minImpedance();
             root.avgImpedance = descriptor.avgImpedance();
             root.polar = descriptor.polar();
+            root.blendCoefficient = descriptor.blendCoefficient();
             if (!valid) {
                 root.empty();
                 for (int i = 0; i < blockSequence.length; i++) {
@@ -187,6 +188,7 @@ public class OctreeManager {
         leaf.minImpedance = impedance;
         leaf.avgImpedance = impedance;
         leaf.polar = null;
+        leaf.blendCoefficient = Double.NaN;
     }
 
     /**
@@ -194,14 +196,16 @@ public class OctreeManager {
      * the mean of the 8 children's own already-reduced high/low/avg values (one running pass, not
      * a second traversal); {@code polar} is the weighted average of the children's own {@code
      * polar} vectors, weighted by each child's own stiffness (how high-impedance-dominant that
-     * child is, derived from its own baked high/low/avg spread and quantized to quarters via
-     * {@link Polarization#stiffWeight}). Children with no gradient of their own ({@code polar ==
-     * null}) contribute no direction.
+     * child is, derived from its retained {@link Branch#blendCoefficient} and quantized to
+     * quarters via {@link Polarization#stiffWeight}). Children with no gradient of their own
+     * ({@code polar == null}) contribute no direction.
      */
     private static void bakeAggregateDescriptor(Branch root, Branch[] children) {
         double sumHigh = 0.0;
         double sumLow = 0.0;
         double sumAvg = 0.0;
+        double sumBlend = 0.0;
+        int blendCount = 0;
         List<Vec3d> childPolar = new ArrayList<>(children.length);
         List<Double> childWeight = new ArrayList<>(children.length);
         for (Branch child : children) {
@@ -209,16 +213,22 @@ public class OctreeManager {
             sumLow += child.minImpedance;
             sumAvg += child.avgImpedance;
             if (child.polar != null) {
-                double range = child.maxImpedance - child.minImpedance;
-                double ratio = range > 0 ? (child.avgImpedance - child.minImpedance) / range : 1.0;
-                ratio = Math.max(0.0, Math.min(1.0, ratio));
+                double blend = child.blendCoefficient;
+                if (Double.isNaN(blend)) {
+                    double range = child.maxImpedance - child.minImpedance;
+                    blend = range > 0 ? (child.avgImpedance - child.minImpedance) / range : 1.0;
+                    blend = Math.max(0.0, Math.min(1.0, blend));
+                }
                 childPolar.add(child.polar);
-                childWeight.add(Polarization.stiffWeight(ratio));
+                childWeight.add(Polarization.stiffWeight(blend));
+                sumBlend += blend;
+                blendCount++;
             }
         }
         root.maxImpedance = sumHigh / children.length;
         root.minImpedance = sumLow / children.length;
         root.avgImpedance = sumAvg / children.length;
+        root.blendCoefficient = blendCount > 0 ? sumBlend / blendCount : Double.NaN;
         if (childPolar.isEmpty()) {
             root.polar = null;
         } else {
@@ -295,28 +305,47 @@ public class OctreeManager {
         if (child != null) {
             invalidatePath(chunk, child, target);
         }
+
+        if (!node.leaves.isEmpty()) {
+            Branch[] children = new Branch[blockSequence.length];
+            for (int i = 0; i < blockSequence.length; i++) {
+                BlockPos origin = node.start.add(blockSequence[i].multiply(node.size >> 1));
+                Branch baked = node.leaves.get(origin.asLong());
+                if (baked == null) {
+                    return;
+                }
+                children[i] = baked;
+            }
+            bakeAggregateDescriptor(node, children);
+        }
     }
 
     private static void subdivide(WorldChunk chunk, Branch node) {
         int half = node.size >> 1;
-        for (BlockPos offset : blockSequence) {
+        Branch[] children = new Branch[blockSequence.length];
+        for (int i = 0; i < blockSequence.length; i++) {
+            BlockPos offset = blockSequence[i];
             BlockPos origin = node.start.add(offset.multiply(half));
             Branch child = new Branch(origin, half);
             if (half == 1) {
                 BlockState state = chunk.getBlockState(origin);
                 child.material = MaterialRegistry.material(state);
                 child.materialLabel = MaterialRegistry.describe(state);
+                bakeLeafDescriptor(child);
             } else {
                 BlockState corner = chunk.getBlockState(origin);
                 if (regionHomogeneous(chunk, origin, half, corner)) {
                     child.material = MaterialRegistry.material(corner);
                     child.materialLabel = MaterialRegistry.describe(corner);
+                    bakeLeafDescriptor(child);
                 } else {
                     growOctree(chunk, child);
                 }
             }
+            children[i] = child;
             node.put(origin.asLong(), child);
         }
+        bakeAggregateDescriptor(node, children);
     }
 
     private static long childKey(Branch node, BlockPos target) {

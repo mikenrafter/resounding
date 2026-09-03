@@ -34,9 +34,14 @@ class PatchAggregatorTest {
 
     private static final Material STONE = new Material(2700.0, 0.5, 1.0);
     private static final Material AIR = new Material(1.2, 1.0, 0.5);
+    /** Non-opaque block that is still acoustically solid (state=1). */
+    private static final Material GLASS = new Material(2500.0, 0.95, 1.0);
+    /** Gas-state material must never contribute patches. */
+    private static final Material GAS = new Material(1.2, 1.0, 0.5);
 
     private static BlockState stoneState;
     private static BlockState airState;
+    private static BlockState glassState;
 
     private static final Vec3i[] AXES = {
             new Vec3i(1, 0, 0), new Vec3i(-1, 0, 0),
@@ -50,13 +55,15 @@ class PatchAggregatorTest {
         Bootstrap.initialize();
         stoneState = Blocks.STONE.getDefaultState();
         airState = Blocks.AIR.getDefaultState();
+        glassState = Blocks.GLASS.getDefaultState();
     }
 
     @BeforeEach
     void publishMaterials() {
         MaterialRegistry.publish(Map.ofEntries(
                 Map.entry(Ident.parse("minecraft:stone"), STONE),
-                Map.entry(Ident.parse("minecraft:air"), AIR)
+                Map.entry(Ident.parse("minecraft:air"), AIR),
+                Map.entry(Ident.parse("minecraft:glass"), GLASS)
         ));
     }
 
@@ -126,5 +133,74 @@ class PatchAggregatorTest {
         List<Patch> patches = PatchAggregator.buildPatches(chunk, sectionOrigin);
 
         assertTrue(patches.isEmpty(), "no solid faces exist in an all-air section");
+    }
+
+    @Test
+    void sectionEdgeFace_mustNotFabricatePatchesFromWrappedLocalCoordinates() {
+        // WorldChunk masks local X/Z so x=-1 reads x=15 in the same chunk. PatchAggregator must
+        // treat a neighbor outside the section as exposed (air), not as the wrapped far-side block.
+        BlockPos sectionOrigin = new BlockPos(0, 0, 0);
+        WorldChunk wrappingChunk = wrappingSectionChunk(sectionOrigin, stoneState);
+
+        List<Patch> patches = PatchAggregator.buildPatches(wrappingChunk, sectionOrigin);
+
+        Patch expectedWestFace = new Patch(faceCentroid(sectionOrigin, new Vec3i(-1, 0, 0)), new Vec3i(-1, 0, 0), 1.0, STONE);
+        assertTrue(patches.contains(expectedWestFace),
+                "block at local (0,0,0) must expose its -X face to out-of-section air; wrapping x=-1→x=15 must not hide it");
+    }
+
+    @Test
+    void solidStateNonOpaqueBlock_stillContributesPatches() {
+        assertFalse(glassState.isOpaque(), "fixture sanity: glass is not opaque");
+        assertEquals(1.0, GLASS.state(), 1e-9, "glass material is solid by Material.state");
+
+        BlockPos sectionOrigin = new BlockPos(0, 0, 0);
+        BlockPos block = sectionOrigin.add(5, 5, 5);
+        SectionChunks.SectionFixture fixture = SectionChunks.fixture(sectionOrigin);
+        fillUniform(fixture, airState);
+        fixture.setLocal(5, 5, 5, glassState);
+        WorldChunk chunk = fixture.chunk();
+
+        List<Patch> patches = PatchAggregator.buildPatches(chunk, sectionOrigin);
+
+        assertEquals(6, patches.size(), "solid-state glass must contribute all 6 faces despite !isOpaque()");
+        for (Vec3i axis : AXES) {
+            Patch expected = new Patch(faceCentroid(block, axis), axis, 1.0, GLASS);
+            assertTrue(patches.contains(expected), "missing glass face with normal " + axis);
+        }
+    }
+
+    @Test
+    void gasStateMaterial_doesNotContributePatches() {
+        assertEquals(0.5, GAS.state(), 1e-9);
+        // Air block with gas-state material (same as published AIR) — already covered by all-air,
+        // but assert explicitly that state < solid threshold means no patches from a lone cell.
+        BlockPos sectionOrigin = new BlockPos(0, 0, 0);
+        SectionChunks.SectionFixture fixture = SectionChunks.fixture(sectionOrigin);
+        fillUniform(fixture, airState);
+        fixture.setLocal(5, 5, 5, airState);
+        WorldChunk chunk = fixture.chunk();
+
+        List<Patch> patches = PatchAggregator.buildPatches(chunk, sectionOrigin);
+        assertTrue(patches.isEmpty(), "gas/air Material.state must not contribute acoustic patches");
+    }
+
+    /**
+     * Mockito chunk that mimics {@code WorldChunk.getBlockState}'s local X/Z mask: out-of-range
+     * local coords wrap into {@code [0,16)} instead of resolving as out-of-section air.
+     */
+    private static WorldChunk wrappingSectionChunk(BlockPos sectionOrigin, BlockState fill) {
+        WorldChunk chunk = org.mockito.Mockito.mock(WorldChunk.class);
+        org.mockito.Mockito.when(chunk.getBlockState(org.mockito.Mockito.any())).thenAnswer(invocation -> {
+            BlockPos pos = invocation.getArgument(0);
+            int x = Math.floorMod(pos.getX() - sectionOrigin.getX(), 16);
+            int y = pos.getY() - sectionOrigin.getY();
+            int z = Math.floorMod(pos.getZ() - sectionOrigin.getZ(), 16);
+            if (y < 0 || y >= 16) {
+                return airState;
+            }
+            return fill;
+        });
+        return chunk;
     }
 }

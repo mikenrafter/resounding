@@ -34,6 +34,12 @@ public final class PatchAggregator {
     };
 
     /**
+     * Material.state at or above this value counts as acoustically solid for patch contribution
+     * (1.0 = solid; gas 0.5 and below do not contribute).
+     */
+    private static final double SOLID_STATE_THRESHOLD = 1.0;
+
+    /**
      * Builds the patch list for the 16³ section rooted at {@code sectionOrigin}: one {@link Patch}
      * per exposed block face (a face is exposed when the block immediately beyond it is non-solid,
      * e.g. air), tagging normal, centroid, area, and material (reusing
@@ -41,11 +47,10 @@ public final class PatchAggregator {
      * {@code OctreeManager.growOctree}). Built once per chunk-section load/invalidate, not per
      * sound (frustums-plan.md Phase 2).
      *
-     * <p>Solidity is determined by {@link BlockState#isOpaque()} — a context-free, cached property
-     * of the block (no {@code BlockView}/collision-shape lookup needed), so it behaves correctly
-     * even when queried right at a section boundary (the neighbor lookup may land outside the
-     * fixture/section and simply resolve to whatever {@code WorldChunk#getBlockState} returns
-     * there, typically air).
+     * <p>Solidity uses {@link Material#state()} against {@link #SOLID_STATE_THRESHOLD} rather than
+     * {@link BlockState#isOpaque()}, so non-opaque solids (e.g. glass) still contribute. Neighbor
+     * positions outside the 16³ section are treated as exposed air without consulting
+     * {@code WorldChunk#getBlockState} (which can wrap local X/Z).
      */
     public static @NotNull List<Patch> buildPatches(@NotNull WorldChunk chunk, @NotNull BlockPos sectionOrigin) {
         List<Patch> patches = new ArrayList<>();
@@ -54,13 +59,18 @@ public final class PatchAggregator {
                 for (int z = 0; z < 16; z++) {
                     BlockPos block = sectionOrigin.add(x, y, z);
                     BlockState state = chunk.getBlockState(block);
-                    if (!state.isOpaque()) continue;
-
                     Material material = MaterialRegistry.material(state);
+                    if (!isAcousticallySolid(material)) continue;
+
                     for (Vec3i normal : FACE_NORMALS) {
-                        BlockPos neighborPos = block.add(normal);
-                        BlockState neighborState = chunk.getBlockState(neighborPos);
-                        if (neighborState.isOpaque()) continue;
+                        int nx = x + normal.getX();
+                        int ny = y + normal.getY();
+                        int nz = z + normal.getZ();
+                        if (inSection(nx, ny, nz)) {
+                            BlockPos neighborPos = sectionOrigin.add(nx, ny, nz);
+                            Material neighborMaterial = MaterialRegistry.material(chunk.getBlockState(neighborPos));
+                            if (isAcousticallySolid(neighborMaterial)) continue;
+                        }
 
                         Vec3d centroid = new Vec3d(
                                 block.getX() + 0.5 + normal.getX() * 0.5,
@@ -73,5 +83,15 @@ public final class PatchAggregator {
             }
         }
         return patches;
+    }
+
+    private static boolean inSection(int localX, int localY, int localZ) {
+        return localX >= 0 && localX < 16
+                && localY >= 0 && localY < 16
+                && localZ >= 0 && localZ < 16;
+    }
+
+    private static boolean isAcousticallySolid(@NotNull Material material) {
+        return material.state() >= SOLID_STATE_THRESHOLD;
     }
 }

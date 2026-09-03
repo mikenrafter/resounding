@@ -162,4 +162,18 @@ class PhysicsPolarBlendTest {
         assertFalse(Physics.commitReflect(0.49));
         assertFalse(Physics.commitReflect(0.0));
     }
+
+    // --- zero-budget no-split: exhausted budget must never authorize another split -----------------
+
+    @Test
+    void zeroBudgetThresholdIsAboveAnyContrast_soNoContrastIsNotable() {
+        // Bug: notableThreshold(0) == 1.0, so contrast >= 1.0 still authorizes a split. Budget
+        // exhausted means commit only — every contrast at splitsRemaining=0 must be non-notable.
+        assertFalse(Physics.isNotableInteraction(0.0, 0));
+        assertFalse(Physics.isNotableInteraction(0.5, 0));
+        assertFalse(Physics.isNotableInteraction(0.999, 0));
+        assertFalse(Physics.isNotableInteraction(1.0, 0),
+                "contrast==1.0 at splitsRemaining=0 must not split; beam must commit instead");
+        assertFalse(Physics.isNotableInteraction(2.0, 0));
+    }
 }

@@ -40,6 +40,12 @@ public class Branch {
      * average combine, consistent with staying a "polar" rather than a unit normal.
      */
     public @Nullable Vec3d polar;
+    /**
+     * Phase 0.5 blend coefficient retained from {@link Polarization.Descriptor#blendCoefficient()}
+     * so size&gt;2 aggregation can feed {@link Polarization#stiffWeight(double)} the real stiff
+     * dominance, not an impedance-range reconstruction. {@link Double#NaN} until baked.
+     */
+    public double blendCoefficient = Double.NaN;
 
     public @NotNull HashMap<Long, Branch> leaves;
 
@@ -233,6 +239,74 @@ public class Branch {
                 resolveEdgeNeighbor(otherDirection, parent, chunk),
                 resolveEdgeNeighbor(diagonalDirection, parent, chunk)
         };
+    }
+
+    /**
+     * Hit-point-aware edge-neighbor resolution (frustums-plan.md: walk to the nearest edge of the
+     * hit face relative to the beam hit).
+     */
+    public @NotNull Branch[] edgeNeighbors(
+            @NotNull Vec3i faceDirection,
+            @Nullable Branch parent,
+            @Nullable ChunkChain chunk,
+            @NotNull Vec3d hitPoint
+    ) {
+        int faceAxis = faceDirection.getX() != 0 ? 0 : faceDirection.getY() != 0 ? 1 : 2;
+        int axisA = (faceAxis + 1) % 3;
+        int axisB = (faceAxis + 2) % 3;
+
+        double faceMinA = axisCoord(start, axisA);
+        double faceMaxA = faceMinA + size;
+        double faceMinB = axisCoord(start, axisB);
+        double faceMaxB = faceMinB + size;
+        double hitA = axisCoord(hitPoint, axisA);
+        double hitB = axisCoord(hitPoint, axisB);
+
+        // Four edges of the hit face; pick the nearest in the face plane.
+        double distPosA = Math.abs(hitA - faceMaxA);
+        double distNegA = Math.abs(hitA - faceMinA);
+        double distPosB = Math.abs(hitB - faceMaxB);
+        double distNegB = Math.abs(hitB - faceMinB);
+
+        int edgeAxis;
+        int edgeSign;
+        double best = distPosA;
+        edgeAxis = axisA;
+        edgeSign = 1;
+        if (distNegA < best) {
+            best = distNegA;
+            edgeSign = -1;
+        }
+        if (distPosB < best) {
+            best = distPosB;
+            edgeAxis = axisB;
+            edgeSign = 1;
+        }
+        if (distNegB < best) {
+            edgeAxis = axisB;
+            edgeSign = -1;
+        }
+
+        Vec3i edgeDirection = axisUnit(edgeAxis, edgeSign);
+        Vec3i diagonalDirection = new Vec3i(
+                faceDirection.getX() + edgeDirection.getX(),
+                faceDirection.getY() + edgeDirection.getY(),
+                faceDirection.getZ() + edgeDirection.getZ()
+        );
+
+        return new Branch[]{
+                resolveEdgeNeighbor(faceDirection, parent, chunk),
+                resolveEdgeNeighbor(edgeDirection, parent, chunk),
+                resolveEdgeNeighbor(diagonalDirection, parent, chunk)
+        };
+    }
+
+    private static double axisCoord(BlockPos pos, int axis) {
+        return axis == 0 ? pos.getX() : axis == 1 ? pos.getY() : pos.getZ();
+    }
+
+    private static double axisCoord(Vec3d pos, int axis) {
+        return axis == 0 ? pos.x : axis == 1 ? pos.y : pos.z;
     }
 
     /** Which of this branch's own siblings sits toward the parent's interior on {@code axis}:

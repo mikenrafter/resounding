@@ -3,8 +3,14 @@ package dev.thedocruby.resounding.raycast;
 import dev.thedocruby.resounding.fixture.FakeChunkChain;
 import dev.thedocruby.resounding.material.Material;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Vec3i;
 import org.junit.jupiter.api.Test;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -99,19 +105,65 @@ class BranchEdgeNeighborTest {
     }
 
     @Test
-    void crossParentEdge_fallsThroughToPhase0Accessor() {
+    void crossParentEdge_resolvesNeighborMaterialFromAdjacentChunkSection() {
+        // Parent at origin; -X from the (0,0,0) child exits into chunk (-1,0). The old false-green
+        // only checked length/accessCalls while neighbor() NPEs were swallowed into empty Branches —
+        // assert the resolved face neighbor's material/start against real section content instead.
         Branch parent = buildParentWithEightChildren();
         Branch corner = parent.leaves.get(new BlockPos(0, 0, 0).asLong());
 
-        FakeChunkChain chain = new FakeChunkChain(0, 0);
-        chain.putSection(0, new Branch(new BlockPos(-4, 0, 0), 4, SNOW));
+        FakeChunkChain home = new FakeChunkChain(0, 0);
+        Branch homeRoot = new Branch(new BlockPos(0, 0, 0), 16);
+        homeRoot.put(parent.start.asLong(), parent);
+        home.putSection(0, homeRoot);
 
-        // Stepping -X from the (0,0,0) corner child exits the parent (it's the low child on X), so
-        // this must fall through to Phase 0's neighbor accessor instead of reading parent.leaves.
-        Branch[] result = corner.edgeNeighbors(new Vec3i(-1, 0, 0), parent, chain);
+        FakeChunkChain west = home.neighborChunk(-1, 0);
+        Branch westRoot = new Branch(new BlockPos(-16, 0, 0), 16, SNOW);
+        westRoot.maxImpedance = SNOW.impedance();
+        westRoot.minImpedance = SNOW.impedance();
+        westRoot.avgImpedance = SNOW.impedance();
+        west.putSection(0, westRoot);
+
+        Branch[] result = corner.edgeNeighbors(new Vec3i(-1, 0, 0), parent, home);
 
         assertEquals(3, result.length);
-        assertTrue(chain.accessCalls > 0 || chain.getBranchCalls > 0,
-                "cross-parent edge neighbors must use the ChunkChain-backed Phase 0 accessor, not just read parent.leaves blindly");
+        Branch faceNeighbor = null;
+        for (Branch neighbor : result) {
+            if (neighbor.start.getX() < 0 && neighbor.start.getY() == 0 && neighbor.start.getZ() == 0) {
+                faceNeighbor = neighbor;
+                break;
+            }
+        }
+        assertNotNull(faceNeighbor, "must include the -X face neighbor across the chunk boundary");
+        assertEquals(new BlockPos(-2, 0, 0), faceNeighbor.start);
+        assertEquals(SNOW, faceNeighbor.material,
+                "cross-parent edge must resolve real SNOW content, not an empty NPE-placeholder");
+        assertEquals(SNOW.impedance(), faceNeighbor.maxImpedance);
+        for (Branch neighbor : result) {
+            assertFalse(neighbor.material == null && Double.isNaN(neighbor.maxImpedance),
+                    "no pinwheel member may be an empty NPE-swallow placeholder at " + neighbor.start);
+        }
+    }
+
+    @Test
+    void hitPointsNearDifferentEdgesOfSameFace_returnDifferentSiblingSets() {
+        Branch parent = buildParentWithEightChildren();
+        // Interior cell so +X face stays same-parent; hit near +Y vs +Z edge of that face.
+        Branch cell = parent.leaves.get(new BlockPos(0, 0, 0).asLong());
+        Vec3i face = new Vec3i(1, 0, 0);
+
+        // +X face of the (0,0,0) size-2 cell spans x=2, y∈[0,2], z∈[0,2].
+        Vec3d nearPositiveY = new Vec3d(2.0, 1.8, 1.0);
+        Vec3d nearPositiveZ = new Vec3d(2.0, 1.0, 1.8);
+
+        Branch[] nearY = cell.edgeNeighbors(face, parent, null, nearPositiveY);
+        Branch[] nearZ = cell.edgeNeighbors(face, parent, null, nearPositiveZ);
+
+        assertEquals(3, nearY.length);
+        assertEquals(3, nearZ.length);
+        Set<Long> yStarts = Arrays.stream(nearY).map(b -> b.start.asLong()).collect(Collectors.toCollection(HashSet::new));
+        Set<Long> zStarts = Arrays.stream(nearZ).map(b -> b.start.asLong()).collect(Collectors.toCollection(HashSet::new));
+        assertNotEquals(yStarts, zStarts,
+                "hits on the same face near different edges must select different pinwheel sibling sets");
     }
 }

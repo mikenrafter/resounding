@@ -1,7 +1,9 @@
 package dev.thedocruby.resounding.debug;
 
+import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.raycast.Branch;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -76,6 +78,47 @@ class OctreeOverlayTest {
 		assertBoxPresent(octants, 0, 0, 0, 4);
 		assertBoxPresent(octants, 4, 0, 0, 2);
 		assertBoxPresent(octants, 6, 0, 0, 2);
+	}
+
+	@Test
+	void collectVisited_returnsViewsForProvidedBeamBoxes() {
+		List<Box> visited = List.of(
+				new Box(0, 0, 0, 2, 2, 2),
+				new Box(2, 0, 0, 4, 2, 2)
+		);
+
+		List<OctreeOverlay.OctantView> views = OctreeOverlay.collectVisited(visited);
+
+		assertEquals(2, views.size());
+		assertBoxPresent(views, 0, 0, 0, 2);
+		assertBoxPresent(views, 2, 0, 0, 2);
+	}
+
+	@Test
+	void collectBeamPath_preservesVirtualVsRealDistinctionInLabels() {
+		Material air = new Material(1.2, 1.0, 0.5);
+		List<OctreeOverlay.VisitedStep> steps = List.of(
+				new OctreeOverlay.VisitedStep(new Box(0, 0, 0, 16, 16, 16), air, "air", false),
+				new OctreeOverlay.VisitedStep(new Box(0, 0, 0, 1, 1, 1), air, "air", true)
+		);
+
+		List<OctreeOverlay.OctantView> views = OctreeOverlay.collectBeamPath(steps);
+
+		assertEquals(2, views.size());
+		assertTrue(views.stream().anyMatch(v -> v.size() == 16 && (v.label() == null || !v.label().contains("virtual"))));
+		assertTrue(views.stream().anyMatch(v -> v.size() == 1 && v.label() != null && v.label().toLowerCase().contains("virtual")),
+				"virtual steps should be labeled so the overlay can distinguish them from real leaves");
+	}
+
+	@Test
+	void collectNeighborhoodStillWorksAlongsideVisitedMode() {
+		BlockPos rootOrigin = new BlockPos(0, 0, 0);
+		Branch root = new Branch(rootOrigin, 16);
+		root.put(rootOrigin.asLong(), new Branch(rootOrigin, 8));
+		root.put(new BlockPos(8, 0, 0).asLong(), new Branch(new BlockPos(8, 0, 0), 8));
+
+		List<OctreeOverlay.OctantView> neighborhood = OctreeOverlay.collectNeighborhood(root, new BlockPos(1, 1, 1));
+		assertEquals(2, neighborhood.size());
 	}
 
 	private static void assertBoxPresent(List<OctreeOverlay.OctantView> octants, int originX, int originY, int originZ, int size) {

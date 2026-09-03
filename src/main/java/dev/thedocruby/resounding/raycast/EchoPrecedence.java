@@ -34,6 +34,15 @@ public final class EchoPrecedence {
     }
 
     /**
+     * Excess-path form: {@code hit.length()} must clear {@code directDistance + PRECEDENCE_THRESHOLD_METERS}
+     * (frustums-plan.md Phase 4 one-way <em>excess</em> over the direct source→listener distance).
+     * RED-phase stub: ignores {@code directDistance} and falls through to the raw-length check.
+     */
+    public static boolean clearsPrecedenceThreshold(@NotNull Hit hit, double directDistance) {
+        return hit.length() - directDistance >= PRECEDENCE_THRESHOLD_METERS;
+    }
+
+    /**
      * Whether {@code hit}'s terminal {@link Hit#position()} lies within {@code toleranceRadius} of
      * {@code listener} — the "is this beam's terminal point close to the listener" half of the
      * Phase 4 opportunistic check. Not yet implemented — always throws.
@@ -50,5 +59,19 @@ public final class EchoPrecedence {
      */
     public static boolean isHigherOrderEcho(@NotNull Hit hit, @NotNull Vec3d listener, double toleranceRadius) {
         return clearsPrecedenceThreshold(hit) && terminatesNearListener(hit, listener, toleranceRadius);
+    }
+
+    /**
+     * Excess-path form of {@link #isHigherOrderEcho(Hit, Vec3d, double)}. RED-phase stub: ignores
+     * {@code directDistance}.
+     */
+    public static boolean isHigherOrderEcho(
+            @NotNull Hit hit,
+            @NotNull Vec3d listener,
+            double toleranceRadius,
+            double directDistance
+    ) {
+        return clearsPrecedenceThreshold(hit, directDistance)
+                && terminatesNearListener(hit, listener, toleranceRadius);
     }
 }

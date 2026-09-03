@@ -1,7 +1,9 @@
 package dev.thedocruby.resounding.raycast;
 
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.Vec3i;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -69,6 +71,10 @@ public final class ImageSource {
      * patch list narrows "test every patch in the world" down to "test only patches near the
      * source/listener" (frustums-plan.md Phase 2/3), but is not filtered further here — that
      * narrowing is the caller's/Phase 2's job.
+     *
+     * <p>Also rejects geometry that cannot form a first-order specular hit: source on the back
+     * side of the patch normal, or a reflection point that falls outside the 1×1 face
+     * ({@code centroid ± 0.5} on the two tangent axes).
      */
     public static @NotNull List<Candidate> firstOrderEchoes(
             @NotNull Vec3d source,
@@ -78,11 +84,60 @@ public final class ImageSource {
     ) {
         List<Candidate> echoes = new ArrayList<>();
         for (Patch patch : patches) {
+            if (!isSourceInFront(source, patch)) {
+                continue;
+            }
             Vec3d mirror = mirrorSource(source, patch);
+            Vec3d reflection = reflectionPointOnPlane(mirror, listener, patch);
+            if (reflection == null || !isReflectionInFaceBounds(reflection, patch)) {
+                continue;
+            }
             if (hasLineOfSight(mirror, listener, occluder)) {
                 echoes.add(new Candidate(patch, mirror));
             }
         }
         return echoes;
+    }
+
+    /** True when {@code source} lies on the outward/front side of {@code patch}'s plane. */
+    private static boolean isSourceInFront(@NotNull Vec3d source, @NotNull Patch patch) {
+        Vec3d normal = Vec3d.of(patch.normal());
+        return source.subtract(patch.centroid()).dotProduct(normal) > 0.0;
+    }
+
+    /**
+     * Intersection of the mirror→listener segment with the patch plane, or {@code null} when the
+     * segment does not cross the plane (parallel / degenerate).
+     */
+    private static @Nullable Vec3d reflectionPointOnPlane(
+            @NotNull Vec3d mirror,
+            @NotNull Vec3d listener,
+            @NotNull Patch patch
+    ) {
+        Vec3d normal = Vec3d.of(patch.normal());
+        Vec3d toListener = listener.subtract(mirror);
+        double denom = toListener.dotProduct(normal);
+        if (Math.abs(denom) < 1e-12) {
+            return null;
+        }
+        double t = patch.centroid().subtract(mirror).dotProduct(normal) / denom;
+        if (t < 0.0 || t > 1.0) {
+            return null;
+        }
+        return mirror.add(toListener.multiply(t));
+    }
+
+    /** 1×1 face extents: {@code centroid ± 0.5} on each axis orthogonal to the face normal. */
+    private static boolean isReflectionInFaceBounds(@NotNull Vec3d reflection, @NotNull Patch patch) {
+        Vec3i n = patch.normal();
+        Vec3d c = patch.centroid();
+        final double half = 0.5;
+        if (n.getX() != 0) {
+            return Math.abs(reflection.y - c.y) <= half && Math.abs(reflection.z - c.z) <= half;
+        }
+        if (n.getY() != 0) {
+            return Math.abs(reflection.x - c.x) <= half && Math.abs(reflection.z - c.z) <= half;
+        }
+        return Math.abs(reflection.x - c.x) <= half && Math.abs(reflection.y - c.y) <= half;
     }
 }

@@ -63,4 +63,12 @@ class BeamInteractionTest {
         assertEquals(Physics.commitReflect(0.0), BeamInteraction.shouldCommitReflect(0.0));
         assertEquals(Physics.commitReflect(1.0), BeamInteraction.shouldCommitReflect(1.0));
     }
+
+    @Test
+    void shouldSplitAtZeroBudgetNeverAuthorizesEvenFullContrast() {
+        assertEquals(false, BeamInteraction.shouldSplit(1.0, 0),
+                "splitsRemaining=0 must refuse every contrast; gate must force commit");
+        assertEquals(false, BeamInteraction.shouldSplit(0.5, 0));
+        assertEquals(false, BeamInteraction.shouldSplit(0.0, 0));
+    }
 }

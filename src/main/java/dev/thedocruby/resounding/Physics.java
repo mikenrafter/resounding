@@ -105,6 +105,10 @@ public class Physics {
      * {@code splitsRemaining} split budget left? Not yet implemented &mdash; always throws.
      */
     public static boolean isNotableInteraction(double contrastMagnitude, int splitsRemaining) {
+        // Exhausted split budget: commit only — never authorize another split, even at full contrast.
+        if (splitsRemaining <= 0) {
+            return false;
+        }
         return contrastMagnitude >= notableThreshold(splitsRemaining);
     }
 
