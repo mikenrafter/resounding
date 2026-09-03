@@ -119,8 +119,8 @@ class BranchEdgeNeighborTest {
 
         FakeChunkChain west = home.neighborChunk(-1, 0);
         Branch westRoot = new Branch(new BlockPos(-16, 0, 0), 16, SNOW);
-        westRoot.maxImpedance = SNOW.impedance();
-        westRoot.minImpedance = SNOW.impedance();
+        westRoot.mostCommonImpedance = SNOW.impedance();
+        westRoot.leastCommonImpedance = SNOW.impedance();
         westRoot.avgImpedance = SNOW.impedance();
         west.putSection(0, westRoot);
 
@@ -138,9 +138,9 @@ class BranchEdgeNeighborTest {
         assertEquals(new BlockPos(-2, 0, 0), faceNeighbor.start);
         assertEquals(SNOW, faceNeighbor.material,
                 "cross-parent edge must resolve real SNOW content, not an empty NPE-placeholder");
-        assertEquals(SNOW.impedance(), faceNeighbor.maxImpedance);
+        assertEquals(SNOW.impedance(), faceNeighbor.mostCommonImpedance);
         for (Branch neighbor : result) {
-            assertFalse(neighbor.material == null && Double.isNaN(neighbor.maxImpedance),
+            assertFalse(neighbor.material == null && Double.isNaN(neighbor.mostCommonImpedance),
                     "no pinwheel member may be an empty NPE-swallow placeholder at " + neighbor.start);
         }
     }

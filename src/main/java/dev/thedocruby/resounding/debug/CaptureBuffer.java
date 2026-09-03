@@ -7,7 +7,10 @@ import net.fabricmc.api.Environment;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Environment(EnvType.CLIENT)
 public final class CaptureBuffer {
@@ -21,6 +24,8 @@ public final class CaptureBuffer {
 			Vec3d end,
 			int color,
 			int soundEventId,
+			/** Fibonacci/env-eval ray index within the sound event. */
+			int rayIndex,
 			int bounceIndex,
 			@Nullable Material material,
 			double reflectivity,
@@ -97,6 +102,25 @@ public final class CaptureBuffer {
 
 	public List<CapturedRay> asCapturedList() {
 		return segments.asList();
+	}
+
+	/** Distinct env-eval ray indexes present in the capture, in first-seen order. */
+	public List<Integer> capturedRayIndexes() {
+		Set<Integer> ordered = new LinkedHashSet<>();
+		for (CapturedRay ray : asCapturedList()) {
+			ordered.add(ray.rayIndex());
+		}
+		return new ArrayList<>(ordered);
+	}
+
+	public List<CapturedRay> segmentsForRayIndex(int rayIndex) {
+		List<CapturedRay> out = new ArrayList<>();
+		for (CapturedRay ray : asCapturedList()) {
+			if (ray.rayIndex() == rayIndex) {
+				out.add(ray);
+			}
+		}
+		return out;
 	}
 
 	public int version() {

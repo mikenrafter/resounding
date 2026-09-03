@@ -124,3 +124,13 @@ java {
 jar {
     from "LICENSE"
 }
+
+// ASCII visualizer for FrustumLod forward-orthant maps (same classify/edgeWalk as Cast).
+// Run: nix develop -c ./gradlew -q edgeWalkViz
+tasks.register('edgeWalkViz', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.thedocruby.resounding.raycast.EdgeWalkAsciiViz'
+    // Always run — stdout ASCII is the product.
+    outputs.upToDateWhen { false }
+}

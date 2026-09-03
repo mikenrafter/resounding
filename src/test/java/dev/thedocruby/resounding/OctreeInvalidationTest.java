@@ -56,8 +56,8 @@ class OctreeInvalidationTest {
 		for (BlockPos offset : OctreeManager.blockSequence) {
 			BlockPos origin = root.start.add(offset);
 			Branch leaf = new Branch(origin, 1, material);
-			leaf.maxImpedance = material.impedance();
-			leaf.minImpedance = material.impedance();
+			leaf.mostCommonImpedance = material.impedance();
+			leaf.leastCommonImpedance = material.impedance();
 			leaf.avgImpedance = material.impedance();
 			root.put(origin.asLong(), leaf);
 		}
@@ -102,7 +102,7 @@ class OctreeInvalidationTest {
 
 		Branch root = new Branch(sectionOrigin, 16);
 		OctreeManager.growOctree(chunk, root);
-		assertTrue(Double.isFinite(root.maxImpedance), "precondition: grow bakes finite descriptors");
+		assertTrue(Double.isFinite(root.mostCommonImpedance), "precondition: grow bakes finite descriptors");
 
 		BlockPos target = sectionOrigin.add(3, 7, 3);
 		fixture.setLocal(3, 7, 3, airState);
@@ -110,11 +110,11 @@ class OctreeInvalidationTest {
 
 		Branch cursor = root;
 		while (cursor.size > 1 && !cursor.leaves.isEmpty()) {
-			assertTrue(Double.isFinite(cursor.maxImpedance),
-					"ancestor size " + cursor.size + " must keep a finite maxImpedance after invalidate/subdivide");
-			assertTrue(Double.isFinite(cursor.minImpedance));
+			assertTrue(Double.isFinite(cursor.mostCommonImpedance),
+					"ancestor size " + cursor.size + " must keep a finite mostCommonImpedance after invalidate/subdivide");
+			assertTrue(Double.isFinite(cursor.leastCommonImpedance));
 			assertTrue(Double.isFinite(cursor.avgImpedance));
-			assertFalse(Double.isNaN(cursor.maxImpedance));
+			assertFalse(Double.isNaN(cursor.mostCommonImpedance));
 			int half = cursor.size >> 1;
 			int dx = target.getX() >= cursor.start.getX() + half ? half : 0;
 			int dy = target.getY() >= cursor.start.getY() + half ? half : 0;
@@ -125,17 +125,17 @@ class OctreeInvalidationTest {
 		}
 		Branch leaf = cursor;
 		assertEquals(1, leaf.size);
-		assertTrue(Double.isFinite(leaf.maxImpedance) || leaf.material == null,
+		assertTrue(Double.isFinite(leaf.mostCommonImpedance) || leaf.material == null,
 				"cleared leaf may drop material, but a retained material leaf must be finite-baked");
 		if (leaf.material != null) {
-			assertEquals(leaf.material.impedance(), leaf.maxImpedance);
-			assertEquals(leaf.material.impedance(), leaf.minImpedance);
+			assertEquals(leaf.material.impedance(), leaf.mostCommonImpedance);
+			assertEquals(leaf.material.impedance(), leaf.leastCommonImpedance);
 			assertEquals(leaf.material.impedance(), leaf.avgImpedance);
 		}
 		// Sibling of the cleared path that still holds stone must also be finite after subdivide.
 		Branch sibling = root.get(sectionOrigin.add(8, 0, 0));
-		assertTrue(Double.isFinite(sibling.maxImpedance),
+		assertTrue(Double.isFinite(sibling.mostCommonImpedance),
 				"subdivide must bake finite descriptors on siblings, not leave NaN from a bare Branch()");
-		assertEquals(STONE.impedance(), sibling.maxImpedance);
+		assertEquals(STONE.impedance(), sibling.mostCommonImpedance);
 	}
 }

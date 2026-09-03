@@ -22,6 +22,7 @@ public class Renderer {
 			int color,
 			int bounceIndex,
 			int sourceID,
+			int rayIndex,
 			@Nullable Material material,
 			double reflectivity,
 			double transmission,
@@ -35,12 +36,13 @@ public class Renderer {
 			return;
 		}
 		DebugRenderDispatcher.INSTANCE.bounceRays().addSoundBounceRay(
-				start, end, color, bounceIndex, sourceID, material, reflectivity, transmission, power, terminated
+				start, end, color, bounceIndex, sourceID, rayIndex, material, reflectivity, transmission,
+				power, branchSize, terminated
 		);
 		if (CaptureBuffer.INSTANCE.isCapturing()) {
 			CaptureBuffer.INSTANCE.offer(new CaptureBuffer.CapturedRay(
 					start, end, terminated ? BounceRayLayer.TERMINATED_COLOR : color,
-					sourceID, bounceIndex, material, reflectivity, transmission, power,
+					sourceID, rayIndex, bounceIndex, material, reflectivity, transmission, power,
 					priorImpedance, branchSize, materialLabel, terminated
 			));
 		}

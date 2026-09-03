@@ -24,34 +24,53 @@ abstract class RayLineLayer implements DebugLayer {
 	private final GpuLineBuffer buffer;
 	private final RingBuffer<LineSegment> segments = new RingBuffer<>(MAX_LIVE_SEGMENTS);
 	private boolean enabled = true;
+	private int version;
 
 	RayLineLayer(boolean depthTest, float lineWidth) {
 		this.buffer = new GpuLineBuffer(VertexBuffer.Usage.DYNAMIC, depthTest, lineWidth);
 	}
 
 	void addSegment(Vec3d start, Vec3d end, int color, float width) {
-		addSegment(start, end, color, width, false);
+		addSegment(start, end, color, width, false, -1, 0);
 	}
 
 	void addSegment(Vec3d start, Vec3d end, int color, float width, boolean terminator) {
+		addSegment(start, end, color, width, terminator, -1, 0);
+	}
+
+	void addSegment(
+			Vec3d start,
+			Vec3d end,
+			int color,
+			float width,
+			boolean terminator,
+			int rayIndex,
+			int branchSize
+	) {
 		if (!pConfig.dRays) {
 			return;
 		}
 		synchronized (segments) {
-			segments.offer(new LineSegment(start, end, color, width, terminator));
+			segments.offer(new LineSegment(start, end, color, width, terminator, rayIndex, branchSize));
+			version++;
 		}
 		buffer.markDirty();
 	}
 
-	List<LineSegment> segmentSnapshot() {
+	public List<LineSegment> segmentSnapshot() {
 		synchronized (segments) {
 			return segments.asList();
 		}
 	}
 
+	public int version() {
+		return version;
+	}
+
 	void clear() {
 		synchronized (segments) {
 			segments.clear();
+			version++;
 		}
 		buffer.markDirty();
 	}
@@ -104,5 +123,19 @@ abstract class RayLineLayer implements DebugLayer {
 		}
 	}
 
-	record LineSegment(Vec3d start, Vec3d end, int color, float width, boolean terminator) {}
+	public 	record LineSegment(
+			Vec3d start,
+			Vec3d end,
+			int color,
+			float width,
+			boolean terminator,
+			/** Env-eval cast index (0..63); {@code -1} for markers / unknown. */
+			int rayIndex,
+			/** LOD cell size the cast resolved this segment at; {@code 0} if unknown. */
+			int branchSize
+	) {
+		LineSegment(Vec3d start, Vec3d end, int color, float width, boolean terminator) {
+			this(start, end, color, width, terminator, -1, 0);
+		}
+	}
 }

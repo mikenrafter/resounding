@@ -17,6 +17,7 @@ class CaptureBufferTest {
 				0xFF0000 | index,
 				42,
 				index,
+				0,
 				null,
 				0.0,
 				0.0,

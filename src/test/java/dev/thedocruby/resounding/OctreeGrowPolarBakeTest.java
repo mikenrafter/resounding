@@ -24,21 +24,20 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Phase 0 RED tests for {@link OctreeManager#growOctree}'s baked per-branch descriptor
- * ({@code maxImpedance}/{@code minImpedance}/{@code avgImpedance}/{@code polar} on {@link Branch}),
- * reached through the real bake pass rather than the pure {@code Polarization} functions directly
- * (which have their own dedicated, more exhaustive unit coverage in
- * {@code raycast/PolarizationBakeOctantTest}). See references/research/frustums-plan.md's Phase 0
- * "Baked per-branch descriptor" table.
+ * Phase 0 tests for {@link OctreeManager#growOctree}'s baked per-branch descriptor
+ * ({@code mostCommonImpedance}/{@code leastCommonImpedance}/{@code avgImpedance}/{@code polar} on
+ * {@link Branch}), reached through the real bake pass rather than the pure {@code Polarization}
+ * functions directly (which have their own dedicated coverage in
+ * {@code raycast/PolarizationBakeOctantTest}).
  */
 class OctreeGrowPolarBakeTest {
 
     private static final Material STONE = new Material(2700.0, 0.5, 1.0);
     private static final Material AIR = new Material(1.2, 1.0, 0.5);
     private static final Material GRASS = new Material(500.0, 0.8, 0.9);
-    /** "X" of the 2-material axis-striped worked pattern - higher impedance, so it's G_high. */
+    /** "X" of the 2-material axis-striped worked pattern - higher impedance / stiffer. */
     private static final Material GRANITE = new Material(3200.0, 0.3, 1.0);
-    /** "O" of the 2-material axis-striped worked pattern - lower impedance, so it's G_low. */
+    /** "O" of the 2-material axis-striped worked pattern - lower impedance / softer. */
     private static final Material DIORITE = new Material(1500.0, 0.4, 1.0);
     private static final Material ANDESITE = new Material(800.0, 0.45, 1.0);
     private static final Material TUFF = new Material(600.0, 0.5, 1.0);
@@ -98,19 +97,19 @@ class OctreeGrowPolarBakeTest {
 
         Branch leaf = root.get(sectionOrigin.add(3, 7, 3));
         assertEquals(1, leaf.size);
-        assertEquals(GRASS.impedance(), leaf.maxImpedance);
-        assertEquals(GRASS.impedance(), leaf.minImpedance);
+        assertEquals(GRASS.impedance(), leaf.mostCommonImpedance);
+        assertEquals(GRASS.impedance(), leaf.leastCommonImpedance);
         assertEquals(GRASS.impedance(), leaf.avgImpedance);
         assertNull(leaf.polar, "a single-material leaf has no gradient");
     }
 
     @Test
-    void sizeTwoOctant_underFourDistinctValues_axisStripedPattern_singleMaxMinAndPolar() {
+    void sizeTwoOctant_presenceTieStripe_gMostLeastAreMaterialMeansAndPolar() {
         BlockPos sectionOrigin = new BlockPos(0, 0, 0);
         SectionChunks.SectionFixture fixture = SectionChunks.fixture(sectionOrigin);
         fillUniform(fixture, airState);
         fillCube(fixture, 0, 0, 0, 4, stoneState);
-        // idx 0-7 blockSequence order: X,O,X,O,X,O,X,O (axis-striped, P = (-8,0,0), 50/50 blend)
+        // idx 0-7 blockSequence order: X,O,X,O,X,O,X,O (axis-striped, P = (-8,0,0), 50/50)
         fixture.setLocal(0, 0, 0, graniteState);
         fixture.setLocal(1, 0, 0, dioriteState);
         fixture.setLocal(0, 1, 0, graniteState);
@@ -126,19 +125,21 @@ class OctreeGrowPolarBakeTest {
 
         Branch patch = descend(root, sectionOrigin, 2);
         assertEquals(2, patch.size, "the 2-material patch must survive as its own un-pruned size-2 branch");
-        assertEquals(GRANITE.impedance(), patch.maxImpedance, "only 2 distinct values (<4): single max, not mean-of-top-4");
-        assertEquals(DIORITE.impedance(), patch.minImpedance, "only 2 distinct values (<4): single min, not mean-of-bottom-4");
+        // presence tie → stiffer primary; ratio 1 → g_* = material means
+        assertEquals(GRANITE.impedance(), patch.mostCommonImpedance);
+        assertEquals(DIORITE.impedance(), patch.leastCommonImpedance);
         assertEquals((GRANITE.impedance() + DIORITE.impedance()) / 2.0, patch.avgImpedance);
-        assertEquals(new Vec3d(-8, 0, 0), patch.polar, "axis-striped pattern must polarize along X, matching the plan's worked example");
+        assertEquals(new Vec3d(-8, 0, 0), patch.polar, "axis-striped pattern must polarize along X");
+        assertEquals(0.5, patch.blendCoefficient, 1e-9);
     }
 
     @Test
-    void sizeTwoOctant_fourOrMoreDistinctValues_highIsMeanTop4LowIsMeanBottom4() {
+    void sizeTwoOctant_fourMaterialsPresenceTied_gMostLeastAreStiffestAndSoftest() {
         BlockPos sectionOrigin = new BlockPos(0, 0, 0);
         SectionChunks.SectionFixture fixture = SectionChunks.fixture(sectionOrigin);
         fillUniform(fixture, airState);
         fillCube(fixture, 8, 0, 0, 4, stoneState);
-        // idx 0-7: A(800),B(600),C(400),D(200) repeated - 4 distinct values, so mean-of-top-4/bottom-4 applies.
+        // idx 0-7: A(800),B(600),C(400),D(200) ×2 — all count 2, primary=stiffest, secondary=softest
         fixture.setLocal(8, 0, 0, andesiteState);
         fixture.setLocal(9, 0, 0, tuffState);
         fixture.setLocal(8, 1, 0, cobblestoneState);
@@ -154,10 +155,10 @@ class OctreeGrowPolarBakeTest {
 
         Branch patch = descend(root, sectionOrigin.add(8, 0, 0), 2);
         assertEquals(2, patch.size, "the 4-material patch must survive as its own un-pruned size-2 branch");
-        // corners by value: 800,800,600,600,400,400,200,200 -> top4 mean=700, bottom4 mean=300
-        assertEquals(700.0, patch.maxImpedance);
-        assertEquals(300.0, patch.minImpedance);
-        assertEquals(500.0, patch.avgImpedance, "mean of all 8 corners regardless of the max/min branch");
+        assertEquals(ANDESITE.impedance(), patch.mostCommonImpedance);
+        assertEquals(SANDSTONE.impedance(), patch.leastCommonImpedance);
+        assertEquals(500.0, patch.avgImpedance, "mean of all 8 corners");
+        assertEquals(2.0 / 8.0, patch.blendCoefficient, 1e-9);
     }
 
     @Test
@@ -193,15 +194,15 @@ class OctreeGrowPolarBakeTest {
     @Test
     void sizeGreaterThanTwoAggregate_stiffWeightFollowsBlendCoefficientNotMidpointIdentity() {
         // Two adjacent size-2 children inside a size-4 parent:
-        //  - high-dominant ≥4-distinct (blendCoefficient ≠ 0.5; impedance midpoint identity is 0.5)
+        //  - high-presence child (blendCoefficient ≠ 0.5; impedance midpoint identity may differ)
         //  - balanced 4:4 stripe (blendCoefficient = 0.5)
-        // Combined polar must weight the high-dominant child more — i.e. stiffWeight(blendCoefficient).
+        // Combined polar must weight by stiffWeight(blendCoefficient).
         BlockPos sectionOrigin = new BlockPos(0, 0, 0);
         SectionChunks.SectionFixture fixture = SectionChunks.fixture(sectionOrigin);
         fillUniform(fixture, airState);
 
         // Child A at (0,0,0) size 2: 5 andesite(800), 1 sandstone(200), 1 tuff(600), 1 cobble(400)
-        // → 4 distinct, highCount=5, blend=5/6; polar biased by corner arrangement
+        // → primary=andesite count 5, blend=5/8; secondary=least among count-1 materials = sandstone
         fixture.setLocal(0, 0, 0, andesiteState);
         fixture.setLocal(1, 0, 0, andesiteState);
         fixture.setLocal(0, 1, 0, andesiteState);
@@ -221,8 +222,6 @@ class OctreeGrowPolarBakeTest {
         fixture.setLocal(2, 1, 1, graniteState);
         fixture.setLocal(3, 1, 1, dioriteState);
 
-        // Fill remaining size-2 children of the (0,0,0) size-4 with homogeneous air so they contribute
-        // no polar (null) and drop out of the weighted combine.
         WorldChunk chunk = fixture.chunk();
         Branch root = new Branch(sectionOrigin, 16);
         OctreeManager.growOctree(chunk, root);
@@ -243,10 +242,9 @@ class OctreeGrowPolarBakeTest {
         double blendB = 0.5;
         assertTrue(Math.abs(blendA - 0.5) > 1e-6, "precondition: child A blend must differ from 0.5");
 
-        // Impedance-range identity collapses ≥4-distinct children to weight 0.5; real stiff weight
-        // must use blendCoefficient.
         double wrongA = Polarization.stiffWeight(
-                (childA.avgImpedance - childA.minImpedance) / (childA.maxImpedance - childA.minImpedance));
+                Math.abs(childA.avgImpedance - childA.leastCommonImpedance)
+                        / Math.abs(childA.mostCommonImpedance - childA.leastCommonImpedance));
         double rightA = Polarization.stiffWeight(blendA);
         assertTrue(Math.abs(wrongA - rightA) > 1e-6,
                 "precondition: impedance midpoint identity must disagree with blendCoefficient stiff weight");

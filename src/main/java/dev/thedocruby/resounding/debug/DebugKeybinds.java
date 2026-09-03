@@ -5,7 +5,6 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
@@ -41,7 +40,7 @@ public final class DebugKeybinds {
 					CATEGORY
 			)
 	);
-	private static final KeyBinding TOGGLE_FRUSTUM_OCTREE = KeyBindingHelper.registerKeyBinding(
+	private static final KeyBinding CYCLE_FRUSTUM_RAY = KeyBindingHelper.registerKeyBinding(
 			new KeyBinding(
 					"key.resounding.debug.toggle_frustum_octree",
 					InputUtil.Type.KEYSYM,
@@ -76,9 +75,10 @@ public final class DebugKeybinds {
 			}
 			while (TOGGLE_OCTREE.wasPressed()) {
 				var layer = DebugRenderDispatcher.INSTANCE.octree();
-				layer.setDisplayMode(OctreeLayer.DisplayMode.NEIGHBORHOOD);
-				layer.setEnabled(!layer.isEnabled());
-				if (layer.isEnabled()) {
+				// From frustum (J) mode: first O switches to player-neighborhood; second O disables.
+				if (layer.isEnabled() && layer.displayMode() == OctreeLayer.DisplayMode.BEAM_PATH) {
+					layer.setDisplayMode(OctreeLayer.DisplayMode.NEIGHBORHOOD);
+					layer.setEnabled(true);
 					layer.update();
 					if (client.player != null) {
 						client.player.sendMessage(Text.literal(String.format(
@@ -86,29 +86,52 @@ public final class DebugKeybinds {
 								layer.octantCount()
 						)).formatted(Formatting.AQUA), true);
 					}
+				} else {
+					layer.setDisplayMode(OctreeLayer.DisplayMode.NEIGHBORHOOD);
+					layer.setEnabled(!layer.isEnabled());
+					if (layer.isEnabled()) {
+						layer.update();
+						if (client.player != null) {
+							client.player.sendMessage(Text.literal(String.format(
+									"Octree overlay: %d octants (7-cell neighborhood)",
+									layer.octantCount()
+							)).formatted(Formatting.AQUA), true);
+						}
+					}
 				}
 			}
-			while (TOGGLE_FRUSTUM_OCTREE.wasPressed()) {
+			while (CYCLE_FRUSTUM_RAY.wasPressed()) {
+				var bounce = DebugRenderDispatcher.INSTANCE.bounceRays();
 				var layer = DebugRenderDispatcher.INSTANCE.octree();
-				boolean enabling = !layer.isEnabled()
-						|| layer.displayMode() != OctreeLayer.DisplayMode.BEAM_PATH;
-				layer.setDisplayMode(OctreeLayer.DisplayMode.BEAM_PATH);
-				layer.setEnabled(enabling);
-				if (layer.isEnabled()) {
+				boolean bounceOn = bounce.isEnabled();
+				if (bounceOn) {
+					int rayId = layer.cycleLiveFrustumRay();
 					layer.update();
 					if (client.player != null) {
-						boolean fromCapture = !CaptureBuffer.INSTANCE.asCapturedList().isEmpty();
+						int count = layer.rayCount();
+						String msg = count == 0
+								? "Frustum octree: bounce rays have no segments (enable dRays / wait for a sound)"
+								: String.format(
+										"Frustum cast %d/%d (ray %d): %d LOD boxes",
+										layer.selectedRayOrdinal() + 1,
+										count,
+										rayId,
+										layer.octantCount()
+								);
+						client.player.sendMessage(Text.literal(msg).formatted(Formatting.AQUA), true);
+					}
+				} else {
+					layer.showLookFrustum();
+					layer.update();
+					if (client.player != null) {
 						client.player.sendMessage(Text.literal(String.format(
-								"Frustum octree: %d boxes (%s)",
-								layer.octantCount(),
-								fromCapture ? "captured rays as beams" : "look vector fallback"
+								"Frustum octree: look cast (%d boxes). Enable B to cycle bounce rays",
+								layer.octantCount()
 						)).formatted(Formatting.AQUA), true);
 					}
 				}
 			}
 			while (TOGGLE_CAPTURE.wasPressed()) {
-				// Default: capture exactly the next sound event.
-				// An open-ended / held-key variant is a possible future enhancement.
 				if (CaptureBuffer.INSTANCE.isCapturing()) {
 					CaptureBuffer.INSTANCE.stopCapture();
 				} else {

@@ -5,6 +5,8 @@ import dev.thedocruby.resounding.raycast.Branch;
 import dev.thedocruby.resounding.debug.math.OctantColor;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,7 +16,14 @@ import java.util.List;
  */
 public final class OctreeOverlay {
 
-	public record OctantView(Box box, Material material, String label, int size, int color) {}
+	public record OctantView(
+			Box box,
+			Material material,
+			String label,
+			int size,
+			int color,
+			@Nullable Vec3d polar
+	) {}
 
 	private OctreeOverlay() {}
 
@@ -108,7 +117,8 @@ public final class OctreeOverlay {
 				node.material,
 				node.materialLabel,
 				size,
-				color
+				color,
+				node.polar
 		);
 	}
 
@@ -128,7 +138,7 @@ public final class OctreeOverlay {
 	public static List<OctantView> collectVisited(List<Box> visitedBoxes) {
 		List<OctantView> views = new ArrayList<>(visitedBoxes.size());
 		for (Box box : visitedBoxes) {
-			views.add(toView(box, null, null));
+			views.add(toView(box, null, null, null));
 		}
 		return views;
 	}
@@ -144,20 +154,24 @@ public final class OctreeOverlay {
 			if (step.virtual()) {
 				label = label == null || label.isEmpty() ? "virtual" : label + " virtual";
 			}
-			views.add(toView(step.box(), step.material(), label));
+			views.add(toView(step.box(), step.material(), label, step.polar()));
 		}
 		return views;
 	}
 
-	private static OctantView toView(Box box, Material material, String label) {
+	private static OctantView toView(Box box, Material material, String label, @Nullable Vec3d polar) {
 		int size = (int) Math.round(box.maxX - box.minX);
 		int originX = (int) Math.round(box.minX);
 		int originY = (int) Math.round(box.minY);
 		int originZ = (int) Math.round(box.minZ);
 		int color = OctantColor.forNode(originX, originY, originZ, size);
-		return new OctantView(box, material, label, size, color);
+		return new OctantView(box, material, label, size, color, polar);
 	}
 
 	/** One beam-traversal step for {@link #collectBeamPath(List)}. */
-	public record VisitedStep(Box box, Material material, String label, boolean virtual) {}
+	public record VisitedStep(Box box, Material material, String label, boolean virtual, @Nullable Vec3d polar) {
+		public VisitedStep(Box box, Material material, String label, boolean virtual) {
+			this(box, material, label, virtual, null);
+		}
+	}
 }

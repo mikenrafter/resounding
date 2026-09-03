@@ -2,6 +2,7 @@ package dev.thedocruby.resounding.config;
 
 import dev.thedocruby.resounding.Engine;
 import dev.thedocruby.resounding.Utils;
+import dev.thedocruby.resounding.raycast.FrustumLod;
 import dev.thedocruby.resounding.toolbox.MaterialData;
 import dev.thedocruby.resounding.toolbox.OcclusionMode;
 import dev.thedocruby.resounding.toolbox.SharedAirspaceMode;
@@ -65,6 +66,9 @@ public class PrecomputedConfig {
     public int nRays;
     @Environment(EnvType.CLIENT)
     public double rcpNRays;
+    /** Frustum footprint diameter-growth-per-block, derived from {@link #nRays}. See {@link FrustumLod#growthPerBlock}. */
+    @Environment(EnvType.CLIENT)
+    public double frustumGrowthPerBlock;
     @Environment(EnvType.CLIENT)
     public int nRayBounces;
     @Environment(EnvType.CLIENT)
@@ -154,6 +158,7 @@ public class PrecomputedConfig {
             skipRainOccl = c.misc.skipRainOcclusionTracing;
             nRays = c.quality.envEvalRays;
             rcpNRays = 1d / nRays;
+            frustumGrowthPerBlock = FrustumLod.growthPerBlock(nRays);
             nRayBounces = Math.max(c.quality.envEvalRayBounces, 2);
             rcpAllRays = rcpNRays / nRayBounces;
             maxTraceDist = MathHelper.clamp(c.quality.rayLength, 1.0, 16.0) * 16 * Math.sqrt(2);

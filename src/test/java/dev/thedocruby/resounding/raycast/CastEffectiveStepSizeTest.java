@@ -3,41 +3,54 @@ package dev.thedocruby.resounding.raycast;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Phase B RED tests for virtual frustum step size: homogeneous large leaves stay pruned; traversal
- * steps at {@code min(branchSize, footprintTierSize)} without allocating finer Branch leaves.
- *
- * <p>Footprint tiers match {@link BeamBudget}: {@code [1,2)→1, [2,4)→2, [4,8)→4, [8,16)→8}.
+ * Frustum LOD step schedule: footprint {@code = 1 + growthPerBlock * distance}, steps
+ * {@code 1,1,2,2,4,4,8,8,16,16} then capped at 16. Schedule tests below fix
+ * {@code growthPerBlock = 0.5} to isolate the quantization logic from the ray-count-derived rate,
+ * which is covered separately in {@code growthPerBlockDerivedFromRayCount}.
  */
 class CastEffectiveStepSizeTest {
 
+    private static final double GROWTH = 0.5;
+
     @Test
-    void footprintInTierOneMapsToStepOneCappedByBranch() {
-        assertEquals(1, Cast.effectiveStepSize(16, 1.5),
-                "footprint in [1,2) → tier size 1; min(16,1)=1");
-        assertEquals(1, Cast.effectiveStepSize(1, 1.5),
-                "branchSize=1 cannot refine below 1");
+    void distanceScheduleMatchesOneOneTwoTwoPattern() {
+        assertEquals(1, FrustumLod.stepForDistance(0.0, GROWTH));
+        assertEquals(1, FrustumLod.stepForDistance(1.9, GROWTH));
+        assertEquals(1, FrustumLod.stepForDistance(2.0, GROWTH));
+        assertEquals(1, FrustumLod.stepForDistance(3.9, GROWTH));
+        assertEquals(2, FrustumLod.stepForDistance(4.0, GROWTH));
+        assertEquals(2, FrustumLod.stepForDistance(7.9, GROWTH));
+        assertEquals(4, FrustumLod.stepForDistance(8.0, GROWTH));
+        assertEquals(8, FrustumLod.stepForDistance(12.0, GROWTH));
+        assertEquals(16, FrustumLod.stepForDistance(16.0, GROWTH));
+        assertEquals(16, FrustumLod.stepForDistance(100.0, GROWTH), "cap at 16");
     }
 
     @Test
-    void footprintInTierTwoMapsToStepTwo() {
-        assertEquals(2, Cast.effectiveStepSize(16, 3.0),
-                "footprint in [2,4) → tier size 2");
+    void footprintGrowsHalfWidthPerBlock() {
+        assertEquals(1.0, FrustumLod.footprintAt(0.0, GROWTH), 1e-9);
+        assertEquals(2.0, FrustumLod.footprintAt(2.0, GROWTH), 1e-9);
+        assertEquals(5.0, FrustumLod.footprintAt(8.0, GROWTH), 1e-9);
     }
 
     @Test
-    void footprintCannotExceedBranchSize() {
-        assertEquals(4, Cast.effectiveStepSize(4, 8.0),
-                "footprint in [8,16) → tier 8, but min(4,8)=4");
-        assertEquals(1, Cast.effectiveStepSize(1, 12.0),
-                "any footprint against branchSize=1 stays at 1");
+    void effectiveStepSizeIsCappedByBranch() {
+        assertEquals(1, Cast.effectiveStepSize(16, 0.0, GROWTH));
+        assertEquals(2, Cast.effectiveStepSize(16, 4.0, GROWTH));
+        assertEquals(1, Cast.effectiveStepSize(1, 20.0, GROWTH), "branchSize=1 cannot coarsen upward");
+        assertEquals(4, Cast.effectiveStepSize(4, 20.0, GROWTH), "min(4,16)=4");
     }
 
     @Test
-    void footprintOutsideTiersFallsBackToBranchSize() {
-        // Below size 1 or at/beyond 16: no footprint tier — step equals the real branch cell.
-        assertEquals(16, Cast.effectiveStepSize(16, 0.5));
-        assertEquals(16, Cast.effectiveStepSize(16, 16.0));
+    void growthPerBlockDerivedFromRayCount() {
+        // More rays -> narrower per-ray solid angle -> slower footprint growth.
+        assertEquals(0.3172, FrustumLod.growthPerBlock(128), 1e-3);
+        assertEquals(0.4543, FrustumLod.growthPerBlock(64), 1e-3);
+        assertEquals(0.1191, FrustumLod.growthPerBlock(890), 1e-3);
+        assertTrue(FrustumLod.growthPerBlock(24) > FrustumLod.growthPerBlock(128),
+                "fewer rays must yield a faster growth rate");
     }
 }

@@ -26,23 +26,23 @@ public class Branch {
 
     // Phase 0 baked descriptor (frustums-plan.md "Baked per-branch descriptor"). Populated by
     // OctreeManager.growOctree's post-order bake pass; NaN/null until that lands (Phase 0 GREEN).
-    /** Highest impedance represented within this octant (see plan's size-2/">2" high rule). */
-    public double maxImpedance = Double.NaN;
-    /** Lowest impedance represented within this octant (see plan's size-2/">2" low rule). */
-    public double minImpedance = Double.NaN;
-    /** Mean impedance across this octant (leaf-level: same as max/min; internal: mean of all 8 leaves). */
+    /** Presence-split primary endpoint ({@code g_most}) — most-common material's adjusted impedance. */
+    public double mostCommonImpedance = Double.NaN;
+    /** Presence-split secondary endpoint ({@code g_least}) — least-common material's adjusted impedance. */
+    public double leastCommonImpedance = Double.NaN;
+    /** Mean impedance across this octant (leaf-level: same as most/least; internal: mean of children). */
     public double avgImpedance = Double.NaN;
     /**
      * Raw corner-sign-sum polarization vector — the same primitive as Phase 0.5's {@code P},
      * unnormalized. {@code null} means "no gradient" (octant size 1, or a fully homogeneous
-     * octant with no G_high/G_low split), distinct from a real {@code (0,0,0)} cancellation
-     * (see the checkerboard case in the plan). Never renormalized after the size&gt;2 weighted
-     * average combine, consistent with staying a "polar" rather than a unit normal.
+     * octant), distinct from a real {@code (0,0,0)} cancellation (see the checkerboard case in
+     * the plan). Never renormalized after the size&gt;2 weighted average combine, consistent with
+     * staying a "polar" rather than a unit normal.
      */
     public @Nullable Vec3d polar;
     /**
      * Phase 0.5 blend coefficient retained from {@link Polarization.Descriptor#blendCoefficient()}
-     * so size&gt;2 aggregation can feed {@link Polarization#stiffWeight(double)} the real stiff
+     * so size&gt;2 aggregation can feed {@link Polarization#stiffWeight(double)} the real presence
      * dominance, not an impedance-range reconstruction. {@link Double#NaN} until baked.
      */
     public double blendCoefficient = Double.NaN;
@@ -97,6 +97,57 @@ public class Branch {
         BlockPos childOrigin = start.add(dx, dy, dz);
         @Nullable Branch leaf = leaves.get(childOrigin.asLong());
         return leaf == null ? this : leaf.get(pos);
+    }
+
+    /**
+     * Resolves the octree at frustum LOD {@code lodSize}: returns the real node whose {@code size}
+     * equals {@code lodSize} (even if it still has children — that node's baked polar/avg is the
+     * LOD aggregate), or a virtual same-size cell carved from a coarser homogeneous leaf.
+     */
+    public @NotNull Branch getAtLod(@NotNull BlockPos pos, int lodSize) {
+        int lod = Math.max(1, lodSize);
+        if (size < lod) {
+            return this;
+        }
+        if (size == lod) {
+            return this;
+        }
+        if (leaves.isEmpty()) {
+            return virtualLodCell(pos, lod);
+        }
+        int half = size >> 1;
+        if (half == 0) {
+            return this;
+        }
+        int dx = pos.getX() >= start.getX() + half ? half : 0;
+        int dy = pos.getY() >= start.getY() + half ? half : 0;
+        int dz = pos.getZ() >= start.getZ() + half ? half : 0;
+        BlockPos childOrigin = start.add(dx, dy, dz);
+        Branch child = leaves.get(childOrigin.asLong());
+        if (child == null) {
+            return virtualLodCell(pos, lod);
+        }
+        return child.getAtLod(pos, lod);
+    }
+
+    private @NotNull Branch virtualLodCell(@NotNull BlockPos pos, int lodSize) {
+        BlockPos origin = FrustumLod.alignOrigin(pos, start, lodSize);
+        // Keep the virtual cell inside this node's bounds.
+        int maxX = start.getX() + size - lodSize;
+        int maxY = start.getY() + size - lodSize;
+        int maxZ = start.getZ() + size - lodSize;
+        int ox = Math.min(Math.max(origin.getX(), start.getX()), Math.max(start.getX(), maxX));
+        int oy = Math.min(Math.max(origin.getY(), start.getY()), Math.max(start.getY(), maxY));
+        int oz = Math.min(Math.max(origin.getZ(), start.getZ()), Math.max(start.getZ(), maxZ));
+        Branch virtual = new Branch(new BlockPos(ox, oy, oz), lodSize, material);
+        virtual.materialLabel = materialLabel;
+        virtual.mostCommonImpedance = mostCommonImpedance;
+        virtual.leastCommonImpedance = leastCommonImpedance;
+        virtual.avgImpedance = avgImpedance;
+        virtual.polar = polar;
+        virtual.blendCoefficient = blendCoefficient;
+        virtual.shape = shape;
+        return virtual;
     }
 
     // recursively search tree for corresponding branch
@@ -179,8 +230,8 @@ public class Branch {
         virtual.materialLabel = current.materialLabel;
         if (current.material != null) {
             double impedance = current.material.impedance();
-            virtual.maxImpedance = impedance;
-            virtual.minImpedance = impedance;
+            virtual.mostCommonImpedance = impedance;
+            virtual.leastCommonImpedance = impedance;
             virtual.avgImpedance = impedance;
         }
         virtual.polar = null;

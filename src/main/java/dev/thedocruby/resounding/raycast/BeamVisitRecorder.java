@@ -3,25 +3,32 @@ package dev.thedocruby.resounding.raycast;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Phase C beam-cast visit capture: records octant boxes (real leaves or virtual finer steps) a
- * {@link Beam} would traverse through a known {@link Branch} tree. Used by debug overlays and
- * unit tests without a full Minecraft client.
+ * Records octant boxes (real LOD nodes or virtual finer steps) a frustum beam would traverse.
+ * Uses {@link FrustumLod} step schedule; does not subdivide {@link Branch#leaves}.
+ *
+ * <p>Bounce-off neighbors (cells interacted with but not entered) are attached by the debug
+ * overlay at reflection kinks, not by this walk.
  */
 public final class BeamVisitRecorder {
     private BeamVisitRecorder() {}
 
-    public record VisitedBox(@NotNull BlockPos start, int size, boolean virtual) {}
+    public record VisitedBox(
+            @NotNull BlockPos start,
+            int size,
+            boolean virtual,
+            @Nullable Vec3d polar
+    ) {
+        public VisitedBox(@NotNull BlockPos start, int size, boolean virtual) {
+            this(start, size, virtual, null);
+        }
+    }
 
-    /**
-     * Walks {@code root} along {@code beam} from {@code origin} in {@code direction} up to
-     * {@code maxDistance}, recording each step box at {@link Cast#effectiveStepSize(int, double)}
-     * resolution. Does not subdivide {@link Branch#leaves}; finer steps are marked virtual.
-     */
     public static @NotNull List<VisitedBox> collectAlongBeam(
             @NotNull Branch root,
             @NotNull Beam beam,
@@ -32,25 +39,21 @@ public final class BeamVisitRecorder {
         List<VisitedBox> visits = new ArrayList<>();
         Vec3d pos = origin;
         double distanceSoFar = 0.0;
+        Vec3d dir = direction.lengthSquared() > 1e-12 ? direction.normalize() : direction;
 
         while (distanceSoFar < maxDistance) {
-            Branch leaf = root.get(BlockPos.ofFloored(pos));
-            int step = Cast.effectiveStepSize(leaf.size, beam.footprintRadiusAt(distanceSoFar));
-            if (step <= 0) break;
+            int requested = FrustumLod.stepForDistance(distanceSoFar, beam.growthRate());
+            Branch lod = root.getAtLod(BlockPos.ofFloored(pos), requested);
+            int step = Math.min(requested, Math.max(1, lod.size));
+            Branch finest = root.get(BlockPos.ofFloored(pos));
+            boolean virtual = finest.size > step;
 
-            int sx = align(pos.x, leaf.start.getX(), step);
-            int sy = align(pos.y, leaf.start.getY(), step);
-            int sz = align(pos.z, leaf.start.getZ(), step);
-            visits.add(new VisitedBox(new BlockPos(sx, sy, sz), step, step < leaf.size));
+            BlockPos cellOrigin = FrustumLod.alignOrigin(BlockPos.ofFloored(pos), lod.start, step);
+            visits.add(new VisitedBox(cellOrigin, step, virtual, lod.polar));
 
-            pos = pos.add(direction.x * step, direction.y * step, direction.z * step);
+            pos = pos.add(dir.x * step, dir.y * step, dir.z * step);
             distanceSoFar += step;
         }
         return visits;
-    }
-
-    /** Floor {@code coord} onto the step grid that tiles {@code leafStart}. */
-    private static int align(double coord, int leafStart, int step) {
-        return leafStart + (int) Math.floor((coord - leafStart) / (double) step) * step;
     }
 }

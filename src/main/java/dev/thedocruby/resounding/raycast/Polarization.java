@@ -6,11 +6,14 @@ import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.TreeSet;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Phase 0 / Phase 0.5 shared primitive (frustums-plan.md): the corner-sign-sum polarization of
- * an octant's 8 children, plus the baked high/low/avg impedance descriptor. Pure math over
+ * an octant's 8 children, plus the baked most/least-common impedance descriptor. Pure math over
  * {@link Material} data only — no {@link Branch}/tree access, so it can be exercised directly by
  * both {@code OctreeManager.growOctree}'s bake pass (Phase 0) and the native-resolution
  * reflection/permeation path (Phase 0.5).
@@ -46,15 +49,16 @@ public final class Polarization {
 
     /**
      * Baked descriptor for one octant. {@code polar == null} means "no gradient" (all 8 corners
-     * share one material, so there is no G_high/G_low split); a real {@code (0,0,0)} polar means
-     * a heterogeneous octant whose corner-sign-sum genuinely cancels (e.g. the diagonal
-     * checkerboard case) — the two are deliberately distinguishable. {@code primary}/{@code
-     * secondary}/{@code blendCoefficient}/{@code s} are likewise {@code null}/{@code NaN} for the
-     * no-gradient case.
+     * share one impedance); a real {@code (0,0,0)} polar means a heterogeneous octant whose
+     * corner-sign-sum genuinely cancels — the two are deliberately distinguishable.
+     *
+     * <p>{@code mostCommonImpedance}/{@code leastCommonImpedance} store {@code g_most}/{@code
+     * g_least} — presence-split endpoints (not raw max/min impedance). Alignment lerps from
+     * most-common (primary, {@code w=1}) toward least-common (secondary, {@code w=0}).
      */
     public record Descriptor(
-            double maxImpedance,
-            double minImpedance,
+            double mostCommonImpedance,
+            double leastCommonImpedance,
             double avgImpedance,
             @Nullable Vec3d polar,
             @Nullable Material primary,
@@ -64,9 +68,25 @@ public final class Polarization {
     ) {}
 
     /**
-     * Bakes the size-2 (8-child) octant descriptor (frustums-plan.md Phase 0's baked-descriptor
-     * table + Phase 0.5's {@code P}/primary/secondary/blend-coefficient/{@code s} derivation) from
-     * 8 corner materials in {@code blockSequence} order. Not yet implemented — always throws.
+     * Presence-split impedance adjuster:
+     * {@code f(mostly_mean, other_mean, overall_ratio) = other_mean * (1 - overall_ratio²)
+     * + mostly_mean * √overall_ratio}.
+     */
+    public static double groupAdjust(double mostlyMean, double otherMean, double overallRatio) {
+        return otherMean * (1.0 - overallRatio * overallRatio)
+                + mostlyMean * Math.sqrt(overallRatio);
+    }
+
+    /**
+     * Bakes the size-2 (8-child) octant descriptor from 8 corner materials in {@code blockSequence}
+     * order.
+     * <ul>
+     *   <li>Polar: every corner joins the top or bottom impedance half (middle tier included).</li>
+     *   <li>Primary/secondary: most-common / least-common materials (presence ties → stiffer
+     *       primary, softer secondary).</li>
+     *   <li>{@code g_most}/{@code g_least}: {@link #groupAdjust} over those material groups'
+     *       means and count ratio — presence endpoints, not impedance extremes.</li>
+     * </ul>
      */
     public static @NotNull Descriptor bakeOctant(@NotNull Material[] corners) {
         if (corners.length != 8) {
@@ -77,69 +97,126 @@ public final class Polarization {
         double sum = 0.0;
         double max = Double.NEGATIVE_INFINITY;
         double min = Double.POSITIVE_INFINITY;
-        TreeSet<Double> distinct = new TreeSet<>();
         for (int i = 0; i < 8; i++) {
             double v = corners[i].impedance();
             impedances[i] = v;
             sum += v;
             if (v > max) max = v;
             if (v < min) min = v;
-            distinct.add(v);
         }
         double avg = sum / 8.0;
 
-        if (distinct.size() == 1) {
-            // single-material octant: no gradient, distinct from a real (0,0,0) cancellation.
+        if (max == min) {
             return new Descriptor(max, min, avg, null, null, null, Double.NaN, Double.NaN);
         }
 
-        double highImpedance;
-        double lowImpedance;
-        if (distinct.size() >= 4) {
-            double[] sorted = impedances.clone();
-            java.util.Arrays.sort(sorted);
-            double bottomSum = 0.0;
-            double topSum = 0.0;
-            for (int i = 0; i < 4; i++) bottomSum += sorted[i];
-            for (int i = 4; i < 8; i++) topSum += sorted[i];
-            highImpedance = topSum / 4.0;
-            lowImpedance = bottomSum / 4.0;
-        } else {
-            highImpedance = max;
-            lowImpedance = min;
+        // Polar membership: impedance-ranked top/bottom halves (all 8 corners, no middle drop).
+        Integer[] order = {0, 1, 2, 3, 4, 5, 6, 7};
+        Arrays.sort(order, Comparator
+                .comparingDouble((Integer i) -> impedances[i])
+                .thenComparingInt(i -> i));
+        boolean[] inHigh = new boolean[8];
+        for (int r = 4; r < 8; r++) {
+            inHigh[order[r]] = true;
         }
 
-        // G_high/G_low split: corners at the raw impedance extremes, middle-tier corners
-        // (strictly between min and max) excluded, same as Phase 0's aggregate.
-        Vec3d highSum = Vec3d.ZERO;
-        Vec3d lowSum = Vec3d.ZERO;
-        int highCount = 0;
-        int lowCount = 0;
-        Material primary = null;
-        Material secondary = null;
+        Vec3d highDir = Vec3d.ZERO;
+        Vec3d lowDir = Vec3d.ZERO;
         for (int i = 0; i < 8; i++) {
-            double v = impedances[i];
-            if (v == max) {
-                highSum = highSum.add(cornerSign(CORNER_OFFSETS[i]));
-                highCount++;
-                if (primary == null) primary = corners[i];
-            } else if (v == min) {
-                lowSum = lowSum.add(cornerSign(CORNER_OFFSETS[i]));
-                lowCount++;
-                if (secondary == null) secondary = corners[i];
+            Vec3d sign = cornerSign(CORNER_OFFSETS[i]);
+            if (inHigh[i]) {
+                highDir = highDir.add(sign);
+            } else {
+                lowDir = lowDir.add(sign);
             }
         }
+        Vec3d polar = highDir.subtract(lowDir);
 
-        Vec3d polar = highSum.subtract(lowSum);
-        double blendCoefficient = (double) highCount / (highCount + lowCount);
-        double s = magnitudeTerm(highCount);
+        Material primary = selectMostCommon(corners);
+        Material secondary = selectLeastCommon(corners, primary);
 
-        return new Descriptor(highImpedance, lowImpedance, avg, polar, primary, secondary, blendCoefficient, s);
+        double mostSum = 0.0;
+        double leastSum = 0.0;
+        int mostCount = 0;
+        int leastCount = 0;
+        for (int i = 0; i < 8; i++) {
+            if (corners[i].equals(primary)) {
+                mostSum += impedances[i];
+                mostCount++;
+            } else if (corners[i].equals(secondary)) {
+                leastSum += impedances[i];
+                leastCount++;
+            }
+        }
+        if (mostCount == 0 || leastCount == 0) {
+            throw new IllegalStateException("heterogeneous octant must have both most- and least-common corners");
+        }
+
+        double meanMost = mostSum / mostCount;
+        double meanLeast = leastSum / leastCount;
+        double gMost = groupAdjust(meanMost, meanLeast, (double) mostCount / leastCount);
+        double gLeast = groupAdjust(meanLeast, meanMost, (double) leastCount / mostCount);
+
+        double blendCoefficient = mostCount / 8.0;
+        double s = magnitudeTerm(mostCount);
+
+        return new Descriptor(gMost, gLeast, avg, polar, primary, secondary, blendCoefficient, s);
+    }
+
+    /** Most-common material; presence ties broken toward the stiffer (higher-impedance) material. */
+    private static @NotNull Material selectMostCommon(@NotNull Material[] corners) {
+        Map<Material, Integer> counts = countMaterials(corners);
+        Material best = corners[0];
+        int bestCount = -1;
+        for (Map.Entry<Material, Integer> e : counts.entrySet()) {
+            Material m = e.getKey();
+            int c = e.getValue();
+            if (c > bestCount
+                    || (c == bestCount && m.impedance() > best.impedance())) {
+                best = m;
+                bestCount = c;
+            }
+        }
+        return best;
     }
 
     /**
-     * Magnitude/gain term {@code s} (frustums-plan.md "Motif-based magnitude boost" / resolved
-     * count-based rule): {@code 1} by default, {@code 2} when the primary ({@code G_high})
+     * Least-common material among those that are not primary; presence ties broken toward the
+     * softer (lower-impedance) material.
+     */
+    private static @NotNull Material selectLeastCommon(@NotNull Material[] corners, @NotNull Material primary) {
+        Map<Material, Integer> counts = countMaterials(corners);
+        Material best = null;
+        int bestCount = Integer.MAX_VALUE;
+        for (Map.Entry<Material, Integer> e : counts.entrySet()) {
+            Material m = e.getKey();
+            if (m.equals(primary)) {
+                continue;
+            }
+            int c = e.getValue();
+            if (best == null
+                    || c < bestCount
+                    || (c == bestCount && m.impedance() < best.impedance())) {
+                best = m;
+                bestCount = c;
+            }
+        }
+        if (best == null) {
+            throw new IllegalStateException("heterogeneous octant must have a least-common material");
+        }
+        return best;
+    }
+
+    private static @NotNull Map<Material, Integer> countMaterials(@NotNull Material[] corners) {
+        Map<Material, Integer> counts = new HashMap<>();
+        for (Material m : corners) {
+            counts.merge(m, 1, Integer::sum);
+        }
+        return counts;
+    }
+
+    /**
+     * Magnitude/gain term {@code s}: {@code 1} by default, {@code 2} when the primary (most-common)
      * material's count is &ge;6 of the octant's 8 children.
      */
     public static double magnitudeTerm(int primaryCount) {
@@ -148,8 +225,7 @@ public final class Polarization {
 
     /**
      * {@code stiff_weight(child) ∈ [0,1]} (frustums-plan.md size&gt;2 combination rule): how
-     * stiff/high-impedance-dominant a child octant is, quantized to quarters
-     * (25%/50%/75%/100%).
+     * presence-dominant a child octant is, quantized to quarters (25%/50%/75%/100%).
      */
     public static double stiffWeight(double blendCoefficient) {
         return Math.round(blendCoefficient * 4.0) / 4.0;

@@ -56,6 +56,8 @@ public class Cast {
 
     public @Nullable Double lastReflectivity;
     public @Nullable Double lastTransmission;
+    /** Polar alignment {@code (rayNorm·polNorm)²} at the last resolved boundary; 1.0 (unthrottled) when the boundary had no polarization vector. */
+    public double lastPolarAlignment = 1.0;
     public @Nullable Material lastMaterial;
     public int lastOctantColor;
     /** Impedance this bounce's reflectivity was computed against — the medium the ray was previously in. */
@@ -66,6 +68,25 @@ public class Cast {
     public @Nullable String lastMaterialLabel;
     /** Whether this bounce resolved via sub-voxel VoxelShape geometry rather than full-cube stepping. */
     public boolean lastShapeMode;
+
+    /**
+     * Running frustum footprint width (blocks). Advances only via {@link #applyFrustumStep}
+     * (which calls {@link FrustumLod#nextFrustumSize}) — never reassigned wholesale like a distance
+     * would be.
+     */
+    public double frustumSize = FrustumLod.BASE_FOOTPRINT;
+    /**
+     * Floored LOD step ({@link FrustumLod#stepForSize}) the permeate streak is counted against.
+     * When this changes, {@link #permeatesAtFrustumLod} resets.
+     */
+    public int frustumGrowthLod = 1;
+    /**
+     * Consecutive permeations at {@link #frustumGrowthLod} since the last bounce. Growth arms at
+     * &ge;2; a bounce or LOD-step change zeroes this.
+     */
+    public int permeatesAtFrustumLod = 0;
+    /** Remaining beam split budget for notable-interaction / commit decisions. */
+    public @NotNull BeamBudget beamBudget = BeamBudget.full();
 
     /** Block cell the sound was born in; emission always exits this 1³ cell as a cube. */
     public @Nullable BlockPos originBlock;
@@ -103,14 +124,45 @@ public class Cast {
         final Vec3d normalized = normalize(position, vector);
         chunk = chunk.access((int) normalized.x >> 4, (int) normalized.z >> 4);
         if (chunk != null) tree = chunk.getBranch((int) normalized.y >> 4);
-        Branch branch = getBlock(normalized);
+        if (tree == null || chunk == null) {
+            blank(position);
+            return;
+        }
+
+        final boolean emissionCast = impeded == null;
+        int requestedLod = emissionCast ? 1 : FrustumLod.stepForSize(frustumSize);
+        BlockPos queryPos = BlockPos.ofFloored(normalized);
+        Branch lodBranch = tree.getAtLod(queryPos, requestedLod);
+        Branch finest = tree.get(queryPos);
+        // Prefer live leaf fill for size-1 unresolved materials (existing getBlock behavior).
+        Branch branch = lodBranch;
+        if (lodBranch.size == 1) {
+            Branch live = getBlock(normalized);
+            if (live != null) {
+                branch = live;
+            }
+        }
+
         if (branch == null) {
             blank(position);
             return;
         }
-        this.lastOctantColor = OctantColor.forNode(branch.start, branch.size);
-        this.lastBranchSize = branch.size;
+
+        int cellSize = emissionCast ? 1 : Math.min(requestedLod, Math.max(1, branch.size));
+        BlockPos cellOrigin = emissionCast && originBlock != null
+                ? originBlock
+                : FrustumLod.alignOrigin(queryPos, branch.start, cellSize);
+        Vec3d cellBase = blockToVec(cellOrigin);
+        boolean virtualLod = !emissionCast && finest.size > cellSize;
+
+        this.lastOctantColor = OctantColor.forNode(cellOrigin, cellSize);
+        this.lastBranchSize = cellSize;
         this.lastMaterialLabel = branch.materialLabel;
+        if (virtualLod && this.lastMaterialLabel != null) {
+            this.lastMaterialLabel = this.lastMaterialLabel + " lod" + cellSize;
+        } else if (virtualLod) {
+            this.lastMaterialLabel = "virtual lod" + cellSize;
+        }
         // } */
         // prepare variables
         Step step, rstep;
@@ -129,8 +181,8 @@ public class Cast {
             shape = ((WorldChunk) this.chunk).getBlockState(branch.start).getCollisionShape(world, branch.start);
         }
 
-        final boolean emissionCast = impeded == null;
-        ShapeTraversal.Result geometry = emissionCast
+        // Sub-voxel shapes only at native 1³ cells; coarser frustum LOD uses the LOD cube.
+        ShapeTraversal.Result geometry = emissionCast || cellSize > 1
                 ? ShapeTraversal.Result.voxel()
                 : ShapeTraversal.resolve(branch.start, branch.size, position, vector, shape, this::getStep);
 
@@ -143,15 +195,10 @@ public class Cast {
             rdistance = geometry.reflectDistance();
             rposition = geometry.reflectPosition();
         } else {
-            Vec3d cellBase;
-            int cellSize;
             if (emissionCast && originBlock != null) {
                 cellBase = blockToVec(originBlock);
                 cellSize = 1;
                 this.lastBranchSize = 1;
-            } else {
-                cellBase = blockToVec(branch.start);
-                cellSize = branch.size;
             }
             step = getStep(cellBase, cellSize, position, vector);
             pdistance = step.step().length();
@@ -164,6 +211,7 @@ public class Cast {
             rposition = position;
             gridAlignedReflect = true;
             if (!emissionCast
+                    && cellSize == 1
                     && branch.size == 1
                     && ShapeTraversal.isPartialSolid(shape)
                     && ShapeTraversal.containsLocalPoint(shape, branch.start, position)) {
@@ -189,6 +237,11 @@ public class Cast {
         // Emission segment (impeded unset): exit the origin cell as a full cube with no reflection
         // and no attenuation. Subsequent casts use real geometry and material interaction.
         double newImpedance = interactionMaterial.impedance();
+        if (!emissionCast && branch.polar != null
+                && !Double.isNaN(branch.mostCommonImpedance) && !Double.isNaN(branch.leastCommonImpedance)
+                && branch.mostCommonImpedance != branch.leastCommonImpedance) {
+            newImpedance = polarizedImpedance(branch, vector);
+        }
         if (!emissionCast && isVacuumImpedance(newImpedance)) {
             blank(position);
             return;
@@ -219,6 +272,26 @@ public class Cast {
             transmission = transmissionForBoundary(reflectivity, interactionMaterial.permeation(), pdistance);
         }
 
+        // Polarized LOD cells: notable gate / commit can force reflect vs permeate.
+        if (!emissionCast && branch.polar != null && reflectivity > 0) {
+            double contrast = polarContrast(branch);
+            int splitsLeft = beamBudget.splitsRemaining();
+            if (!Physics.isNotableInteraction(contrast, splitsLeft)) {
+                // Not notable at this budget — continue without a hard event (permeate).
+                reflectivity = 0;
+                transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
+            } else if (splitsLeft <= 0) {
+                double w = polarBlendWeight(branch, vector);
+                if (!Physics.commitReflect(w)) {
+                    reflectivity = 0;
+                    transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
+                    Vec3d bent = Physics.permeationBend(vector, vector.normalize(), branch.polar.normalize());
+                    // Replace transmit direction below when bent.
+                    vector = bent;
+                }
+            }
+        }
+
         boolean shapeMode = geometry.mode() == ShapeTraversal.Mode.SHAPE;
         this.lastShapeMode = shapeMode;
         Vec3i transmitPlane = shapeMode ? rstep.plane() : step.plane();
@@ -227,27 +300,169 @@ public class Cast {
             if (emissionCast && reflectivity > 0) {
                 reflectPlane = step.plane();
             } else {
-                reflectPlane = entryPlane(position, blockToVec(branch.start), branch.size, vector);
+                reflectPlane = entryPlane(position, cellBase, cellSize, vector);
             }
         } else if (shapeMode && shapeEntryStep != null) {
             reflectPlane = shapeEntryStep.plane();
         } else {
             reflectPlane = rstep.plane();
         }
-        @Nullable Vec3d reflected = reflectivity > 0 ? Physics.pseudoReflect(vector, reflectPlane) : null;
+        // Open-cell exit: survey N/E/D in the forward orthant (hit-face plane) and pick one of
+        // the four maps (CORNER / GAP / SPLIT / FACE). Trailing cells are never surveyed.
+        FrustumLod.Interaction forwardInteraction = FrustumLod.Interaction.CORNER;
+        if (!emissionCast
+                && gridAlignedReflect
+                && step.plane() != Vec3i.ZERO
+                && !isSolidImpedance(newImpedance)) {
+            forwardInteraction = surveyForwardMap(cellOrigin, cellSize, step.plane(), vector, newImpedance);
+            if (forwardInteraction == FrustumLod.Interaction.GAP) {
+                reflectivity = 0;
+                transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
+            } else {
+                if (reflectivity == 0) {
+                    double wallZ = forwardNeighborImpedance(cellOrigin, cellSize, step.plane(), vector);
+                    if (Double.isFinite(wallZ) && !impedancesClose(priorImpedance, wallZ)) {
+                        reflectivity = Physics.reflection(priorImpedance, wallZ);
+                        transmission = transmissionForBoundary(
+                                reflectivity, interactionMaterial.permeation(), pdistance);
+                    }
+                }
+                if (reflectivity > 0) {
+                    // Bounce off the exit face from the open side (SVG H cell), not the entry face.
+                    reflectPlane = step.plane();
+                    rposition = pposition;
+                    rdistance = pdistance;
+                }
+            }
+        }
+
+        @Nullable Vec3d reflectedDir = reflectivity > 0 ? Physics.pseudoReflect(vector, reflectPlane) : null;
         @Nullable Vec3d transmitted = emissionCast
                 ? vector
                 : Physics.pseudoReflect(vector, transmitPlane, transmission / 5);
-        Vec3d reflectStart = gridAlignedReflect ? rposition : nudgeReflectOrigin(rposition, reflected, rdistance);
+        Vec3d reflectStart = gridAlignedReflect ? rposition : nudgeReflectOrigin(rposition, reflectedDir, rdistance);
+        if (!emissionCast && reflectivity > 0 && gridAlignedReflect && reflectPlane != Vec3i.ZERO) {
+            // CORNER/SPLIT walk to the shared vertex; FACE/GAP stay on the hit face.
+            reflectStart = FrustumLod.edgeWalk(
+                    reflectStart, cellBase, cellSize, reflectPlane, vector, 0.85, forwardInteraction);
+            rdistance = reflectStart.subtract(position).length();
+        }
         // } */
         // apply movement
-        reflect(reflectivity * power, reflectStart, reflected, rdistance);
+        reflect(reflectivity * power, reflectStart, reflectedDir, rdistance);
         transmit(transmission * power, pposition, transmitted, pdistance);
         stood = step;
         this.lastPermeationDistance = pdistance;
         this.lastReflectivity = reflectivity;
         this.lastTransmission = transmission;
+        this.lastPolarAlignment = (branch.polar != null && branch.polar.lengthSquared() > 1e-12)
+                ? Physics.polarAlignment(vector.normalize(), branch.polar.normalize())
+                : 1.0;
         this.lastMaterial = interactionMaterial;
+    }
+
+    /**
+     * Surveys N/E/D at the same LOD as {@code cellOrigin} and returns the four-map interaction.
+     * Each neighbor is classified by host→neighbor interaction permeate ({@link FrustumLod#blocksPermeation}),
+     * not raw impedance stiffness. Missing neighbors count as open.
+     */
+    FrustumLod.Interaction surveyForwardMap(
+            BlockPos cellOrigin,
+            int cellSize,
+            Vec3i face,
+            Vec3d rayDir,
+            double hostImpedance
+    ) {
+        FrustumLod.ForwardMap map = FrustumLod.forwardMap(face, rayDir, cellSize);
+        boolean nBlocks = neighborBlocks(cellOrigin, cellSize, map.nOffset(), hostImpedance);
+        boolean eBlocks = false;
+        boolean dBlocks = nBlocks;
+        if (map.hasTangent()) {
+            eBlocks = neighborBlocks(cellOrigin, cellSize, map.eOffset(), hostImpedance);
+            dBlocks = neighborBlocks(cellOrigin, cellSize, map.dOffset(), hostImpedance);
+        }
+        return FrustumLod.classify(nBlocks, eBlocks, dBlocks);
+    }
+
+    private boolean neighborBlocks(BlockPos cellOrigin, int cellSize, Vec3i offset, double hostImpedance) {
+        Branch neighbor = lodAt(
+                cellOrigin.add(offset.getX(), offset.getY(), offset.getZ()), cellSize);
+        return FrustumLod.blocksPermeation(hostImpedance, impedanceOf(neighbor), permeationOf(neighbor));
+    }
+
+    private static double permeationOf(@Nullable Branch b) {
+        if (b == null) {
+            return Double.NaN;
+        }
+        return b.material != null ? b.material.permeation() : 1.0;
+    }
+
+    private double forwardNeighborImpedance(BlockPos cellOrigin, int cellSize, Vec3i face, Vec3d rayDir) {
+        FrustumLod.ForwardMap map = FrustumLod.forwardMap(face, rayDir, cellSize);
+        double nZ = impedanceOf(lodAt(
+                cellOrigin.add(map.nOffset().getX(), map.nOffset().getY(), map.nOffset().getZ()), cellSize));
+        if (!map.hasTangent()) {
+            return nZ;
+        }
+        double eZ = impedanceOf(lodAt(
+                cellOrigin.add(map.eOffset().getX(), map.eOffset().getY(), map.eOffset().getZ()), cellSize));
+        double dZ = impedanceOf(lodAt(
+                cellOrigin.add(map.dOffset().getX(), map.dOffset().getY(), map.dOffset().getZ()), cellSize));
+        double wall = Double.NEGATIVE_INFINITY;
+        if (Double.isFinite(nZ)) wall = Math.max(wall, nZ);
+        if (Double.isFinite(eZ)) wall = Math.max(wall, eZ);
+        if (Double.isFinite(dZ)) wall = Math.max(wall, dZ);
+        return wall == Double.NEGATIVE_INFINITY ? Double.NaN : wall;
+    }
+
+    private @Nullable Branch lodAt(BlockPos pos, int lod) {
+        if (chunk != null) {
+            ChunkChain c = chunk.access(pos.getX() >> 4, pos.getZ() >> 4);
+            if (c != null) {
+                Branch root = c.getBranch(pos.getY() >> 4);
+                if (root != null) {
+                    return root.getAtLod(pos, lod);
+                }
+            }
+        }
+        return tree == null ? null : tree.getAtLod(pos, lod);
+    }
+
+    private static double impedanceOf(@Nullable Branch b) {
+        if (b == null) {
+            return Double.NaN;
+        }
+        if (!Double.isNaN(b.avgImpedance)) {
+            return b.avgImpedance;
+        }
+        if (!Double.isNaN(b.mostCommonImpedance)) {
+            return b.mostCommonImpedance;
+        }
+        return b.material != null ? b.material.impedance() : Double.NaN;
+    }
+
+    private static double polarizedImpedance(Branch branch, Vec3d vector) {
+        double w = polarBlendWeight(branch, vector);
+        return Physics.blendImpedance(branch.mostCommonImpedance, branch.leastCommonImpedance, w);
+    }
+
+    private static double polarBlendWeight(Branch branch, Vec3d vector) {
+        Vec3d pol = branch.polar;
+        if (pol == null || pol.lengthSquared() < 1e-12) {
+            return 0.5;
+        }
+        double s = !Double.isNaN(branch.blendCoefficient) && branch.blendCoefficient >= 0.75 ? 2.0 : 1.0;
+        return Physics.polarBlendWeight(Physics.polarAlignment(vector.normalize(), pol.normalize()), s);
+    }
+
+    private static double polarContrast(Branch branch) {
+        double most = branch.mostCommonImpedance;
+        double least = branch.leastCommonImpedance;
+        double denom = Math.max(Math.abs(most), Math.abs(least));
+        if (denom < 1e-9 || Double.isNaN(denom)) {
+            return 0.0;
+        }
+        return Math.abs(most - least) / denom;
     }
 
     /**
@@ -692,16 +907,47 @@ public class Cast {
     // } */
 
     /**
-     * Virtual frustum step size (runtime-visual Phase B): {@code min(branchSize, footprintTierSize)}
-     * where footprint tiers mirror {@link BeamBudget} — footprint in {@code [1,2)} → step 1,
-     * {@code [2,4)} → 2, {@code [4,8)} → 4, {@code [8,16)} → 8. Homogeneous large leaves stay
-     * pruned; traversal just steps at this finer virtual resolution. Outside every tier, returns
-     * {@code branchSize}.
+     * Advances {@link #frustumSize} through one boundary. Growth uses {@code growthPerBlock} only
+     * after the second permeation at the current floored LOD step since the last bounce; bounces
+     * reset that streak and always pass growth rate 0. The energy/alignment blend still shrinks
+     * the footprint either way.
+     *
+     * @param permeated {@code true} when continuing along the transmitted leg; {@code false} on reflect
      */
-    public static int effectiveStepSize(int branchSize, double footprintRadius) {
-        int tier = BeamBudget.tierIndexForFootprint(footprintRadius);
-        if (tier < 0) return branchSize;
-        int tierStep = 1 << tier;
-        return Math.min(branchSize, tierStep);
+    public double applyFrustumStep(
+            double stepDistance,
+            double growthPerBlock,
+            double leftoverEnergyCoefficient,
+            boolean permeated
+    ) {
+        int lod = FrustumLod.stepForSize(frustumSize);
+        if (lod != frustumGrowthLod) {
+            frustumGrowthLod = lod;
+            permeatesAtFrustumLod = 0;
+        }
+        if (permeated) {
+            permeatesAtFrustumLod++;
+        } else {
+            permeatesAtFrustumLod = 0;
+        }
+        double growth = FrustumLod.gatedGrowthPerBlock(growthPerBlock, permeatesAtFrustumLod);
+        frustumSize = FrustumLod.nextFrustumSize(
+                frustumSize, stepDistance, growth, lastPolarAlignment, leftoverEnergyCoefficient);
+        int newLod = FrustumLod.stepForSize(frustumSize);
+        if (newLod != frustumGrowthLod) {
+            frustumGrowthLod = newLod;
+            permeatesAtFrustumLod = 0;
+        }
+        return frustumSize;
+    }
+
+    /**
+     * Virtual frustum step size under the linear (non-compounding) footprint model:
+     * {@code min(branchSize, }{@link FrustumLod#stepForDistance}{@code )}. The live cast tracks real
+     * per-interaction {@link #frustumSize} instead (see {@link #applyFrustumStep}); this
+     * remains for debug/test contexts that only preview footprint growth over free travel.
+     */
+    public static int effectiveStepSize(int branchSize, double distance, double growthPerBlock) {
+        return FrustumLod.effectiveStepSize(branchSize, distance, growthPerBlock);
     }
 }

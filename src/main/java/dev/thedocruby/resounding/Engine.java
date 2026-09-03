@@ -6,6 +6,7 @@ package dev.thedocruby.resounding;
 import dev.thedocruby.resounding.openal.Context;
 import dev.thedocruby.resounding.debug.CaptureBuffer;
 import dev.thedocruby.resounding.raycast.Cast;
+import dev.thedocruby.resounding.raycast.FrustumLod;
 import dev.thedocruby.resounding.raycast.Hit;
 import dev.thedocruby.resounding.raycast.Ray;
 import dev.thedocruby.resounding.raycast.Renderer;
@@ -226,6 +227,23 @@ public class Engine {
 		return raycast(input, amplitude, Double.POSITIVE_INFINITY, null, reflect, ctx);
 	}
 
+	/**
+	 * Advances {@code cast.frustumSize} through the boundary {@code cast} just resolved.
+	 * {@code stepDistance} is the segment this beam actually traveled; {@code leftoverEnergyCoefficient}
+	 * is the matching {@code cast.lastReflectivity} or {@code cast.lastTransmission}.
+	 * {@code permeated} selects growth arming (second permeate at floored LOD) vs bounce reset.
+	 */
+	@Environment(EnvType.CLIENT)
+	private static double advanceFrustumSize(
+			Cast cast,
+			double stepDistance,
+			double leftoverEnergyCoefficient,
+			boolean permeated
+	) {
+		return cast.applyFrustumStep(
+				stepDistance, pConfig.frustumGrowthPerBlock, leftoverEnergyCoefficient, permeated);
+	}
+
 	@Environment(EnvType.CLIENT)
 	private static @NotNull LinkedList<Hit> raycast(@NotNull Pair<Vec3d,Integer> input, double amplitude, double maxLength, Vec3d targetPosition, BiFunction<Cast, LinkedList<Hit>, Boolean> reflect, SoundEvalContext ctx) {
 		int id = input.getRight();
@@ -265,6 +283,7 @@ public class Engine {
 					logRayTermination(id, "3 consecutive emission reflects", results, cast.reflected.position());
 					return results;
 				}
+				cast.frustumSize = advanceFrustumSize(cast, cast.reflected.length(), cast.lastReflectivity, false);
 				pathLength += cast.reflected.length();
 				debugTail.emit(ctx, cast, id, emissionPos, cast.reflected.position(), cast.reflected.power(),
 						results.size(), false);
@@ -285,6 +304,7 @@ public class Engine {
 					cast.transmitted.vector(),
 					cast.transmitted.length()
 			);
+			cast.frustumSize = advanceFrustumSize(cast, cast.transmitted.length(), cast.lastTransmission, true);
 			pathLength = cast.transmitted.length();
 			debugTail.emit(ctx, cast, id, prior, cast.transmitted.position(), ray.power(), results.size(),
 					!(ray.power() > 1 && maxLength > pathLength && results.size() < pConfig.nRayBounces));
@@ -342,6 +362,7 @@ public class Engine {
 							: "3 consecutive reflects";
 					break;
 				}
+				cast.frustumSize = advanceFrustumSize(cast, cast.reflected.length(), cast.lastReflectivity, false);
 				pathLength += cast.reflected.length();
 				segmentLength = 0;
 				ray = cast.reflected;
@@ -367,6 +388,7 @@ public class Engine {
 				break;
 			}
 			double advance = cast.transmitted.length();
+			cast.frustumSize = advanceFrustumSize(cast, advance, cast.lastTransmission, true);
 			pathLength += advance;
 			segmentLength += advance;
 			ray = cast.transmitted;
@@ -470,7 +492,7 @@ public class Engine {
 			if (!pConfig.dRays || rayId >= MAX_DEBUG_TRACE_RAYS) {
 				return;
 			}
-			emitDebugSegment(ctx, cast, segmentStart, segmentEnd, segmentPower, bounceIndex, segmentTerminated);
+			emitDebugSegment(ctx, cast, rayId, segmentStart, segmentEnd, segmentPower, bounceIndex, segmentTerminated);
 			this.start = segmentStart;
 			this.end = segmentEnd;
 			this.power = segmentPower;
@@ -490,6 +512,7 @@ public class Engine {
 	private static void emitDebugSegment(
 			SoundEvalContext ctx,
 			Cast cast,
+			int rayId,
 			Vec3d start,
 			Vec3d end,
 			double power,
@@ -502,6 +525,7 @@ public class Engine {
 				cast.lastOctantColor,
 				bounceIndex,
 				ctx.sourceID(),
+				rayId,
 				cast.lastMaterial,
 				cast.lastReflectivity == null ? 0.0 : cast.lastReflectivity,
 				cast.lastTransmission == null ? 0.0 : cast.lastTransmission,
@@ -554,6 +578,7 @@ public class Engine {
 				legs++;
 			}
 
+			cast.frustumSize = advanceFrustumSize(cast, step, cast.lastTransmission, true);
 			traveled += step;
 			power = cast.transmitted.power();
 			position = cast.transmitted.position();

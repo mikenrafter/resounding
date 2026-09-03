@@ -155,8 +155,8 @@ public class OctreeManager {
             }
             valid = regionHomogeneous(chunk, start, 2, corner);
             Polarization.Descriptor descriptor = Polarization.bakeOctant(cornerMaterials);
-            root.maxImpedance = descriptor.maxImpedance();
-            root.minImpedance = descriptor.minImpedance();
+            root.mostCommonImpedance = descriptor.mostCommonImpedance();
+            root.leastCommonImpedance = descriptor.leastCommonImpedance();
             root.avgImpedance = descriptor.avgImpedance();
             root.polar = descriptor.polar();
             root.blendCoefficient = descriptor.blendCoefficient();
@@ -184,8 +184,8 @@ public class OctreeManager {
     /** Size-1 leaf baked descriptor (frustums-plan.md Phase 0 table): no gradient, max=min=avg. */
     private static void bakeLeafDescriptor(Branch leaf) {
         double impedance = leaf.material != null ? leaf.material.impedance() : Double.NaN;
-        leaf.maxImpedance = impedance;
-        leaf.minImpedance = impedance;
+        leaf.mostCommonImpedance = impedance;
+        leaf.leastCommonImpedance = impedance;
         leaf.avgImpedance = impedance;
         leaf.polar = null;
         leaf.blendCoefficient = Double.NaN;
@@ -209,14 +209,16 @@ public class OctreeManager {
         List<Vec3d> childPolar = new ArrayList<>(children.length);
         List<Double> childWeight = new ArrayList<>(children.length);
         for (Branch child : children) {
-            sumHigh += child.maxImpedance;
-            sumLow += child.minImpedance;
+            sumHigh += child.mostCommonImpedance;
+            sumLow += child.leastCommonImpedance;
             sumAvg += child.avgImpedance;
             if (child.polar != null) {
                 double blend = child.blendCoefficient;
                 if (Double.isNaN(blend)) {
-                    double range = child.maxImpedance - child.minImpedance;
-                    blend = range > 0 ? (child.avgImpedance - child.minImpedance) / range : 1.0;
+                    double range = Math.abs(child.mostCommonImpedance - child.leastCommonImpedance);
+                    blend = range > 0
+                            ? Math.abs(child.avgImpedance - child.leastCommonImpedance) / range
+                            : 1.0;
                     blend = Math.max(0.0, Math.min(1.0, blend));
                 }
                 childPolar.add(child.polar);
@@ -225,8 +227,8 @@ public class OctreeManager {
                 blendCount++;
             }
         }
-        root.maxImpedance = sumHigh / children.length;
-        root.minImpedance = sumLow / children.length;
+        root.mostCommonImpedance = sumHigh / children.length;
+        root.leastCommonImpedance = sumLow / children.length;
         root.avgImpedance = sumAvg / children.length;
         root.blendCoefficient = blendCount > 0 ? sumBlend / blendCount : Double.NaN;
         if (childPolar.isEmpty()) {

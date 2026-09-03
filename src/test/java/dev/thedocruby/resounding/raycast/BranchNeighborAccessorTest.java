@@ -38,8 +38,8 @@ class BranchNeighborAccessorTest {
         assertEquals(2, result.size, "virtual node must be the accessor's own size, not the coarser ancestor's");
         assertEquals(new BlockPos(0, 0, 0), result.start);
         assertEquals(STONE, result.material);
-        assertEquals(STONE.impedance(), result.maxImpedance);
-        assertEquals(STONE.impedance(), result.minImpedance);
+        assertEquals(STONE.impedance(), result.mostCommonImpedance);
+        assertEquals(STONE.impedance(), result.leastCommonImpedance);
         assertEquals(STONE.impedance(), result.avgImpedance);
         assertNull(result.polar, "uniform region has no gradient");
     }
@@ -48,8 +48,8 @@ class BranchNeighborAccessorTest {
     void atOrFinerNeighbor_returnsRealPreBakedBranchDirectly_noAggregation() {
         Branch root = new Branch(new BlockPos(0, 0, 0), 4);
         Branch realChild = new Branch(new BlockPos(2, 0, 0), 2, GRASS);
-        realChild.maxImpedance = 640.0;
-        realChild.minImpedance = 400.0;
+        realChild.mostCommonImpedance = 640.0;
+        realChild.leastCommonImpedance = 400.0;
         realChild.avgImpedance = 520.0;
         realChild.polar = null;
         root.put(new BlockPos(2, 0, 0).asLong(), realChild);
@@ -82,7 +82,7 @@ class BranchNeighborAccessorTest {
         assertEquals(2, result.size);
         assertEquals(new BlockPos(16, 0, 0), result.start);
         assertEquals(GRASS, result.material);
-        assertEquals(GRASS.impedance(), result.maxImpedance);
+        assertEquals(GRASS.impedance(), result.mostCommonImpedance);
         assertNull(result.polar);
     }
 
