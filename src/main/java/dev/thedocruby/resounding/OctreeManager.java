@@ -120,7 +120,7 @@ public class OctreeManager {
         if (root.size == 1) {
             BlockState state = chunk.getBlockState(start);
             root.material = MaterialRegistry.material(state);
-            root.materialLabel = MaterialRegistry.describe(state);
+            // materialLabel filled lazily by overlay / dRays via Branch.ensureMaterialLabel
             bakeLeafDescriptor(root);
             return root;
         }
@@ -128,7 +128,6 @@ public class OctreeManager {
         final int scale = root.size >> 1;
         BlockState corner = chunk.getBlockState(start);
         root.material = MaterialRegistry.material(corner);
-        root.materialLabel = MaterialRegistry.describe(corner);
         boolean valid = true;
 
         if (scale > 1) {
@@ -152,7 +151,7 @@ public class OctreeManager {
                     heterogeneous = true;
                     valid = false;
                 }
-                root.put(position.asLong(), leaf);
+                root.put(i, leaf);
             }
             if (!heterogeneous) {
                 root.empty();
@@ -160,12 +159,9 @@ public class OctreeManager {
             bakeAggregateDescriptor(root, children);
         } else {
             Material[] cornerMaterials = new Material[blockSequence.length];
-            BlockState[] cornerStates = new BlockState[blockSequence.length];
             for (int i = 0; i < blockSequence.length; i++) {
                 final BlockPos position = start.add(blockSequence[i]);
-                BlockState blockState = chunk.getBlockState(position);
-                cornerStates[i] = blockState;
-                cornerMaterials[i] = MaterialRegistry.material(blockState);
+                cornerMaterials[i] = MaterialRegistry.material(chunk.getBlockState(position));
             }
             valid = regionHomogeneous(chunk, start, 2, corner);
             Polarization.Descriptor descriptor = Polarization.bakeOctant(cornerMaterials);
@@ -179,19 +175,14 @@ public class OctreeManager {
                 for (int i = 0; i < blockSequence.length; i++) {
                     final BlockPos position = start.add(blockSequence[i]);
                     Branch leaf = new Branch(position, 1, cornerMaterials[i]);
-                    leaf.materialLabel = MaterialRegistry.describe(cornerStates[i]);
                     bakeLeafDescriptor(leaf);
-                    root.put(position.asLong(), leaf);
+                    root.put(i, leaf);
                 }
                 root.material = null;
-                root.materialLabel = null;
                 return root;
             }
         }
         root.set(valid ? root.material : (Material) null);
-        if (!valid) {
-            root.materialLabel = null;
-        }
         return root;
     }
 
@@ -310,23 +301,22 @@ public class OctreeManager {
             return;
         }
 
-        if (node.leaves.isEmpty()) {
+        if (node.isEmpty()) {
             subdivide(chunk, node);
         }
 
         node.material = null;
         node.materialLabel = null;
 
-        Branch child = node.leaves.get(childKey(node, target));
+        Branch child = node.child(node.octantOf(target));
         if (child != null) {
             invalidatePath(chunk, child, target);
         }
 
-        if (!node.leaves.isEmpty()) {
+        if (!node.isEmpty()) {
             Branch[] children = new Branch[blockSequence.length];
             for (int i = 0; i < blockSequence.length; i++) {
-                BlockPos origin = node.start.add(blockSequence[i].multiply(node.size >> 1));
-                Branch baked = node.leaves.get(origin.asLong());
+                Branch baked = node.child(i);
                 if (baked == null) {
                     return;
                 }
@@ -346,39 +336,31 @@ public class OctreeManager {
             if (half == 1) {
                 BlockState state = chunk.getBlockState(origin);
                 child.material = MaterialRegistry.material(state);
-                child.materialLabel = MaterialRegistry.describe(state);
                 bakeLeafDescriptor(child);
             } else {
                 BlockState corner = chunk.getBlockState(origin);
                 if (regionHomogeneous(chunk, origin, half, corner)) {
                     child.material = MaterialRegistry.material(corner);
-                    child.materialLabel = MaterialRegistry.describe(corner);
                     bakeLeafDescriptor(child);
                 } else {
                     growOctree(chunk, child);
                 }
             }
             children[i] = child;
-            node.put(origin.asLong(), child);
+            node.put(i, child);
         }
         bakeAggregateDescriptor(node, children);
     }
 
-    private static long childKey(Branch node, BlockPos target) {
-        int half = node.size >> 1;
-        int dx = target.getX() >= node.start.getX() + half ? half : 0;
-        int dy = target.getY() >= node.start.getY() + half ? half : 0;
-        int dz = target.getZ() >= node.start.getZ() + half ? half : 0;
-        return node.start.add(dx, dy, dz).asLong();
-    }
-
     private static int countLeaves(Branch node) {
-        if (node.leaves.isEmpty()) {
+        if (node.isEmpty()) {
             return 1;
         }
         int count = 0;
-        for (Branch child : node.leaves.values()) {
-            count += countLeaves(child);
+        for (Branch child : node.children) {
+            if (child != null) {
+                count += countLeaves(child);
+            }
         }
         return count;
     }

@@ -27,6 +27,7 @@ import static dev.thedocruby.resounding.MaterialRegistry.material;
 import static dev.thedocruby.resounding.OctreeManager.CUBE;
 import static dev.thedocruby.resounding.OctreeManager.EMPTY;
 import static dev.thedocruby.resounding.Utils.LOGGER;
+import static dev.thedocruby.resounding.config.PrecomputedConfig.pConfig;
 
 @Environment(EnvType.CLIENT)
 public class Cast {
@@ -198,11 +199,16 @@ public class Cast {
 
         this.lastOctantColor = OctantColor.forNode(cellOrigin, cellSize);
         this.lastBranchSize = cellSize;
-        this.lastMaterialLabel = branch.materialLabel;
-        if (virtualLod && this.lastMaterialLabel != null) {
-            this.lastMaterialLabel = this.lastMaterialLabel + " lod" + cellSize;
-        } else if (virtualLod) {
-            this.lastMaterialLabel = "virtual lod" + cellSize;
+        // Labels are bake-skipped; resolve only when dRays will display them.
+        if (pConfig != null && pConfig.dRays) {
+            this.lastMaterialLabel = branch.ensureMaterialLabel(world);
+            if (virtualLod && this.lastMaterialLabel != null) {
+                this.lastMaterialLabel = this.lastMaterialLabel + " lod" + cellSize;
+            } else if (virtualLod) {
+                this.lastMaterialLabel = "virtual lod" + cellSize;
+            }
+        } else {
+            this.lastMaterialLabel = null;
         }
         // } */
         // prepare variables
@@ -866,7 +872,9 @@ public class Cast {
 
     private static Branch liveLeaf(BlockPos block, VoxelShape shape, Material mat, BlockState state) {
         Branch leaf = new Branch(block, 1, shape, mat);
-        leaf.materialLabel = MaterialRegistry.describe(state);
+        if (pConfig != null && pConfig.dRays) {
+            leaf.materialLabel = MaterialRegistry.describe(state);
+        }
         return leaf;
     }
     public static Vec3d blockToVec(BlockPos pos) { return new Vec3d(pos.getX(), pos.getY(), pos.getZ()); }

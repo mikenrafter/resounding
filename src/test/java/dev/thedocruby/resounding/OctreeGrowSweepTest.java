@@ -141,12 +141,14 @@ class OctreeGrowSweepTest {
 	}
 
 	private static int countLeaves(Branch node) {
-		if (node.leaves.isEmpty()) {
+		if (node.isEmpty()) {
 			return 1;
 		}
 		int count = 0;
-		for (Branch child : node.leaves.values()) {
-			count += countLeaves(child);
+		for (Branch child : node.children) {
+			if (child != null) {
+				count += countLeaves(child);
+			}
 		}
 		return count;
 	}

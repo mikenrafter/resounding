@@ -6,6 +6,7 @@ import dev.thedocruby.resounding.debug.math.OctantColor;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.BlockView;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -28,8 +29,12 @@ public final class OctreeOverlay {
 	private OctreeOverlay() {}
 
 	public static List<OctantView> collectOctants(Branch root) {
+		return collectOctants(root, null);
+	}
+
+	public static List<OctantView> collectOctants(Branch root, @Nullable BlockView world) {
 		List<OctantView> octants = new ArrayList<>();
-		collectOctants(root, octants);
+		collectOctants(root, world, octants);
 		return octants;
 	}
 
@@ -39,6 +44,10 @@ public final class OctreeOverlay {
 	 * are omitted.
 	 */
 	public static List<OctantView> collectNeighborhood(Branch root, BlockPos playerPos) {
+		return collectNeighborhood(root, playerPos, null);
+	}
+
+	public static List<OctantView> collectNeighborhood(Branch root, BlockPos playerPos, @Nullable BlockView world) {
 		Branch anchor = root.get(playerPos);
 		int cellSize = anchor.size;
 		BlockPos cellOrigin = anchor.start;
@@ -71,21 +80,23 @@ public final class OctreeOverlay {
 		}
 
 		List<OctantView> octants = new ArrayList<>();
-		collectIntersectingLeaves(root, regions, octants);
+		collectIntersectingLeaves(root, world, regions, octants);
 		return octants;
 	}
 
-	private static void collectIntersectingLeaves(Branch node, List<Box> regions, List<OctantView> octants) {
+	private static void collectIntersectingLeaves(Branch node, @Nullable BlockView world, List<Box> regions, List<OctantView> octants) {
 		Box nodeBox = boxOf(node);
 		if (!intersectsAny(nodeBox, regions)) {
 			return;
 		}
-		if (node.leaves.isEmpty()) {
-			octants.add(toView(node));
+		if (node.isEmpty()) {
+			octants.add(toView(node, world));
 			return;
 		}
-		for (Branch child : node.leaves.values()) {
-			collectIntersectingLeaves(child, regions, octants);
+		for (Branch child : node.children) {
+			if (child != null) {
+				collectIntersectingLeaves(child, world, regions, octants);
+			}
 		}
 	}
 
@@ -106,7 +117,7 @@ public final class OctreeOverlay {
 		return new Box(x, y, z, x + size, y + size, z + size);
 	}
 
-	private static OctantView toView(Branch node) {
+	private static OctantView toView(Branch node, @Nullable BlockView world) {
 		int x = node.start.getX();
 		int y = node.start.getY();
 		int z = node.start.getZ();
@@ -115,21 +126,23 @@ public final class OctreeOverlay {
 		return new OctantView(
 				new Box(x, y, z, x + size, y + size, z + size),
 				node.material,
-				node.materialLabel,
+				node.ensureMaterialLabel(world),
 				size,
 				color,
 				node.polar
 		);
 	}
 
-	private static void collectOctants(Branch node, List<OctantView> octants) {
-		if (!node.leaves.isEmpty()) {
-			for (Branch child : node.leaves.values()) {
-				collectOctants(child, octants);
+	private static void collectOctants(Branch node, @Nullable BlockView world, List<OctantView> octants) {
+		if (!node.isEmpty()) {
+			for (Branch child : node.children) {
+				if (child != null) {
+					collectOctants(child, world, octants);
+				}
 			}
 			return;
 		}
-		octants.add(toView(node));
+		octants.add(toView(node, world));
 	}
 
 	/**

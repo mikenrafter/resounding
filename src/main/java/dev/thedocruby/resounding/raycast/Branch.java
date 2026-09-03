@@ -1,9 +1,9 @@
 package dev.thedocruby.resounding.raycast;
 
+import dev.thedocruby.resounding.MaterialRegistry;
 import dev.thedocruby.resounding.OctreeManager;
 import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.toolbox.ChunkChain;
-import dev.thedocruby.resounding.toolbox.MaterialData;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.block.BlockState;
@@ -11,10 +11,9 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Vec3i;
 import net.minecraft.util.shape.VoxelShape;
+import net.minecraft.world.BlockView;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.HashMap;
 
 @Environment(EnvType.CLIENT)
 public class Branch {
@@ -22,6 +21,10 @@ public class Branch {
     public int size;
     public @NotNull VoxelShape shape = OctreeManager.CUBE;
     public @Nullable Material material; // TODO: use!
+    /**
+     * Acoustic debug label (e.g. {@code grass}). Left null during octree bake; filled lazily by
+     * {@link #ensureMaterialLabel(BlockView)} when an overlay / dRays path needs it.
+     */
     public @Nullable String materialLabel;
 
     // Phase 0 baked descriptor (frustums-plan.md "Baked per-branch descriptor"). Populated by
@@ -47,16 +50,15 @@ public class Branch {
      */
     public double blendCoefficient = Double.NaN;
 
-    // TODO(perf): HashMap<Long,Branch> costs a BlockPos.asLong() box+hash+bucket walk on every
-    // octree level, per ray-cell step. A flat children[8]-style array indexed by octant (each
-    // node knowing its own depth/id) would avoid that, but get()/getAtLod()'s recursive
-    // "descend into whichever child" API may not translate cleanly to a flat layout — profile
-    // memory AND CPU before committing to an approach.
-    public @NotNull HashMap<Long, Branch> leaves;
+    /**
+     * Eight direct octant children, indexed {@code x | (y << 1) | (z << 2)} relative to
+     * {@link #start} at half-size. {@code null} means this node is pruned / homogeneous (no
+     * subdivision). Individual slots may also be null when only some children are installed.
+     */
+    public @Nullable Branch[] children;
 
 
     public Branch(BlockPos start, int size) {
-        this.leaves = new HashMap<>(size < 4 ? 0 : 8, 2 /* should never be reached */);
         this.start = start;
         this.size = size;
     }
@@ -92,15 +94,39 @@ public class Branch {
         return this;
     }
 
+    /**
+     * Octant index of {@code pos} inside this node: bit0=X, bit1=Y, bit2=Z (matches
+     * {@link OctreeManager#blockSequence} order).
+     */
+    public int octantOf(@NotNull BlockPos pos) {
+        int half = size >> 1;
+        int ix = pos.getX() >= start.getX() + half ? 1 : 0;
+        int iy = pos.getY() >= start.getY() + half ? 1 : 0;
+        int iz = pos.getZ() >= start.getZ() + half ? 1 : 0;
+        return ix | (iy << 1) | (iz << 2);
+    }
+
+    public static int octantOf(@NotNull BlockPos parentStart, int parentSize, @NotNull BlockPos pos) {
+        int half = parentSize >> 1;
+        int ix = pos.getX() >= parentStart.getX() + half ? 1 : 0;
+        int iy = pos.getY() >= parentStart.getY() + half ? 1 : 0;
+        int iz = pos.getZ() >= parentStart.getZ() + half ? 1 : 0;
+        return ix | (iy << 1) | (iz << 2);
+    }
+
+    public @Nullable Branch child(int octant) {
+        return children == null ? null : children[octant];
+    }
+
+    public @Nullable Branch childAt(@NotNull BlockPos pos) {
+        return child(octantOf(pos));
+    }
+
     public @NotNull Branch get(BlockPos pos) {
-        if (leaves.isEmpty()) return this;
+        if (children == null) return this;
         int half = size >> 1;
         if (half == 0) return this;
-        int dx = pos.getX() >= start.getX() + half ? half : 0;
-        int dy = pos.getY() >= start.getY() + half ? half : 0;
-        int dz = pos.getZ() >= start.getZ() + half ? half : 0;
-        BlockPos childOrigin = start.add(dx, dy, dz);
-        @Nullable Branch leaf = leaves.get(childOrigin.asLong());
+        Branch leaf = child(octantOf(pos));
         return leaf == null ? this : leaf.get(pos);
     }
 
@@ -117,18 +143,14 @@ public class Branch {
         if (size == lod) {
             return this;
         }
-        if (leaves.isEmpty()) {
+        if (children == null) {
             return virtualLodCell(pos, lod);
         }
         int half = size >> 1;
         if (half == 0) {
             return this;
         }
-        int dx = pos.getX() >= start.getX() + half ? half : 0;
-        int dy = pos.getY() >= start.getY() + half ? half : 0;
-        int dz = pos.getZ() >= start.getZ() + half ? half : 0;
-        BlockPos childOrigin = start.add(dx, dy, dz);
-        Branch child = leaves.get(childOrigin.asLong());
+        Branch child = child(octantOf(pos));
         if (child == null) {
             return virtualLodCell(pos, lod);
         }
@@ -162,24 +184,57 @@ public class Branch {
         return get(pos);
     }
 
-//    private static BlockPos sub(BlockPos pos, BlockPos octo, int n) {
-//        return pos.subtract(octo.multiply(n));
-//    }
+    /** Installs {@code branch} at octant {@code index} (0..7). Allocates {@link #children} on first put. */
+    public Branch put(int index, Branch branch) {
+        if (children == null) {
+            children = new Branch[8];
+        }
+        Branch previous = children[index];
+        children[index] = branch;
+        return previous;
+    }
 
-    // this should only be used
-    @Deprecated // NOT REALLY, but @Unsafe isn't available... :/
-    public Branch put(Long pos, Branch branch) { return leaves.put(pos, branch); }
+    /** Installs {@code branch} under the octant containing {@code childOrigin} (packed as long). */
+    public Branch put(Long childOrigin, Branch branch) {
+        return put(octantOf(BlockPos.fromLong(childOrigin)), branch);
+    }
 
     public Branch empty() {
-        leaves.clear();
+        children = null;
         return this;
     }
 
     public boolean isEmpty() {
-        return leaves.isEmpty();
+        return children == null;
     }
 
-    public Branch replace(Long pos, Branch branch) { return leaves.replace(pos, branch); }
+    public Branch replace(Long childOrigin, Branch branch) {
+        return put(childOrigin, branch);
+    }
+
+    public boolean containsChild(@NotNull Branch branch) {
+        if (children == null) return false;
+        for (Branch child : children) {
+            if (child == branch) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Lazily fills {@link #materialLabel} from {@code world} when an overlay / debug path needs it.
+     * Uses this node's {@link #start} corner block (same as bake used to).
+     */
+    public @Nullable String ensureMaterialLabel(@Nullable BlockView world) {
+        if (materialLabel != null) {
+            return materialLabel;
+        }
+        if (world == null) {
+            return null;
+        }
+        BlockState state = world.getBlockState(start);
+        materialLabel = MaterialRegistry.describe(state);
+        return materialLabel;
+    }
 
     /**
      * Phase 0 same-size neighbor accessor (frustums-plan.md "Neighbor accessor"): returns a
@@ -213,13 +268,8 @@ public class Branch {
         Branch sectionRoot = targetChunk.getBranch(ySection);
 
         Branch current = sectionRoot;
-        while (current.size > this.size && !current.leaves.isEmpty()) {
-            int half = current.size >> 1;
-            int dx = shiftedStart.getX() >= current.start.getX() + half ? half : 0;
-            int dy = shiftedStart.getY() >= current.start.getY() + half ? half : 0;
-            int dz = shiftedStart.getZ() >= current.start.getZ() + half ? half : 0;
-            BlockPos childOrigin = current.start.add(dx, dy, dz);
-            Branch child = current.leaves.get(childOrigin.asLong());
+        while (current.size > this.size && current.children != null) {
+            Branch child = current.child(current.octantOf(shiftedStart));
             if (child == null) break;
             current = child;
         }
@@ -270,7 +320,7 @@ public class Branch {
      * hit in {@code faceDirection} (a 3D edge, like a 2D corner, is shared by exactly 4 cells —
      * a pinwheel of 4 cubes, so still exactly 3 other octants). {@code parent} is the immediate
      * parent branch already in hand; when {@link #crossesParentBoundary} is false for the
-     * relevant axes the 3 neighbors are free sibling lookups via {@code parent.leaves} (no
+     * relevant axes the 3 neighbors are free sibling lookups via {@code parent.children} (no
      * traversal), otherwise this falls through to {@link #neighbor}. Not yet implemented — always
      * throws.
      */
@@ -379,7 +429,7 @@ public class Branch {
 
     /**
      * Resolves a single edge-pinwheel neighbor in {@code direction} (possibly diagonal across two
-     * axes): same-parent case is a free lookup in {@code parent.leaves}; cross-parent falls
+     * axes): same-parent case is a free lookup in {@code parent.children}; cross-parent falls
      * through to {@link #neighbor}. {@link #neighbor} can throw if the target chunk/section isn't
      * reachable through {@code chunk} (e.g. not loaded) -- that's a real possible runtime state
      * (unlike the same-size accessor's own tests, which always hand it a fully-wired chain), so
@@ -389,7 +439,7 @@ public class Branch {
     private @NotNull Branch resolveEdgeNeighbor(@NotNull Vec3i direction, @Nullable Branch parent, @Nullable ChunkChain chunk) {
         if (parent != null && !crossesParentBoundary(direction)) {
             BlockPos childOrigin = start.add(direction.getX() * size, direction.getY() * size, direction.getZ() * size);
-            Branch sibling = parent.leaves.get(childOrigin.asLong());
+            Branch sibling = parent.childAt(childOrigin);
             if (sibling != null) return sibling;
         }
         try {

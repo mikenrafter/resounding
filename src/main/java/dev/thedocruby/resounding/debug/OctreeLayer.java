@@ -215,7 +215,7 @@ public final class OctreeLayer implements DebugLayer {
 				}
 				collected = collectSelectedRayViews(client, chain, sectionBranch);
 			} else {
-				collected = OctreeOverlay.collectNeighborhood(sectionBranch, playerPos);
+				collected = OctreeOverlay.collectNeighborhood(sectionBranch, playerPos, client.world);
 			}
 		} finally {
 			profiler.pop();

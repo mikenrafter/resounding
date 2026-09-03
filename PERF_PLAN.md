@@ -5,6 +5,11 @@ optimizations in the raycasting/octree engine (raycast/, Engine.java, Physics.ja
 OctreeManager.java, Branch.java). Decisions below are final for this pass; items marked
 TODO-only are explicitly deferred pending profiling data, not implemented now.
 
+Profiler evidence (2026-09-03): [light](https://spark.lucko.me/JxVhwAIP56),
+[stressed](https://spark.lucko.me/vupEQRfxmx). Under stress, `growOctree` dominated
+octree-thread work; ~19% of that was `MaterialRegistry.describe`'s per-block Stream
+pipeline. Cast-path TODOs below were comparatively cold.
+
 ## 1. Profiler legibility (spark)
 
 The engine currently has zero real instrumentation — MC's `Profiler` only wraps debug-overlay
@@ -26,6 +31,16 @@ rendering, and the only timer is one opt-in `System.nanoTime()` blob around the 
       own thread-aware sampling (`--thread *`) to see `Engine`/`Cast` frames under the "Sound
       engine" thread row instead — that needs no code changes and isn't thread-restricted.
 
+## 1b. Hot path from spark (done this pass)
+
+- [x] **Skip `MaterialRegistry.describe` during octree bake.** Labels are for overlays /
+      `dRays` only. Bake no longer calls `describe`; `Branch.ensureMaterialLabel(BlockView)`
+      fills lazily when the octree overlay collects views or when `Cast` needs a label under
+      `dRays`. `liveLeaf` likewise skips describe unless `dRays` is on.
+- [x] **#1 HashMap → `children[8]`.** Each `Branch` holds an optional `Branch[8]` indexed
+      `x|(y<<1)|(z<<2)` (same order as `OctreeManager.blockSequence`). `null` array = pruned
+      homogeneous node. Not a single flat mipmap — per-node children only.
+
 ## 2. Dedupe: Cast.java null-coalescing fallback (scope: Cast.java only)
 
 Three near-identical fallback blocks — `branch.shape ?? state.getCollisionShape(...)` and
@@ -39,11 +54,7 @@ null-coalesce) and is out of scope.
 
 ## 3. Optimizations
 
-- [ ] **#1 HashMap → flat octree storage**: NOT implemented this pass. Add a `// TODO(perf)`
-      comment on `Branch.leaves` (raycast/Branch.java) flagging: replace `HashMap<Long,Branch>`
-      with a flat `children[8]`-style array keyed by octant index/depth; note that the
-      recursive `Branch.get()`/`getAtLod()` traversal API likely needs to change shape too;
-      flag that this needs memory *and* CPU profiling before committing to an approach.
+- [x] **#1 HashMap → flat octree storage**: done as per-node `children[8]` (see §1b).
 - [ ] **#2 Vec3i allocation churn → flyweights**: `Cast.getStepPair` and `Cast.entryPlane`
       both allocate a fresh `new Vec3i(±1/0, 0, 0)`-shaped object every call via
       `MathHelper.floor(-Math.signum(...))`. Replace with 6 cached `static final Vec3i`
@@ -76,15 +87,13 @@ null-coalesce) and is out of scope.
       ternary-based argmin (`boolean yWins = ystep < xstep; ...`) so the JIT can turn it
       into cmov, and only resolve the winning axis's `Vec3i` (via the #2 flyweights) once
       the argmin is known, instead of allocating inside each branch.
-- [ ] **#7 sqrt-then-compare guards**: NOT implemented this pass. Add `// TODO(perf)`
-      comments on `Cast.nudgeEmissionExit` and `Cast.nudgeReflectOrigin` (both do
-      `double length = vector.length(); if (length < threshold) ...`) flagging that
-      `lengthSquared() < threshold²` would skip the sqrt on the common early-exit path —
-      needs profiling to confirm sqrt is actually hot before switching.
+- [ ] **#7 sqrt-then-compare guards**: DEFERRED. `Cast.nudgeEmissionExit` /
+      `Cast.nudgeReflectOrigin` still use `length()`; switch to `lengthSquared()` only after
+      a capture shows sqrt hot. No code change this pass.
 
 ## Ordering / verification
 
-Implement in the order above (profiler wrapping → dedupe → #4 → #3 → #5 → #2+#6 together,
-since they touch the same `getStepPair`/`entryPlane` code). Run `core-tests` and
-`src/test` after the `Cast.java`-touching changes (dedupe, #3, #4, #2+#6) since that file
-has a history of subtle correctness regressions. Compile the whole project at the end.
+Next Cast-path work (when re-profiled after §1b): dedupe → #4 → #3 → #5 → #2+#6 together.
+Run `core-tests` and `src/test` after the `Cast.java`-touching changes (dedupe, #3, #4,
+#2+#6) since that file has a history of subtle correctness regressions. Compile the whole
+project at the end.

@@ -109,17 +109,13 @@ class OctreeInvalidationTest {
 		OctreeManager.invalidateBlock(chunk, root, target);
 
 		Branch cursor = root;
-		while (cursor.size > 1 && !cursor.leaves.isEmpty()) {
+		while (cursor.size > 1 && !cursor.isEmpty()) {
 			assertTrue(Double.isFinite(cursor.mostCommonImpedance),
 					"ancestor size " + cursor.size + " must keep a finite mostCommonImpedance after invalidate/subdivide");
 			assertTrue(Double.isFinite(cursor.leastCommonImpedance));
 			assertTrue(Double.isFinite(cursor.avgImpedance));
 			assertFalse(Double.isNaN(cursor.mostCommonImpedance));
-			int half = cursor.size >> 1;
-			int dx = target.getX() >= cursor.start.getX() + half ? half : 0;
-			int dy = target.getY() >= cursor.start.getY() + half ? half : 0;
-			int dz = target.getZ() >= cursor.start.getZ() + half ? half : 0;
-			Branch child = cursor.leaves.get(cursor.start.add(dx, dy, dz).asLong());
+			Branch child = cursor.childAt(target);
 			assertNotNull(child, "invalidate/subdivide must materialize the child toward " + target);
 			cursor = child;
 		}

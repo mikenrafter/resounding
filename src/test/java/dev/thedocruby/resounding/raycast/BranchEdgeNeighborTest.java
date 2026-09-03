@@ -91,16 +91,16 @@ class BranchEdgeNeighborTest {
     @Test
     void sameParentEdge_resolvesViaFreeSiblingLookup_noChunkNeeded() {
         Branch parent = buildParentWithEightChildren();
-        Branch corner = parent.leaves.get(new BlockPos(0, 0, 0).asLong());
+        Branch corner = parent.childAt(new BlockPos(0, 0, 0));
 
         // Stepping +X from the (0,0,0) corner child stays inside the parent (it's the low child on
-        // X), so this is the same-parent case: a free lookup in parent.leaves, no chunk required.
+        // X), so this is the same-parent case: a free lookup in parent.children, no chunk required.
         Branch[] result = corner.edgeNeighbors(new Vec3i(1, 0, 0), parent, null);
 
         assertEquals(3, result.length, "an edge in 3D is shared by exactly 4 cells: this octant + 3 others");
         for (Branch neighbor : result) {
             assertNotSame(corner, neighbor, "must not include the querying octant itself");
-            assertTrue(parent.leaves.containsValue(neighbor), "same-parent case must resolve from parent.leaves, not conjure new branches");
+            assertTrue(parent.containsChild(neighbor), "same-parent case must resolve from parent.children, not conjure new branches");
         }
     }
 
@@ -110,7 +110,7 @@ class BranchEdgeNeighborTest {
         // only checked length/accessCalls while neighbor() NPEs were swallowed into empty Branches —
         // assert the resolved face neighbor's material/start against real section content instead.
         Branch parent = buildParentWithEightChildren();
-        Branch corner = parent.leaves.get(new BlockPos(0, 0, 0).asLong());
+        Branch corner = parent.childAt(new BlockPos(0, 0, 0));
 
         FakeChunkChain home = new FakeChunkChain(0, 0);
         Branch homeRoot = new Branch(new BlockPos(0, 0, 0), 16);
@@ -149,7 +149,7 @@ class BranchEdgeNeighborTest {
     void hitPointsNearDifferentEdgesOfSameFace_returnDifferentSiblingSets() {
         Branch parent = buildParentWithEightChildren();
         // Interior cell so +X face stays same-parent; hit near +Y vs +Z edge of that face.
-        Branch cell = parent.leaves.get(new BlockPos(0, 0, 0).asLong());
+        Branch cell = parent.childAt(new BlockPos(0, 0, 0));
         Vec3i face = new Vec3i(1, 0, 0);
 
         // +X face of the (0,0,0) size-2 cell spans x=2, y∈[0,2], z∈[0,2].

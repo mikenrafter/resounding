@@ -36,7 +36,7 @@ class BeamVisitRecorderTest {
         );
 
         assertFalse(visits.isEmpty(), "beam capture must record visited boxes");
-        assertTrue(root.leaves.isEmpty(), "homogeneous leaf must stay pruned (no allocated children)");
+        assertTrue(root.isEmpty(), "homogeneous leaf must stay pruned (no allocated children)");
         Set<Integer> sizes = visits.stream().map(BeamVisitRecorder.VisitedBox::size).collect(Collectors.toSet());
         assertTrue(sizes.contains(1), "early distance schedule is step 1");
         assertTrue(visits.stream().anyMatch(BeamVisitRecorder.VisitedBox::virtual),

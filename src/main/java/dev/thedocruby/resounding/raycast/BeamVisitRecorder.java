@@ -10,7 +10,7 @@ import java.util.List;
 
 /**
  * Records octant boxes (real LOD nodes or virtual finer steps) a frustum beam would traverse.
- * Uses {@link FrustumLod} step schedule; does not subdivide {@link Branch#leaves}.
+ * Uses {@link FrustumLod} step schedule; does not subdivide {@link Branch#children}.
  *
  * <p>Bounce-off neighbors (cells interacted with but not entered) are attached by the debug
  * overlay at reflection kinks, not by this walk.

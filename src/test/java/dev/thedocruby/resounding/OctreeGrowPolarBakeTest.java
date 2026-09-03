@@ -282,13 +282,8 @@ class OctreeGrowPolarBakeTest {
     /** Walks real (non-pruned) branches from {@code node} toward {@code pos}, stopping at {@code untilSize}. */
     private static Branch descend(Branch node, BlockPos pos, int untilSize) {
         Branch current = node;
-        while (current.size > untilSize && !current.leaves.isEmpty()) {
-            int half = current.size >> 1;
-            int dx = pos.getX() >= current.start.getX() + half ? half : 0;
-            int dy = pos.getY() >= current.start.getY() + half ? half : 0;
-            int dz = pos.getZ() >= current.start.getZ() + half ? half : 0;
-            BlockPos childOrigin = current.start.add(dx, dy, dz);
-            Branch child = current.leaves.get(childOrigin.asLong());
+        while (current.size > untilSize && !current.isEmpty()) {
+            Branch child = current.childAt(pos);
             if (child == null) break;
             current = child;
         }
