@@ -1,0 +1,66 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1NZVAC9WK0W31Z4YS0R49M7",
+  "session_id": "262c3777-9036-4dc3-b7c2-c20f99c127a3",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-04T10:36:22.250484699Z",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Cast.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java",
+    "src/test/java/dev/thedocruby/resounding/debug/OctreeLayerLiveRayTest.java",
+    "src/test/java/dev/thedocruby/resounding/raycast/FrustumLodEdgeWalkTest.java"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "130c86f7fb77",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 2,
+    "cache_creation_tokens": 24417,
+    "cache_read_tokens": 0,
+    "output_tokens": 65,
+    "api_call_count": 1
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-04T10:36:22.240571338Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 89,
+    "human_removed": 156,
+    "total_committed": 9,
+    "total_lines_changed": 245,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 287,
+      "user_lines_removed": 79,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java": 8,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 34,
+        "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java": 186,
+        "src/test/java/dev/thedocruby/resounding/debug/OctreeLayerLiveRayTest.java": 16,
+        "src/test/java/dev/thedocruby/resounding/raycast/FrustumLodEdgeWalkTest.java": 43
+      },
+      "user_removed_per_file": {
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java": 3,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 25,
+        "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java": 29,
+        "src/test/java/dev/thedocruby/resounding/debug/OctreeLayerLiveRayTest.java": 5,
+        "src/test/java/dev/thedocruby/resounding/raycast/FrustumLodEdgeWalkTest.java": 17
+      }
+    }
+  ]
+}
