@@ -19,9 +19,6 @@ public final class DebugRenderDispatcher {
 	private final CaptureLayer capture = new CaptureLayer();
 	private final OctreeLayer octree = new OctreeLayer();
 
-	private final DebugLayer[] layers = {bounceRays, occlusionRays, capture, octree};
-	private static final String[] LAYER_NAMES = {"bounce_rays", "occlusion_rays", "capture", "octree"};
-
 	private DebugRenderDispatcher() {}
 
 	public void register() {
@@ -55,19 +52,86 @@ public final class DebugRenderDispatcher {
 		Profiler profiler = context.profiler();
 		profiler.push("resounding_debug");
 		try {
-			for (int i = 0; i < layers.length; i++) {
-				DebugLayer layer = layers[i];
-				if (!layer.isEnabled()) {
-					continue;
-				}
-				profiler.push(LAYER_NAMES[i]);
+			// Updates first so focus state / octant boxes are current before any draw.
+			updateIfEnabled(occlusionRays, profiler, "occlusion_rays_update");
+			updateIfEnabled(capture, profiler, "capture_update");
+			updateIfEnabled(bounceRays, profiler, "bounce_rays_update");
+			updateIfEnabled(octree, profiler, "octree_update");
+
+			boolean focusedFrustum = bounceRays.isEnabled()
+					&& octree.isEnabled()
+					&& BounceRayLayer.activeRayIndex() >= 0;
+
+			if (focusedFrustum) {
+				// Bottom → top: other rays, cubes, white focused ray, green contacts, magenta ends.
+				profiler.push("bounce_rays_bg");
 				try {
-					layer.update();
-					layer.render(positionMatrix, projectionMatrix, cameraPos);
+					bounceRays.renderBackgroundRays(positionMatrix, projectionMatrix, cameraPos);
 				} finally {
 					profiler.pop();
 				}
+				profiler.push("octree_cubes");
+				try {
+					octree.renderCubes(positionMatrix, projectionMatrix, cameraPos);
+				} finally {
+					profiler.pop();
+				}
+				profiler.push("bounce_rays_white");
+				try {
+					bounceRays.renderFocusedWhiteRay(positionMatrix, projectionMatrix, cameraPos);
+				} finally {
+					profiler.pop();
+				}
+				profiler.push("octree_ned");
+				try {
+					octree.renderNedMarkers(positionMatrix, projectionMatrix, cameraPos);
+				} finally {
+					profiler.pop();
+				}
+				profiler.push("bounce_rays_terminators");
+				try {
+					bounceRays.renderTerminatorMarkers(positionMatrix, projectionMatrix, cameraPos);
+				} finally {
+					profiler.pop();
+				}
+			} else {
+				renderLayer(bounceRays, "bounce_rays", positionMatrix, projectionMatrix, cameraPos, profiler);
+				renderLayer(octree, "octree", positionMatrix, projectionMatrix, cameraPos, profiler);
 			}
+
+			renderLayer(occlusionRays, "occlusion_rays", positionMatrix, projectionMatrix, cameraPos, profiler);
+			renderLayer(capture, "capture", positionMatrix, projectionMatrix, cameraPos, profiler);
+		} finally {
+			profiler.pop();
+		}
+	}
+
+	private static void updateIfEnabled(DebugLayer layer, Profiler profiler, String name) {
+		if (!layer.isEnabled()) {
+			return;
+		}
+		profiler.push(name);
+		try {
+			layer.update();
+		} finally {
+			profiler.pop();
+		}
+	}
+
+	private static void renderLayer(
+			DebugLayer layer,
+			String name,
+			Matrix4f positionMatrix,
+			Matrix4f projectionMatrix,
+			Vec3d cameraPos,
+			Profiler profiler
+	) {
+		if (!layer.isEnabled()) {
+			return;
+		}
+		profiler.push(name);
+		try {
+			layer.render(positionMatrix, projectionMatrix, cameraPos);
 		} finally {
 			profiler.pop();
 		}

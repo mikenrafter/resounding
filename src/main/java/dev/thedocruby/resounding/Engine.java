@@ -270,7 +270,7 @@ public class Engine {
 		while (!cast.impededSet) {
 			cast.raycast(emissionPos, emissionDir, emissionPower);
 			if (cast.transmitted == null || cast.transmitted.vector() == null) {
-				logRayTermination(id, "initial cast left the known world", results, emissionPos);
+				logRayTermination(id, "initial cast left the known world", 0, emissionPos);
 				return results;
 			}
 
@@ -280,7 +280,7 @@ public class Engine {
 				Ray segment = new Ray(emissionPower, emissionPos, emissionDir, cast.reflected.length());
 				recordReflectHitIfAny(cast, results, segment, pathLength, pathLength, ctx.listenerPos());
 				if (emissionReflects++ > 2) {
-					logRayTermination(id, "3 consecutive emission reflects", results, cast.reflected.position());
+					logRayTermination(id, "3 consecutive emission reflects", 0, cast.reflected.position());
 					return results;
 				}
 				cast.frustumSize = advanceFrustumSize(cast, cast.reflected.length(), cast.lastReflectivity, false);
@@ -295,7 +295,7 @@ public class Engine {
 			}
 
 			if (!cast.commitEmissionExit(cast.transmitted.position(), cast.transmitted.vector())) {
-				logRayTermination(id, "emission exited into vacuum", results, cast.transmitted.position());
+				logRayTermination(id, "emission exited into vacuum", 0, cast.transmitted.position());
 				return results;
 			}
 			ray = new Ray(
@@ -307,20 +307,22 @@ public class Engine {
 			cast.frustumSize = advanceFrustumSize(cast, cast.transmitted.length(), cast.lastTransmission, true);
 			pathLength = cast.transmitted.length();
 			debugTail.emit(ctx, cast, id, prior, cast.transmitted.position(), ray.power(), results.size(),
-					!(ray.power() > 1 && maxLength > pathLength && results.size() < pConfig.nRayBounces));
+					!(ray.power() > 1 && maxLength > pathLength));
 			prior = cast.transmitted.position();
 			break;
 		}
 
 		if (ray == null) {
-			logRayTermination(id, "emission never exited the source cell", results, prior);
+			logRayTermination(id, "emission never exited the source cell", 0, prior);
 			return results;
 		}
 
 		double segmentLength = pathLength;
 		byte reflected = 0;
+		/** Propagation bounces only — times we followed the reflected branch (not hit recordings). */
+		int bounceCount = 0;
 		while (true) {
-			if (!(ray.power() > 1 && maxLength > pathLength && results.size() < pConfig.nRayBounces)) {
+			if (!(ray.power() > 1 && maxLength > pathLength && bounceCount < pConfig.nRayBounces)) {
 				terminationReason = "budget exhausted";
 				break;
 			}
@@ -338,7 +340,7 @@ public class Engine {
 				Utils.LOGGER.info(
 						"Resounding: ray #{} bounce #{} node={}³ mode={} pos={} material={} Zprev={} Z={} R={} T={} power={}",
 						id,
-						results.size(),
+						bounceCount,
 						cast.lastBranchSize,
 						cast.lastShapeMode ? "SHAPE" : "VOXEL",
 						formatPos(ray.position()),
@@ -354,6 +356,7 @@ public class Engine {
 			recordReflectHitIfAny(cast, results, ray, pathLength, segmentLength, ctx.listenerPos());
 
 			if (reflect.apply(cast, results)) {
+				bounceCount++;
 				if (reflected++ > 2) {
 					debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true);
 					terminationReason = trail != null
@@ -373,7 +376,7 @@ public class Engine {
 				}
 				boolean continues = ray.power() > 1
 						&& maxLength > pathLength
-						&& results.size() < pConfig.nRayBounces;
+						&& bounceCount < pConfig.nRayBounces;
 				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), !continues);
 				prior = ray.position();
 				if (!continues) {
@@ -393,9 +396,9 @@ public class Engine {
 			segmentLength += advance;
 			ray = cast.transmitted;
 			cast.commitPermeation();
+			// Transmit does not consume bounce budget — only power / path length.
 			boolean continues = ray.power() > 1
 					&& maxLength > pathLength
-					&& results.size() < pConfig.nRayBounces
 					&& cast.transmitted.vector() != null;
 			debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), !continues);
 			prior = ray.position();
@@ -406,7 +409,7 @@ public class Engine {
 			}
 		}
 		debugTail.overlayTerminator(ctx, cast, id);
-		logRayTermination(id, terminationReason, results, prior);
+		logRayTermination(id, terminationReason, bounceCount, prior);
 		return results;
 	}
 
@@ -440,9 +443,10 @@ public class Engine {
 
 	/** Per-ray lifetime summary — logged for every ray (not just the id&lt;4 sample) so a ray that
 	 *  dies unexpectedly (e.g. the 3-consecutive-reflect guard) can be attributed to a position and
-	 *  mode without reconstructing it from the id-gated per-bounce lines. */
+	 *  mode without reconstructing it from the id-gated per-bounce lines.
+	 *  {@code bounceCount} is propagation reflects followed, not reverb hit recordings. */
 	@Environment(EnvType.CLIENT)
-	private static void logRayTermination(int id, String reason, LinkedList<Hit> results, Vec3d lastPosition) {
+	private static void logRayTermination(int id, String reason, int bounceCount, Vec3d lastPosition) {
 		if (!pConfig.dLog) {
 			return;
 		}
@@ -450,7 +454,7 @@ public class Engine {
 				"Resounding: ray #{} terminated ({}) bounces={} pos={}",
 				id,
 				reason,
-				results.size(),
+				bounceCount,
 				formatPos(lastPosition)
 		);
 	}

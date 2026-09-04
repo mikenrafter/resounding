@@ -1,5 +1,6 @@
 package dev.thedocruby.resounding.debug;
 
+import dev.thedocruby.resounding.debug.math.OctantColor;
 import dev.thedocruby.resounding.OctreeManager;
 import dev.thedocruby.resounding.config.PrecomputedConfig;
 import dev.thedocruby.resounding.raycast.Beam;
@@ -21,11 +22,14 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Vec3i;
 import net.minecraft.util.profiler.Profiler;
 import net.minecraft.world.chunk.ChunkStatus;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -36,6 +40,20 @@ public final class OctreeLayer implements DebugLayer {
 	static final int VIRTUAL_COLOR = 0xFF66F0FF;
 	/** Hot magenta for polarity axes (both + and − through the octant). */
 	static final int POLAR_COLOR = 0xFFFF14F0;
+	/** Green N/E/D survey markers on the focused frustum (same cross style as ray terminators). */
+	public static final int NED_MARKER_COLOR = 0xFF00FF00;
+	static final float NED_MARKER_LINE_WIDTH = 3.0F;
+	private static final double NED_MARKER_HALF_EXTENT = 0.12D;
+	/** Nearby fill opacity (at the player). */
+	static final float OCTANT_FILL_OPACITY = 0.2F;
+	/** Fill opacity at / beyond {@link #OCTANT_FADE_BLOCKS}. */
+	static final float OCTANT_FILL_OPACITY_FAR = 0.05F;
+	/** Distance over which fill fades from near→far and borders drop (when not cluster-focused). */
+	static final double OCTANT_FADE_BLOCKS = 10.0;
+	/** Solo-focused incident host wireframe + exit face. */
+	static final int INCIDENT_HIGHLIGHT_COLOR = 0xFFFFFFFF;
+	/** Opaque-leaning white for the single incident face overlay. */
+	static final int INCIDENT_FACE_COLOR = 0xE6FFFFFF;
 
 	public enum DisplayMode {
 		NEIGHBORHOOD,
@@ -43,6 +61,8 @@ public final class OctreeLayer implements DebugLayer {
 	}
 
 	private final GpuLineBuffer buffer = new GpuLineBuffer(VertexBuffer.Usage.STATIC, false, 2.25F);
+	private final GpuFillBuffer fillBuffer = new GpuFillBuffer(VertexBuffer.Usage.STATIC);
+	private final GpuLineBuffer nedMarkerBuffer = new GpuLineBuffer(VertexBuffer.Usage.DYNAMIC, false, NED_MARKER_LINE_WIDTH);
 	private boolean enabled;
 	private DisplayMode displayMode = DisplayMode.NEIGHBORHOOD;
 	/** When true, BEAM_PATH may fall back to the player's look vector (B off). */
@@ -62,6 +82,7 @@ public final class OctreeLayer implements DebugLayer {
 	private int lastBounceVersion = -1;
 	private int lastSelectedRayIndex = Integer.MIN_VALUE;
 	private List<OctreeOverlay.OctantView> octants = List.of();
+	private List<Vec3d> nedMarkers = List.of();
 
 	public int octantCount() {
 		return octants.size();
@@ -85,6 +106,18 @@ public final class OctreeLayer implements DebugLayer {
 
 	public int rayCount() {
 		return rayIndexes.size();
+	}
+
+	/** Focused beam-path octant AABBs (empty when not in live-frustum focus). */
+	public List<Box> focusedOctantBoxes() {
+		if (!enabled || displayMode != DisplayMode.BEAM_PATH || allowLookFallback || selectedRayIndex < 0) {
+			return List.of();
+		}
+		List<Box> boxes = new ArrayList<>(octants.size());
+		for (OctreeOverlay.OctantView octant : octants) {
+			boxes.add(octant.box());
+		}
+		return boxes;
 	}
 
 	public void setDisplayMode(DisplayMode displayMode) {
@@ -199,7 +232,7 @@ public final class OctreeLayer implements DebugLayer {
 
 		Profiler profiler = client.getProfiler();
 		profiler.push(displayMode == DisplayMode.BEAM_PATH ? "resounding_octree_beam" : "resounding_octree_walk");
-		List<OctreeOverlay.OctantView> collected;
+		CastPathOverlay collected;
 		try {
 			if (displayMode == DisplayMode.BEAM_PATH) {
 				if (!allowLookFallback) {
@@ -215,7 +248,10 @@ public final class OctreeLayer implements DebugLayer {
 				}
 				collected = collectSelectedRayViews(client, chain, sectionBranch);
 			} else {
-				collected = OctreeOverlay.collectNeighborhood(sectionBranch, playerPos, client.world);
+				collected = new CastPathOverlay(
+						OctreeOverlay.collectNeighborhood(sectionBranch, playerPos, client.world),
+						List.of()
+				);
 			}
 		} finally {
 			profiler.pop();
@@ -225,21 +261,24 @@ public final class OctreeLayer implements DebugLayer {
 		lastSectionY = sectionY;
 		lastSectionZ = sectionZ;
 		lastLeafCount = leafCount;
-		lastOctantCount = collected.size();
+		lastOctantCount = collected.views().size();
 		lastBounceVersion = bounceVersion;
 		lastSelectedRayIndex = selectedRayIndex;
-		octants = List.copyOf(collected);
+		octants = List.copyOf(collected.views());
+		nedMarkers = List.copyOf(collected.nedMarkers());
 		buffer.markDirty();
+		fillBuffer.markDirty();
+		nedMarkerBuffer.markDirty();
 	}
 
-	private List<OctreeOverlay.OctantView> collectSelectedRayViews(
+	private CastPathOverlay collectSelectedRayViews(
 			MinecraftClient client,
 			ChunkChain playerChain,
 			Branch playerSection
 	) {
 		if (!allowLookFallback) {
 			List<RayLineLayer.LineSegment> path = selectedLivePath();
-			return collectCastVisitedViews(path, origin -> sectionRootFor(playerChain, playerSection, origin));
+			return collectCastVisitedOverlay(path, origin -> sectionRootFor(playerChain, playerSection, origin));
 		}
 		List<Seed> seeds = seedsForLook(client);
 		List<OctreeOverlay.VisitedStep> steps = new ArrayList<>();
@@ -251,7 +290,7 @@ public final class OctreeLayer implements DebugLayer {
 			}
 			appendBeamVisits(root, seed.origin, seed.direction, seed.maxDistance, steps, seen);
 		}
-		return OctreeOverlay.collectBeamPath(steps);
+		return new CastPathOverlay(OctreeOverlay.collectBeamPath(steps), List.of());
 	}
 
 	private List<RayLineLayer.LineSegment> selectedLivePath() {
@@ -263,17 +302,27 @@ public final class OctreeLayer implements DebugLayer {
 
 	/**
 	 * Boxes the cast actually resolved: one octant per recorded segment at that segment's
-	 * {@code branchSize}, plus bounce-off neighbors at direction changes.
+	 * {@code branchSize}, plus bounce-off N/E/D neighbors at direction changes when LOD &gt; 1.
+	 * Each H+N+E+D quartet shares {@link OctantColor#forSet}. Green markers sit on the ray at
+	 * first contact with each cast frustum. Overlapping dual-color cubes render as side-by-side halves.
 	 */
 	static List<OctreeOverlay.OctantView> collectCastVisitedViews(
 			List<RayLineLayer.LineSegment> path,
 			Function<Vec3d, Branch> rootFor
 	) {
-		List<OctreeOverlay.VisitedStep> steps = new ArrayList<>();
-		Set<Long> seen = new HashSet<>();
+		return collectCastVisitedOverlay(path, rootFor).views();
+	}
+
+	static CastPathOverlay collectCastVisitedOverlay(
+			List<RayLineLayer.LineSegment> path,
+			Function<Vec3d, Branch> rootFor
+	) {
+		LinkedHashMap<Long, Occupancy> byKey = new LinkedHashMap<>();
+		List<Vec3d> markers = new ArrayList<>();
 		Vec3d prevDir = null;
 		Vec3d prevEnd = null;
 		int prevBranchSize = 1;
+		int setId = 0;
 		for (RayLineLayer.LineSegment segment : path) {
 			Vec3d delta = segment.end().subtract(segment.start());
 			double length = delta.length();
@@ -282,21 +331,23 @@ public final class OctreeLayer implements DebugLayer {
 			}
 			Vec3d dir = delta.multiply(1.0 / length);
 			int stepSize = Math.max(1, segment.branchSize());
-			if (prevDir != null && prevEnd != null && isDirectionChange(prevDir, dir)) {
+			if (prevDir != null && prevEnd != null && prevBranchSize > 1 && isDirectionChange(prevDir, dir)) {
 				Branch bounceRoot = rootFor.apply(prevEnd);
 				if (bounceRoot != null) {
-					appendBounceOff(bounceRoot, prevEnd, prevDir, prevBranchSize, steps, seen);
+					int id = setId++;
+					recordBounceOff(bounceRoot, prevEnd, prevDir, prevBranchSize, byKey,
+							OctantColor.forSet(id), id);
 				}
 			}
 			Branch root = rootFor.apply(segment.start());
 			if (root != null) {
-				appendCastCell(root, segment.start(), dir, stepSize, steps, seen);
+				recordCastCell(root, segment.start(), segment.end(), dir, stepSize, byKey, markers, null, null);
 			}
 			prevDir = dir;
 			prevEnd = segment.end();
 			prevBranchSize = stepSize;
 		}
-		return OctreeOverlay.collectBeamPath(steps);
+		return new CastPathOverlay(occupanciesToViews(byKey), List.copyOf(markers));
 	}
 
 	/** @deprecated Use {@link #collectCastVisitedViews}; kept for older tests that re-walk LOD. */
@@ -326,15 +377,10 @@ public final class OctreeLayer implements DebugLayer {
 			List<OctreeOverlay.VisitedStep> steps,
 			Set<Long> seen
 	) {
-		int size = Math.max(1, branchSize);
+		LinkedHashMap<Long, Occupancy> byKey = new LinkedHashMap<>();
 		Vec3d dir = direction.lengthSquared() > 1e-12 ? direction : new Vec3d(1, 0, 0);
-		Vec3d probe = Cast.normalize(start, dir);
-		BlockPos query = BlockPos.ofFloored(probe);
-		BlockPos cellOrigin = FrustumLod.alignOrigin(query, root.start, size);
-		Branch lod = root.getAtLod(query, size);
-		Branch finest = root.get(query);
-		boolean virtual = finest.size > size;
-		appendVisit(steps, seen, cellOrigin, size, virtual, virtual ? null : "leaf", lod.polar);
+		recordCastCell(root, start, start.add(dir), dir, branchSize, byKey, null, null, null);
+		flushOccupancies(byKey, steps, seen);
 	}
 
 	static void appendBounceOff(
@@ -345,28 +391,97 @@ public final class OctreeLayer implements DebugLayer {
 			List<OctreeOverlay.VisitedStep> steps,
 			Set<Long> seen
 	) {
+		LinkedHashMap<Long, Occupancy> byKey = new LinkedHashMap<>();
+		recordBounceOff(root, hit, incident, castStepSize, byKey, null, null);
+		flushOccupancies(byKey, steps, seen);
+	}
+
+	private static void flushOccupancies(
+			LinkedHashMap<Long, Occupancy> byKey,
+			List<OctreeOverlay.VisitedStep> steps,
+			Set<Long> seen
+	) {
+		for (Map.Entry<Long, Occupancy> e : byKey.entrySet()) {
+			if (!seen.add(e.getKey())) {
+				continue;
+			}
+			Occupancy occ = e.getValue();
+			steps.add(new OctreeOverlay.VisitedStep(
+					occ.box, null, occ.label, occ.virtual, occ.polar, occ.colorA));
+		}
+	}
+
+	private static void recordCastCell(
+			Branch root,
+			Vec3d start,
+			Vec3d end,
+			Vec3d direction,
+			int branchSize,
+			LinkedHashMap<Long, Occupancy> byKey,
+			@Nullable List<Vec3d> markers,
+			@Nullable Integer color,
+			@Nullable Integer setId
+	) {
+		int size = Math.max(1, branchSize);
+		Vec3d dir = direction.lengthSquared() > 1e-12 ? direction : new Vec3d(1, 0, 0);
+		Vec3d probe = Cast.normalize(start, dir);
+		BlockPos query = BlockPos.ofFloored(probe);
+		BlockPos cellOrigin = FrustumLod.alignOrigin(query, root.start, size);
+		Branch lod = root.getAtLod(query, size);
+		Branch finest = root.get(query);
+		boolean virtual = finest.size > size;
+		Box box = boxOf(cellOrigin, size);
+		Occupancy occ = upsertOccupancy(
+				byKey, cellOrigin, size, virtual, virtual ? null : "leaf", lod.polar, color, setId, dir);
+		if (markers != null && occ.contact == null) {
+			Vec3d contact = firstRayContact(start, end, box);
+			occ.contact = contact;
+			markers.add(contact);
+		}
+	}
+
+	private static void recordBounceOff(
+			Branch root,
+			Vec3d hit,
+			Vec3d incident,
+			int castStepSize,
+			LinkedHashMap<Long, Occupancy> byKey,
+			@Nullable Integer setColor,
+			@Nullable Integer setId
+	) {
 		Vec3d dir = incident.lengthSquared() > 1e-12 ? incident.normalize() : incident;
 		int step = Math.max(1, castStepSize);
 		Vec3d hostProbe = Cast.normalize(hit, dir.multiply(-1.0));
 		BlockPos hostQuery = BlockPos.ofFloored(hostProbe);
 		BlockPos hostOrigin = FrustumLod.alignOrigin(hostQuery, root.start, step);
 
-		Vec3i face = FrustumLod.dominantExitFace(dir);
+		// Recolor H only if the cast already recorded it — do not invent a host cube here.
+		Vec3i exitFace = FrustumLod.dominantExitFace(dir);
+		if (byKey.containsKey(occupancyKey(hostOrigin, step, false))) {
+			Occupancy host = upsertOccupancy(byKey, hostOrigin, step, false, "leaf", null, setColor, setId, dir);
+			if (setId != null) {
+				host.markIncidentHost(setId, exitFace);
+			}
+		}
+
+		Vec3i face = exitFace;
 		FrustumLod.ForwardMap map = FrustumLod.forwardMap(face, dir, step);
-		appendBounceNeighbor(root, hostOrigin, map.nOffset(), step, steps, seen);
+		recordBounceNeighbor(root, hostOrigin, map.nOffset(), step, byKey, setColor, setId, dir);
 		if (map.hasTangent()) {
-			appendBounceNeighbor(root, hostOrigin, map.eOffset(), step, steps, seen);
-			appendBounceNeighbor(root, hostOrigin, map.dOffset(), step, steps, seen);
+			recordBounceNeighbor(root, hostOrigin, map.eOffset(), step, byKey, setColor, setId, dir);
+			recordBounceNeighbor(root, hostOrigin, map.dOffset(), step, byKey, setColor, setId, dir);
 		}
 	}
 
-	private static void appendBounceNeighbor(
+	private static void recordBounceNeighbor(
 			Branch root,
 			BlockPos hostOrigin,
 			Vec3i offset,
 			int step,
-			List<OctreeOverlay.VisitedStep> steps,
-			Set<Long> seen
+			LinkedHashMap<Long, Occupancy> byKey,
+			@Nullable Integer setColor,
+			@Nullable Integer setId,
+			Vec3d dir
 	) {
 		if (offset.getX() == 0 && offset.getY() == 0 && offset.getZ() == 0) {
 			return;
@@ -374,7 +489,190 @@ public final class OctreeLayer implements DebugLayer {
 		BlockPos neighbor = hostOrigin.add(offset.getX(), offset.getY(), offset.getZ());
 		Branch lod = root.getAtLod(neighbor, step);
 		BlockPos cellOrigin = FrustumLod.alignOrigin(neighbor, root.start, step);
-		appendVisit(steps, seen, cellOrigin, step, false, "bounce", lod.polar);
+		upsertOccupancy(byKey, cellOrigin, step, false, "bounce", lod.polar, setColor, setId, dir);
+	}
+
+	/**
+	 * Insert or merge a cube. A second distinct N/E/D set on the same cube arms a side-by-side split
+	 * instead of overwriting.
+	 */
+	private static Occupancy upsertOccupancy(
+			LinkedHashMap<Long, Occupancy> byKey,
+			BlockPos origin,
+			int size,
+			boolean virtual,
+			String label,
+			@Nullable Vec3d polar,
+			@Nullable Integer color,
+			@Nullable Integer setId,
+			Vec3d splitHint
+	) {
+		long key = occupancyKey(origin, size, virtual);
+		Occupancy occ = byKey.get(key);
+		if (occ == null) {
+			occ = new Occupancy(boxOf(origin, size), label, virtual, polar, color, null, setId, null,
+					dominantAxis(splitHint));
+			byKey.put(key, occ);
+			return occ;
+		}
+		if (polar != null && occ.polar == null) {
+			occ.polar = polar;
+		}
+		if ("bounce".equals(label)) {
+			occ.label = label;
+		}
+		if (setId != null) {
+			if (occ.setIdA == null) {
+				occ.colorA = color;
+				occ.setIdA = setId;
+			} else if (!occ.setIdA.equals(setId) && occ.setIdB == null) {
+				occ.colorB = color;
+				occ.setIdB = setId;
+				occ.splitAxis = dominantAxis(splitHint);
+			}
+		} else if (color != null && occ.colorA == null) {
+			occ.colorA = color;
+		}
+		return occ;
+	}
+
+	private static List<OctreeOverlay.OctantView> occupanciesToViews(LinkedHashMap<Long, Occupancy> byKey) {
+		List<OctreeOverlay.OctantView> views = new ArrayList<>();
+		for (Occupancy occ : byKey.values()) {
+			String label = occ.label;
+			if (occ.virtual) {
+				label = label == null || label.isEmpty() ? "virtual" : label + " virtual";
+			}
+			int size = (int) Math.round(occ.box.maxX - occ.box.minX);
+			if (occ.colorA != null && occ.colorB != null) {
+				Box[] halves = splitBox(occ.box, occ.splitAxis);
+				views.add(new OctreeOverlay.OctantView(
+						halves[0], null, label, size, occ.colorA, occ.polar, occ.setIdA,
+						occ.hostA, occ.incidentFaceA));
+				views.add(new OctreeOverlay.OctantView(
+						halves[1], null, label, size, occ.colorB, occ.polar, occ.setIdB,
+						occ.hostB, occ.incidentFaceB));
+			} else {
+				int color = occ.colorA != null
+						? occ.colorA
+						: OctantColor.forNode(
+								(int) Math.round(occ.box.minX),
+								(int) Math.round(occ.box.minY),
+								(int) Math.round(occ.box.minZ),
+								size);
+				views.add(new OctreeOverlay.OctantView(
+						occ.box, null, label, size, color, occ.polar, occ.setIdA,
+						occ.hostA, occ.incidentFaceA));
+			}
+		}
+		return views;
+	}
+
+	static Box[] splitBox(Box box, int axis) {
+		double midX = (box.minX + box.maxX) * 0.5;
+		double midY = (box.minY + box.maxY) * 0.5;
+		double midZ = (box.minZ + box.maxZ) * 0.5;
+		return switch (axis) {
+			case 1 -> new Box[] {
+					new Box(box.minX, box.minY, box.minZ, box.maxX, midY, box.maxZ),
+					new Box(box.minX, midY, box.minZ, box.maxX, box.maxY, box.maxZ)
+			};
+			case 2 -> new Box[] {
+					new Box(box.minX, box.minY, box.minZ, box.maxX, box.maxY, midZ),
+					new Box(box.minX, box.minY, midZ, box.maxX, box.maxY, box.maxZ)
+			};
+			default -> new Box[] {
+					new Box(box.minX, box.minY, box.minZ, midX, box.maxY, box.maxZ),
+					new Box(midX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ)
+			};
+		};
+	}
+
+	/**
+	 * First point on segment {@code start→end} that touches {@code box}: start if already inside,
+	 * otherwise the entry hit on the AABB (or start if the segment misses).
+	 */
+	static Vec3d firstRayContact(Vec3d start, Vec3d end, Box box) {
+		if (containsInclusive(box, start)) {
+			return start;
+		}
+		Vec3d delta = end.subtract(start);
+		double lenSq = delta.lengthSquared();
+		if (lenSq < 1e-18) {
+			return start;
+		}
+		double tEnter = 0.0;
+		double tExit = 1.0;
+		double[] enterExit = clipSlab(tEnter, tExit, start.x, delta.x, box.minX, box.maxX);
+		if (enterExit == null) {
+			return start;
+		}
+		enterExit = clipSlab(enterExit[0], enterExit[1], start.y, delta.y, box.minY, box.maxY);
+		if (enterExit == null) {
+			return start;
+		}
+		enterExit = clipSlab(enterExit[0], enterExit[1], start.z, delta.z, box.minZ, box.maxZ);
+		if (enterExit == null || enterExit[0] > 1.0) {
+			return start;
+		}
+		double t = Math.max(0.0, enterExit[0]);
+		return start.add(delta.multiply(t));
+	}
+
+	/** @return {@code {tEnter, tExit}} or null on miss */
+	private static double[] clipSlab(double tEnter, double tExit, double origin, double dir, double min, double max) {
+		if (Math.abs(dir) < 1e-12) {
+			if (origin < min || origin > max) {
+				return null;
+			}
+			return new double[] {tEnter, tExit};
+		}
+		double inv = 1.0 / dir;
+		double t0 = (min - origin) * inv;
+		double t1 = (max - origin) * inv;
+		if (t0 > t1) {
+			double tmp = t0;
+			t0 = t1;
+			t1 = tmp;
+		}
+		tEnter = Math.max(tEnter, t0);
+		tExit = Math.min(tExit, t1);
+		if (tEnter > tExit) {
+			return null;
+		}
+		return new double[] {tEnter, tExit};
+	}
+
+	private static boolean containsInclusive(Box box, Vec3d p) {
+		return p.x >= box.minX && p.x <= box.maxX
+				&& p.y >= box.minY && p.y <= box.maxY
+				&& p.z >= box.minZ && p.z <= box.maxZ;
+	}
+
+	static int dominantAxis(Vec3d dir) {
+		double ax = Math.abs(dir.x);
+		double ay = Math.abs(dir.y);
+		double az = Math.abs(dir.z);
+		if (ax >= ay && ax >= az) {
+			return 0;
+		}
+		if (ay >= az) {
+			return 1;
+		}
+		return 2;
+	}
+
+	private static Box boxOf(BlockPos start, int size) {
+		return new Box(
+				start.getX(), start.getY(), start.getZ(),
+				start.getX() + size,
+				start.getY() + size,
+				start.getZ() + size
+		);
+	}
+
+	private static long occupancyKey(BlockPos start, int size, boolean virtual) {
+		return (start.asLong() << 8) ^ size ^ (virtual ? 1L : 0L);
 	}
 
 	private static void appendBeamVisits(
@@ -395,36 +693,14 @@ public final class OctreeLayer implements DebugLayer {
 		for (BeamVisitRecorder.VisitedBox visit : BeamVisitRecorder.collectAlongBeam(
 				root, beam, origin, direction, maxDistance
 		)) {
-			appendVisit(
-					steps, seen, visit.start(), visit.size(), visit.virtual(),
-					visit.virtual() ? null : "leaf", visit.polar()
-			);
+			long key = occupancyKey(visit.start(), visit.size(), visit.virtual());
+			if (!seen.add(key)) {
+				continue;
+			}
+			Box box = boxOf(visit.start(), visit.size());
+			steps.add(new OctreeOverlay.VisitedStep(
+					box, null, visit.virtual() ? null : "leaf", visit.virtual(), visit.polar(), null));
 		}
-	}
-
-	private static void appendVisit(
-			List<OctreeOverlay.VisitedStep> steps,
-			Set<Long> seen,
-			BlockPos start,
-			int size,
-			boolean virtual,
-			String label,
-			Vec3d polar
-	) {
-		long key = (start.asLong() << 8) ^ size ^ (virtual ? 1L : 0L);
-		if ("bounce".equals(label)) {
-			key ^= 2L;
-		}
-		if (!seen.add(key)) {
-			return;
-		}
-		Box box = new Box(
-				start.getX(), start.getY(), start.getZ(),
-				start.getX() + size,
-				start.getY() + size,
-				start.getZ() + size
-		);
-		steps.add(new OctreeOverlay.VisitedStep(box, null, label, virtual, polar));
 	}
 
 	private List<Seed> seedsForLook(MinecraftClient client) {
@@ -447,13 +723,179 @@ public final class OctreeLayer implements DebugLayer {
 
 	@Override
 	public void render(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
-		buffer.rebuild(this::populate);
+		renderCubes(positionMatrix, projectionMatrix, cameraPos);
+		renderNedMarkers(positionMatrix, projectionMatrix, cameraPos);
+	}
+
+	/** Fills + wireframes + polar axes (under the focused white ray when orchestrated). */
+	void renderCubes(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
+		Vec3d playerPos = playerRenderPos();
+		ClusterFocus focus = resolveVisibleFocus(playerPos);
+		List<OctreeOverlay.OctantView> visible = focus.visible();
+		fillBuffer.markDirty();
+		buffer.markDirty();
+		fillBuffer.rebuild(builder -> populateFills(builder, visible, playerPos, focus));
+		fillBuffer.draw(positionMatrix, projectionMatrix, cameraPos);
+		buffer.rebuild(builder -> populateBorders(builder, visible, playerPos, focus));
 		buffer.draw(positionMatrix, projectionMatrix, cameraPos);
 	}
 
-	private void populate(BufferBuilder builder) {
-		for (OctreeOverlay.OctantView octant : octants) {
-			int color = isVirtual(octant) ? VIRTUAL_COLOR : octant.color();
+	/** Green contact crosses — above the white ray, below magenta terminators. */
+	void renderNedMarkers(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
+		Vec3d playerPos = playerRenderPos();
+		List<OctreeOverlay.OctantView> visible = resolveVisibleFocus(playerPos).visible();
+		List<Vec3d> markers = markersInVisibleOctants(nedMarkers, visible);
+		if (markers.isEmpty()) {
+			return;
+		}
+		nedMarkerBuffer.markDirty();
+		nedMarkerBuffer.rebuild(builder -> {
+			for (Vec3d center : markers) {
+				double x = center.x;
+				double y = center.y;
+				double z = center.z;
+				double s = NED_MARKER_HALF_EXTENT;
+				GpuLineBuffer.line(builder, x - s, y, z, x + s, y, z, NED_MARKER_COLOR);
+				GpuLineBuffer.line(builder, x, y - s, z, x, y + s, z, NED_MARKER_COLOR);
+				GpuLineBuffer.line(builder, x, y, z - s, x, y, z + s, NED_MARKER_COLOR);
+			}
+		});
+		nedMarkerBuffer.draw(positionMatrix, projectionMatrix, cameraPos);
+	}
+
+	/**
+	 * Player inside one or more focused octants → only those clusters; otherwise the full set.
+	 * Neighborhood / look-frustum modes always show everything collected.
+	 */
+	List<OctreeOverlay.OctantView> visibleOctants(Vec3d playerPos) {
+		return resolveVisibleFocus(playerPos).visible();
+	}
+
+	ClusterFocus resolveVisibleFocus(Vec3d playerPos) {
+		if (displayMode != DisplayMode.BEAM_PATH || allowLookFallback || selectedRayIndex < 0) {
+			return ClusterFocus.unfocused(octants);
+		}
+		return resolveClusterFocus(octants, playerPos);
+	}
+
+	/**
+	 * If the player intersects any N/E/D(+H) cluster member, keep every member of every hit cluster.
+	 * Lone path cubes (no set id) that contain the player are kept as themselves. Outside all → all.
+	 */
+	static List<OctreeOverlay.OctantView> occupancyFilter(
+			List<OctreeOverlay.OctantView> all,
+			Vec3d playerPos
+	) {
+		return resolveClusterFocus(all, playerPos).visible();
+	}
+
+	static List<OctreeOverlay.OctantView> clusterFilter(
+			List<OctreeOverlay.OctantView> all,
+			Vec3d playerPos
+	) {
+		return resolveClusterFocus(all, playerPos).visible();
+	}
+
+	static ClusterFocus resolveClusterFocus(
+			List<OctreeOverlay.OctantView> all,
+			Vec3d playerPos
+	) {
+		HashSet<Integer> hitSets = new HashSet<>();
+		boolean hitAny = false;
+		List<OctreeOverlay.OctantView> hitSingletons = new ArrayList<>();
+		for (OctreeOverlay.OctantView octant : all) {
+			if (!containsInclusive(octant.box(), playerPos)) {
+				continue;
+			}
+			hitAny = true;
+			if (octant.setId() != null) {
+				hitSets.add(octant.setId());
+			} else {
+				hitSingletons.add(octant);
+			}
+		}
+		if (!hitAny) {
+			return ClusterFocus.unfocused(all);
+		}
+		List<OctreeOverlay.OctantView> kept = new ArrayList<>();
+		for (OctreeOverlay.OctantView octant : all) {
+			if (octant.setId() != null && hitSets.contains(octant.setId())) {
+				kept.add(octant);
+			}
+		}
+		kept.addAll(hitSingletons);
+		return new ClusterFocus(kept, true, Set.copyOf(hitSets));
+	}
+
+	static List<Vec3d> markersInVisibleOctants(List<Vec3d> markers, List<OctreeOverlay.OctantView> visible) {
+		if (markers.isEmpty() || visible.isEmpty()) {
+			return List.of();
+		}
+		List<Vec3d> kept = new ArrayList<>();
+		for (Vec3d marker : markers) {
+			for (OctreeOverlay.OctantView octant : visible) {
+				if (containsInclusive(octant.box(), marker)) {
+					kept.add(marker);
+					break;
+				}
+			}
+		}
+		return kept;
+	}
+
+	private static Vec3d playerRenderPos() {
+		MinecraftClient client = MinecraftClient.getInstance();
+		if (client.player == null) {
+			return Vec3d.ZERO;
+		}
+		return client.player.getPos();
+	}
+
+	private void populateFills(
+			BufferBuilder builder,
+			List<OctreeOverlay.OctantView> visible,
+			Vec3d playerPos,
+			ClusterFocus focus
+	) {
+		for (OctreeOverlay.OctantView octant : visible) {
+			int border = isVirtual(octant) ? VIRTUAL_COLOR : octant.color();
+			float opacity = fillOpacity(octant.box(), playerPos);
+			int fill = OctantColor.withOpacity(border, opacity);
+			GpuFillBuffer.boxFaces(
+					builder,
+					octant.box().minX, octant.box().minY, octant.box().minZ,
+					octant.box().maxX, octant.box().maxY, octant.box().maxZ,
+					fill
+			);
+			if (isFocusedIncidentHost(octant, focus) && octant.incidentFace() != null) {
+				Vec3i face = octant.incidentFace();
+				GpuFillBuffer.boxFace(
+						builder,
+						octant.box().minX, octant.box().minY, octant.box().minZ,
+						octant.box().maxX, octant.box().maxY, octant.box().maxZ,
+						face.getX(), face.getY(), face.getZ(),
+						INCIDENT_FACE_COLOR
+				);
+			}
+		}
+	}
+
+	private void populateBorders(
+			BufferBuilder builder,
+			List<OctreeOverlay.OctantView> visible,
+			Vec3d playerPos,
+			ClusterFocus focus
+	) {
+		for (OctreeOverlay.OctantView octant : visible) {
+			if (!shouldDrawBorders(octant.box(), playerPos, focus.focused())) {
+				continue;
+			}
+			int color;
+			if (isFocusedIncidentHost(octant, focus)) {
+				color = INCIDENT_HIGHLIGHT_COLOR;
+			} else {
+				color = isVirtual(octant) ? VIRTUAL_COLOR : octant.color();
+			}
 			GpuLineBuffer.boxEdges(
 					builder,
 					octant.box().minX, octant.box().minY, octant.box().minZ,
@@ -462,6 +904,37 @@ public final class OctreeLayer implements DebugLayer {
 			);
 			drawPolarAxis(builder, octant.box(), octant.polar());
 		}
+	}
+
+	/** Incident host of any cluster the player currently intersects. */
+	static boolean isFocusedIncidentHost(OctreeOverlay.OctantView octant, ClusterFocus focus) {
+		return focus.focused()
+				&& octant.incidentHost()
+				&& octant.setId() != null
+				&& focus.hitSetIds().contains(octant.setId());
+	}
+
+	/** Near {@link #OCTANT_FILL_OPACITY} → far {@link #OCTANT_FILL_OPACITY_FAR} over {@link #OCTANT_FADE_BLOCKS}. */
+	static float fillOpacity(Box box, Vec3d playerPos) {
+		double t = Math.min(1.0, distanceToBox(playerPos, box) / OCTANT_FADE_BLOCKS);
+		return (float) (OCTANT_FILL_OPACITY + (OCTANT_FILL_OPACITY_FAR - OCTANT_FILL_OPACITY) * t);
+	}
+
+	/** Borders only inside the fade range (dropped once fully far), unless cluster-focused. */
+	static boolean drawBorders(Box box, Vec3d playerPos) {
+		return shouldDrawBorders(box, playerPos, false);
+	}
+
+	static boolean shouldDrawBorders(Box box, Vec3d playerPos, boolean forceFocusedCluster) {
+		return forceFocusedCluster || distanceToBox(playerPos, box) < OCTANT_FADE_BLOCKS;
+	}
+
+	/** Euclidean distance to the AABB; 0 when {@code p} is inside. */
+	static double distanceToBox(Vec3d p, Box box) {
+		double dx = Math.max(box.minX - p.x, Math.max(0.0, p.x - box.maxX));
+		double dy = Math.max(box.minY - p.y, Math.max(0.0, p.y - box.maxY));
+		double dz = Math.max(box.minZ - p.z, Math.max(0.0, p.z - box.maxZ));
+		return Math.sqrt(dx * dx + dy * dy + dz * dz);
 	}
 
 	/**
@@ -504,4 +977,70 @@ public final class OctreeLayer implements DebugLayer {
 	}
 
 	private record Seed(Vec3d origin, Vec3d direction, double maxDistance) {}
+
+	record CastPathOverlay(List<OctreeOverlay.OctantView> views, List<Vec3d> nedMarkers) {}
+
+	/**
+	 * Focused-frustum visibility: when the player occupies cluster member(s), only those clusters
+	 * render. Each intersected HNED set highlights its own incident host (white border + face).
+	 */
+	record ClusterFocus(
+			List<OctreeOverlay.OctantView> visible,
+			boolean focused,
+			Set<Integer> hitSetIds
+	) {
+		static ClusterFocus unfocused(List<OctreeOverlay.OctantView> all) {
+			return new ClusterFocus(all, false, Set.of());
+		}
+	}
+
+	/** Mutable per-cube occupancy while building a focused frustum overlay. */
+	private static final class Occupancy {
+		final Box box;
+		String label;
+		final boolean virtual;
+		@Nullable Vec3d polar;
+		@Nullable Integer colorA;
+		@Nullable Integer colorB;
+		@Nullable Integer setIdA;
+		@Nullable Integer setIdB;
+		@Nullable Vec3d contact;
+		boolean hostA;
+		boolean hostB;
+		@Nullable Vec3i incidentFaceA;
+		@Nullable Vec3i incidentFaceB;
+		int splitAxis;
+
+		Occupancy(
+				Box box,
+				String label,
+				boolean virtual,
+				@Nullable Vec3d polar,
+				@Nullable Integer colorA,
+				@Nullable Integer colorB,
+				@Nullable Integer setIdA,
+				@Nullable Integer setIdB,
+				int splitAxis
+		) {
+			this.box = box;
+			this.label = label;
+			this.virtual = virtual;
+			this.polar = polar;
+			this.colorA = colorA;
+			this.colorB = colorB;
+			this.setIdA = setIdA;
+			this.setIdB = setIdB;
+			this.splitAxis = splitAxis;
+		}
+
+		void markIncidentHost(int setId, Vec3i face) {
+			if (setIdA != null && setIdA.equals(setId)) {
+				hostA = true;
+				incidentFaceA = face;
+			} else if (setIdB != null && setIdB.equals(setId)) {
+				hostB = true;
+				incidentFaceB = face;
+			}
+		}
+	}
 }

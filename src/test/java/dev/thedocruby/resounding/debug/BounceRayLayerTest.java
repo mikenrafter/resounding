@@ -1,11 +1,13 @@
 package dev.thedocruby.resounding.debug;
 
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BounceRayLayerTest {
@@ -27,6 +29,17 @@ class BounceRayLayerTest {
 	@Test
 	void activeRayColorIsWhite() {
 		assertEquals(0xFFFFFFFF, BounceRayLayer.ACTIVE_RAY_COLOR);
+	}
+
+	@Test
+	void intersectsFocusedOctantWhenEndpointInside() {
+		Box zone = new Box(0, 0, 0, 2, 2, 2);
+		RayLineLayer.LineSegment inside = new RayLineLayer.LineSegment(
+				new Vec3d(0.5, 0.5, 0.5), new Vec3d(3, 0.5, 0.5), 0xFFFFFF, 4.0F, false, 1, 1);
+		RayLineLayer.LineSegment outside = new RayLineLayer.LineSegment(
+				new Vec3d(5, 5, 5), new Vec3d(6, 5, 5), 0xFFFFFF, 4.0F, false, 1, 1);
+		assertTrue(BounceRayLayer.intersectsFocusedOctant(inside, List.of(zone)));
+		assertFalse(BounceRayLayer.intersectsFocusedOctant(outside, List.of(zone)));
 	}
 
 	@Test

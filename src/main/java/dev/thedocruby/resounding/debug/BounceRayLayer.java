@@ -4,6 +4,7 @@ import dev.thedocruby.resounding.material.Material;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.gl.VertexBuffer;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
@@ -52,23 +53,53 @@ public final class BounceRayLayer extends RayLineLayer {
 
 	@Override
 	public void render(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
+		// Non-orchestrated path (octree off / no focus): background + white + terminators together.
+		renderBackgroundRays(positionMatrix, projectionMatrix, cameraPos);
+		renderFocusedWhiteRay(positionMatrix, projectionMatrix, cameraPos);
+		renderTerminatorCrosses(positionMatrix, projectionMatrix, cameraPos);
+	}
+
+	/**
+	 * Colored bounce segments excluding the J-focused ray (and excluding segments hidden inside
+	 * focused octants). Drawn under frustum cubes when the dispatcher orchestrates focus order.
+	 */
+	void renderBackgroundRays(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
 		List<LineSegment> snapshot = segmentSnapshot();
 		int activeRay = activeRayIndex();
 		if (activeRay < 0) {
 			renderSegments(snapshot, positionMatrix, projectionMatrix, cameraPos, null);
-		} else {
-			List<LineSegment> background = new ArrayList<>(snapshot.size());
-			List<LineSegment> focused = new ArrayList<>();
-			for (LineSegment segment : snapshot) {
-				if (segment.rayIndex() == activeRay) {
-					focused.add(segment);
-				} else {
-					background.add(segment);
-				}
-			}
-			renderSegments(background, positionMatrix, projectionMatrix, cameraPos, null);
-			renderActiveRay(focused, positionMatrix, projectionMatrix, cameraPos);
+			return;
 		}
+		List<Box> hideZones = DebugRenderDispatcher.INSTANCE.octree().focusedOctantBoxes();
+		List<LineSegment> background = new ArrayList<>(snapshot.size());
+		for (LineSegment segment : snapshot) {
+			if (segment.rayIndex() == activeRay) {
+				continue;
+			}
+			if (!intersectsFocusedOctant(segment, hideZones)) {
+				background.add(segment);
+			}
+		}
+		renderSegments(background, positionMatrix, projectionMatrix, cameraPos, null);
+	}
+
+	/** White focused polyline — drawn above cubes, below green NED markers. */
+	void renderFocusedWhiteRay(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
+		int activeRay = activeRayIndex();
+		if (activeRay < 0) {
+			return;
+		}
+		List<LineSegment> focused = new ArrayList<>();
+		for (LineSegment segment : segmentSnapshot()) {
+			if (segment.rayIndex() == activeRay) {
+				focused.add(segment);
+			}
+		}
+		renderActiveRay(focused, positionMatrix, projectionMatrix, cameraPos);
+	}
+
+	/** Magenta terminators — drawn last (above white ray and green crosses). */
+	void renderTerminatorMarkers(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
 		renderTerminatorCrosses(positionMatrix, projectionMatrix, cameraPos);
 	}
 
@@ -82,6 +113,19 @@ public final class BounceRayLayer extends RayLineLayer {
 			return -1;
 		}
 		return octree.selectedRayIndex();
+	}
+
+	/** True when either endpoint lies inside a focused frustum octant (unrelated rays stay out). */
+	static boolean intersectsFocusedOctant(LineSegment segment, List<Box> zones) {
+		if (zones.isEmpty()) {
+			return false;
+		}
+		for (Box box : zones) {
+			if (box.contains(segment.start()) || box.contains(segment.end())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private void renderActiveRay(

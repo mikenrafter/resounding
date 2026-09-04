@@ -3,12 +3,15 @@ package dev.thedocruby.resounding.debug;
 import dev.thedocruby.resounding.material.Material;
 import dev.thedocruby.resounding.raycast.Branch;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.Vec3i;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -76,9 +79,10 @@ class OctreeLayerLiveRayTest {
 	@Test
 	void collectCastVisitedViewsEmitsBounceOffAtATurnAndKeepsPolar() {
 		Branch root = wallTree();
+		// LOD > 1: frustum N/E/D applies; 1³ pencil-ray skips bounce-off neighbors.
 		List<RayLineLayer.LineSegment> path = List.of(
-				seg(0.5, 0.5, 0.5, 8.0, 0.5, 0.5, 3, 1),
-				seg(8.0, 0.5, 0.5, 8.0, 0.5, 4.0, 3, 1)
+				seg(0.5, 0.5, 0.5, 8.0, 0.5, 0.5, 3, 2),
+				seg(8.0, 0.5, 0.5, 8.0, 0.5, 4.0, 3, 2)
 		);
 
 		List<OctreeOverlay.OctantView> views = OctreeLayer.collectCastVisitedViews(path, pos -> root);
@@ -87,7 +91,7 @@ class OctreeLayerLiveRayTest {
 		List<OctreeOverlay.OctantView> bounces = views.stream()
 				.filter(v -> v.label() != null && v.label().contains("bounce"))
 				.toList();
-		assertFalse(bounces.isEmpty(), "direction change must emit a bounced-off octant");
+		assertFalse(bounces.isEmpty(), "direction change at LOD>1 must emit a bounced-off octant");
 		assertTrue(
 				bounces.stream().noneMatch(v -> v.label() != null && v.label().toLowerCase().contains("virtual")),
 				"bounce-off boxes must not be tagged virtual-cyan"
@@ -95,6 +99,22 @@ class OctreeLayerLiveRayTest {
 		assertTrue(
 				bounces.stream().anyMatch(v -> WALL_POLAR.equals(v.polar())),
 				"bounce-off polar must come from the LOD branch"
+		);
+	}
+
+	@Test
+	void collectCastVisitedViewsSkipsNedAtLod1() {
+		Branch root = wallTree();
+		List<RayLineLayer.LineSegment> path = List.of(
+				seg(0.5, 0.5, 0.5, 8.0, 0.5, 0.5, 3, 1),
+				seg(8.0, 0.5, 0.5, 8.0, 0.5, 4.0, 3, 1)
+		);
+
+		List<OctreeOverlay.OctantView> views = OctreeLayer.collectCastVisitedViews(path, pos -> root);
+
+		assertTrue(
+				views.stream().noneMatch(v -> v.label() != null && v.label().contains("bounce")),
+				"1³ pencil-ray mode must not emit N/E/D bounce-off octants"
 		);
 	}
 
@@ -108,6 +128,158 @@ class OctreeLayerLiveRayTest {
 		List<OctreeOverlay.OctantView> views = OctreeLayer.collectCastVisitedViews(path, pos -> root);
 
 		assertTrue(views.stream().noneMatch(v -> v.label() != null && v.label().contains("bounce")));
+	}
+
+	@Test
+	void firstRayContactUsesStartWhenAlreadyInside() {
+		Box box = new Box(0, 0, 0, 2, 2, 2);
+		Vec3d start = new Vec3d(0.5, 0.5, 0.5);
+		assertEquals(start, OctreeLayer.firstRayContact(start, new Vec3d(3, 0.5, 0.5), box));
+	}
+
+	@Test
+	void firstRayContactFindsEntryOnTheSegment() {
+		Box box = new Box(2, 0, 0, 4, 2, 2);
+		Vec3d contact = OctreeLayer.firstRayContact(
+				new Vec3d(0, 1, 1), new Vec3d(5, 1, 1), box);
+		assertEquals(2.0, contact.x, 1e-9);
+		assertEquals(1.0, contact.y, 1e-9);
+		assertEquals(1.0, contact.z, 1e-9);
+	}
+
+	@Test
+	void greenMarkersSitOnRayContactNotCellCenters() {
+		Branch root = wallTree();
+		List<RayLineLayer.LineSegment> path = List.of(
+				seg(0.5, 0.5, 0.5, 4.0, 0.5, 0.5, 2, 2)
+		);
+		OctreeLayer.CastPathOverlay overlay = OctreeLayer.collectCastVisitedOverlay(path, pos -> root);
+		assertEquals(List.of(new Vec3d(0.5, 0.5, 0.5)), overlay.nedMarkers());
+	}
+
+	@Test
+	void splitBoxHalvesShareAFace() {
+		Box box = new Box(0, 0, 0, 4, 4, 4);
+		Box[] halves = OctreeLayer.splitBox(box, 0);
+		assertEquals(0.0, halves[0].minX, 1e-9);
+		assertEquals(2.0, halves[0].maxX, 1e-9);
+		assertEquals(2.0, halves[1].minX, 1e-9);
+		assertEquals(4.0, halves[1].maxX, 1e-9);
+		assertEquals(halves[0].maxX, halves[1].minX, 1e-9);
+	}
+
+	@Test
+	void occupancyFilterKeepsWholeClusterWhenPlayerHitsOneMember() {
+		OctreeOverlay.OctantView h = view(new Box(0, 0, 0, 2, 2, 2), 0xFF0000, 7);
+		OctreeOverlay.OctantView n = view(new Box(2, 0, 0, 4, 2, 2), 0xFF0000, 7);
+		OctreeOverlay.OctantView e = view(new Box(0, 0, 2, 2, 2, 4), 0xFF0000, 7);
+		OctreeOverlay.OctantView other = view(new Box(20, 0, 0, 22, 2, 2), 0x00FF00, 3);
+		List<OctreeOverlay.OctantView> filtered = OctreeLayer.occupancyFilter(
+				List.of(h, n, e, other), new Vec3d(1, 1, 1));
+		assertEquals(3, filtered.size());
+		assertTrue(filtered.contains(h));
+		assertTrue(filtered.contains(n));
+		assertTrue(filtered.contains(e));
+		assertFalse(filtered.contains(other));
+	}
+
+	@Test
+	void occupancyFilterKeepsAllIntersectedClusters() {
+		OctreeOverlay.OctantView a = view(new Box(0, 0, 0, 2, 2, 2), 0xFF0000, 1);
+		OctreeOverlay.OctantView a2 = view(new Box(2, 0, 0, 4, 2, 2), 0xFF0000, 1);
+		OctreeOverlay.OctantView b = view(new Box(1, 0, 0, 3, 2, 2), 0x00FF00, 2); // overlaps player
+		OctreeOverlay.OctantView b2 = view(new Box(10, 0, 0, 12, 2, 2), 0x00FF00, 2);
+		List<OctreeOverlay.OctantView> filtered = OctreeLayer.occupancyFilter(
+				List.of(a, a2, b, b2), new Vec3d(1.5, 1, 1));
+		assertEquals(4, filtered.size(), "player in both set 1 and set 2 members → both full clusters");
+	}
+
+	@Test
+	void occupancyFilterKeepsAllWhenPlayerOutside() {
+		OctreeOverlay.OctantView a = view(new Box(0, 0, 0, 2, 2, 2), 0xFF0000, 1);
+		OctreeOverlay.OctantView b = view(new Box(10, 0, 0, 12, 2, 2), 0x00FF00, 2);
+		List<OctreeOverlay.OctantView> all = List.of(a, b);
+		assertEquals(all, OctreeLayer.occupancyFilter(all, new Vec3d(5, 5, 5)));
+	}
+
+	@Test
+	void fillOpacityFadesOverTenBlocks() {
+		Box box = new Box(0, 0, 0, 1, 1, 1);
+		assertEquals(0.2F, OctreeLayer.fillOpacity(box, new Vec3d(0.5, 0.5, 0.5)), 1e-5F);
+		assertEquals(0.05F, OctreeLayer.fillOpacity(box, new Vec3d(100, 0.5, 0.5)), 1e-5F);
+		float mid = OctreeLayer.fillOpacity(box, new Vec3d(5.5, 0.5, 0.5)); // ~5 blocks from face at x=1
+		assertTrue(mid < 0.2F && mid > 0.05F, "mid-range opacity was " + mid);
+	}
+
+	@Test
+	void bordersDropAtFadeDistance() {
+		Box box = new Box(0, 0, 0, 1, 1, 1);
+		assertTrue(OctreeLayer.drawBorders(box, new Vec3d(0.5, 0.5, 0.5)));
+		assertFalse(OctreeLayer.drawBorders(box, new Vec3d(20, 0.5, 0.5)));
+	}
+
+	@Test
+	void focusedClusterAlwaysDrawsBorders() {
+		Box box = new Box(0, 0, 0, 1, 1, 1);
+		assertTrue(OctreeLayer.shouldDrawBorders(box, new Vec3d(20, 0.5, 0.5), true));
+		assertFalse(OctreeLayer.shouldDrawBorders(box, new Vec3d(20, 0.5, 0.5), false));
+	}
+
+	@Test
+	void focusedIncidentHostHighlightsPerCluster() {
+		OctreeOverlay.OctantView h = view(new Box(0, 0, 0, 2, 2, 2), 0xFF0000, 7, true, new Vec3i(1, 0, 0));
+		OctreeOverlay.OctantView n = view(new Box(2, 0, 0, 4, 2, 2), 0xFF0000, 7);
+		OctreeOverlay.OctantView other = view(new Box(20, 0, 0, 22, 2, 2), 0x00FF00, 3);
+		OctreeLayer.ClusterFocus focus = OctreeLayer.resolveClusterFocus(
+				List.of(h, n, other), new Vec3d(1, 1, 1));
+		assertTrue(focus.focused());
+		assertEquals(Set.of(7), focus.hitSetIds());
+		assertTrue(OctreeLayer.isFocusedIncidentHost(h, focus));
+		assertFalse(OctreeLayer.isFocusedIncidentHost(n, focus));
+	}
+
+	@Test
+	void multiClusterFocusHighlightsEveryIncidentHost() {
+		OctreeOverlay.OctantView a = view(new Box(0, 0, 0, 2, 2, 2), 0xFF0000, 1, true, new Vec3i(1, 0, 0));
+		OctreeOverlay.OctantView b = view(new Box(1, 0, 0, 3, 2, 2), 0x00FF00, 2, true, new Vec3i(0, 0, 1));
+		OctreeLayer.ClusterFocus focus = OctreeLayer.resolveClusterFocus(
+				List.of(a, b), new Vec3d(1.5, 1, 1));
+		assertTrue(focus.focused());
+		assertEquals(Set.of(1, 2), focus.hitSetIds());
+		assertTrue(OctreeLayer.isFocusedIncidentHost(a, focus));
+		assertTrue(OctreeLayer.isFocusedIncidentHost(b, focus));
+	}
+
+	@Test
+	void bounceOffMarksIncidentHostWithExitFace() {
+		Branch root = wallTree();
+		List<RayLineLayer.LineSegment> path = List.of(
+				seg(4, 4, 4, 8, 4, 4, 0, 8),
+				seg(8, 4, 4, 8, 4, 12, 0, 8)
+		);
+		List<OctreeOverlay.OctantView> views = OctreeLayer.collectCastVisitedViews(path, p -> root);
+		OctreeOverlay.OctantView host = views.stream()
+				.filter(OctreeOverlay.OctantView::incidentHost)
+				.findFirst()
+				.orElseThrow();
+		assertNotNull(host.setId());
+		assertEquals(new Vec3i(1, 0, 0), host.incidentFace());
+	}
+
+	private static OctreeOverlay.OctantView view(Box box, int color, int setId) {
+		return view(box, color, setId, false, null);
+	}
+
+	private static OctreeOverlay.OctantView view(
+			Box box,
+			int color,
+			int setId,
+			boolean incidentHost,
+			Vec3i incidentFace
+	) {
+		int size = (int) Math.round(box.maxX - box.minX);
+		return new OctreeOverlay.OctantView(
+				box, null, "leaf", size, color, null, setId, incidentHost, incidentFace);
 	}
 
 	private static Branch wallTree() {

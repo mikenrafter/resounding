@@ -339,8 +339,10 @@ public class Cast {
         }
         // Open-cell exit: survey N/E/D in the forward orthant (hit-face plane) and pick one of
         // the four maps (CORNER / GAP / SPLIT / FACE). Trailing cells are never surveyed.
+        // Pencil-ray mode (1³): skip the beam occupancy probe — shapes + local materials only.
         FrustumLod.Interaction forwardInteraction = FrustumLod.Interaction.CORNER;
         if (!emissionCast
+                && cellSize > 1
                 && gridAlignedReflect
                 && step.plane() != Vec3i.ZERO
                 && !isSolidImpedance(newImpedance)) {
@@ -910,9 +912,12 @@ public class Cast {
             default -> zUnit(vector.z);
         };
 
-        if (coefficient == Double.POSITIVE_INFINITY) {
-            LOGGER.warn("invalid coefficient");
-        }
+		if (coefficient == Double.POSITIVE_INFINITY) {
+			LOGGER.warn(
+					"invalid coefficient (no forward face hit) base={} size={} pos={} dir={}",
+					base, size, position, vector
+			);
+		}
         return new Pair<>(coefficient, planarIndex);
     }
     private static double boundAxis(double base, double pos, double size, double dir) {

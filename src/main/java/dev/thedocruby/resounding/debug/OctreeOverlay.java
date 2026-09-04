@@ -6,6 +6,7 @@ import dev.thedocruby.resounding.debug.math.OctantColor;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.Vec3i;
 import net.minecraft.world.BlockView;
 import org.jetbrains.annotations.Nullable;
 
@@ -23,8 +24,30 @@ public final class OctreeOverlay {
 			String label,
 			int size,
 			int color,
-			@Nullable Vec3d polar
-	) {}
+			@Nullable Vec3d polar,
+			/** N/E/D(+H) cluster id for focused frustum; null when not part of a set. */
+			@Nullable Integer setId,
+			/** True when this cube is the incident host (H) of its set. */
+			boolean incidentHost,
+			/** Exit / hit face of H ({@code ±X/±Y/±Z} unit); null when not the host. */
+			@Nullable Vec3i incidentFace
+	) {
+		public OctantView(
+				Box box,
+				Material material,
+				String label,
+				int size,
+				int color,
+				@Nullable Vec3d polar,
+				@Nullable Integer setId
+		) {
+			this(box, material, label, size, color, polar, setId, false, null);
+		}
+
+		public OctantView(Box box, Material material, String label, int size, int color, @Nullable Vec3d polar) {
+			this(box, material, label, size, color, polar, null, false, null);
+		}
+	}
 
 	private OctreeOverlay() {}
 
@@ -167,24 +190,45 @@ public final class OctreeOverlay {
 			if (step.virtual()) {
 				label = label == null || label.isEmpty() ? "virtual" : label + " virtual";
 			}
-			views.add(toView(step.box(), step.material(), label, step.polar()));
+			views.add(toView(step.box(), step.material(), label, step.polar(), step.color()));
 		}
 		return views;
 	}
 
 	private static OctantView toView(Box box, Material material, String label, @Nullable Vec3d polar) {
+		return toView(box, material, label, polar, null);
+	}
+
+	private static OctantView toView(
+			Box box,
+			Material material,
+			String label,
+			@Nullable Vec3d polar,
+			@Nullable Integer colorOverride
+	) {
 		int size = (int) Math.round(box.maxX - box.minX);
 		int originX = (int) Math.round(box.minX);
 		int originY = (int) Math.round(box.minY);
 		int originZ = (int) Math.round(box.minZ);
-		int color = OctantColor.forNode(originX, originY, originZ, size);
+		int color = colorOverride != null ? colorOverride : OctantColor.forNode(originX, originY, originZ, size);
 		return new OctantView(box, material, label, size, color, polar);
 	}
 
 	/** One beam-traversal step for {@link #collectBeamPath(List)}. */
-	public record VisitedStep(Box box, Material material, String label, boolean virtual, @Nullable Vec3d polar) {
+	public record VisitedStep(
+			Box box,
+			Material material,
+			String label,
+			boolean virtual,
+			@Nullable Vec3d polar,
+			@Nullable Integer color
+	) {
 		public VisitedStep(Box box, Material material, String label, boolean virtual) {
-			this(box, material, label, virtual, null);
+			this(box, material, label, virtual, null, null);
+		}
+
+		public VisitedStep(Box box, Material material, String label, boolean virtual, @Nullable Vec3d polar) {
+			this(box, material, label, virtual, polar, null);
 		}
 	}
 }
