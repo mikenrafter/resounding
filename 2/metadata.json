@@ -1,0 +1,94 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1NZVAC9WK0W31Z4YS0R49M7",
+  "session_id": "ddeb9530-757c-4f82-a02b-ee7b0ead8f35",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-04T10:36:24.946548971Z",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Cast.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java",
+    "src/test/java/dev/thedocruby/resounding/debug/OctreeLayerLiveRayTest.java",
+    "src/test/java/dev/thedocruby/resounding/raycast/FrustumLodEdgeWalkTest.java"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "65580573c168",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 2,
+    "cache_creation_tokens": 24908,
+    "cache_read_tokens": 0,
+    "output_tokens": 100,
+    "api_call_count": 1
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-04T10:36:24.93063396Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 89,
+    "human_removed": 244,
+    "total_committed": 0,
+    "total_lines_changed": 333,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 740,
+      "user_lines_removed": 321,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "src/main/java/dev/thedocruby/resounding/Engine.java": 54,
+        "src/main/java/dev/thedocruby/resounding/OctreeManager.java": 29,
+        "src/main/java/dev/thedocruby/resounding/debug/BounceRayLayer.java": 39,
+        "src/main/java/dev/thedocruby/resounding/debug/DebugRenderDispatcher.java": 1,
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java": 108,
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeOverlay.java": 1,
+        "src/main/java/dev/thedocruby/resounding/debug/RayLineLayer.java": 26,
+        "src/main/java/dev/thedocruby/resounding/raycast/BeamVisitRecorder.java": 1,
+        "src/main/java/dev/thedocruby/resounding/raycast/Branch.java": 81,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 93,
+        "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java": 186,
+        "src/main/java/dev/thedocruby/resounding/raycast/Renderer.java": 7,
+        "src/test/java/dev/thedocruby/resounding/OctreeGrowPolarBakeTest.java": 22,
+        "src/test/java/dev/thedocruby/resounding/OctreeInvalidationTest.java": 13,
+        "src/test/java/dev/thedocruby/resounding/debug/OctreeLayerLiveRayTest.java": 22,
+        "src/test/java/dev/thedocruby/resounding/raycast/BeamVisitRecorderTest.java": 2,
+        "src/test/java/dev/thedocruby/resounding/raycast/BranchEdgeNeighborTest.java": 3,
+        "src/test/java/dev/thedocruby/resounding/raycast/BranchNeighborAccessorTest.java": 9,
+        "src/test/java/dev/thedocruby/resounding/raycast/FrustumLodEdgeWalkTest.java": 43
+      },
+      "user_removed_per_file": {
+        "src/main/java/dev/thedocruby/resounding/Engine.java": 18,
+        "src/main/java/dev/thedocruby/resounding/OctreeManager.java": 24,
+        "src/main/java/dev/thedocruby/resounding/debug/BounceRayLayer.java": 9,
+        "src/main/java/dev/thedocruby/resounding/debug/DebugRenderDispatcher.java": 1,
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java": 34,
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeOverlay.java": 1,
+        "src/main/java/dev/thedocruby/resounding/debug/RayLineLayer.java": 5,
+        "src/main/java/dev/thedocruby/resounding/raycast/BeamVisitRecorder.java": 1,
+        "src/main/java/dev/thedocruby/resounding/raycast/Branch.java": 31,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 71,
+        "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java": 29,
+        "src/main/java/dev/thedocruby/resounding/raycast/Renderer.java": 5,
+        "src/test/java/dev/thedocruby/resounding/OctreeGrowPolarBakeTest.java": 22,
+        "src/test/java/dev/thedocruby/resounding/OctreeInvalidationTest.java": 14,
+        "src/test/java/dev/thedocruby/resounding/debug/OctreeLayerLiveRayTest.java": 16,
+        "src/test/java/dev/thedocruby/resounding/raycast/BeamVisitRecorderTest.java": 6,
+        "src/test/java/dev/thedocruby/resounding/raycast/BranchEdgeNeighborTest.java": 5,
+        "src/test/java/dev/thedocruby/resounding/raycast/BranchNeighborAccessorTest.java": 12,
+        "src/test/java/dev/thedocruby/resounding/raycast/FrustumLodEdgeWalkTest.java": 17
+      }
+    }
+  ]
+}

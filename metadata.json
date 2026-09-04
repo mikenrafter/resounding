@@ -3,7 +3,7 @@
   "checkpoint_id": "01M1NZVAC9WK0W31Z4YS0R49M7",
   "strategy": "manual-commit",
   "branch": "beam-tracing-frustums",
-  "checkpoints_count": 5,
+  "checkpoints_count": 6,
   "files_touched": [
     "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java",
     "src/main/java/dev/thedocruby/resounding/raycast/Cast.java",
@@ -25,13 +25,20 @@
       "compact_transcript": "/1/transcript.jsonl",
       "content_hash": "/1/content_hash.txt",
       "prompt": "/1/prompt.txt"
+    },
+    {
+      "metadata": "/2/metadata.json",
+      "transcript": "/2/full.jsonl",
+      "compact_transcript": "/2/transcript.jsonl",
+      "content_hash": "/2/content_hash.txt",
+      "prompt": "/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 452,
-    "cache_creation_tokens": 393385,
+    "input_tokens": 454,
+    "cache_creation_tokens": 418293,
     "cache_read_tokens": 54038037,
-    "output_tokens": 186765,
-    "api_call_count": 226
+    "output_tokens": 186865,
+    "api_call_count": 227
   }
 }
