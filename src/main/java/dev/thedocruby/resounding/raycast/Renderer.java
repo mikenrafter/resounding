@@ -30,29 +30,31 @@ public class Renderer {
 			double priorImpedance,
 			int branchSize,
 			@Nullable String materialLabel,
-			boolean terminated
+			boolean terminated,
+			@Nullable BounceRayLayer.TerminationCause cause
 	) {
 		if (!pConfig.dRays) {
 			return;
 		}
 		DebugRenderDispatcher.INSTANCE.bounceRays().addSoundBounceRay(
 				start, end, color, bounceIndex, sourceID, rayIndex, material, reflectivity, transmission,
-				power, branchSize, terminated
+				power, branchSize, terminated, cause
 		);
 		if (CaptureBuffer.INSTANCE.isCapturing()) {
+			int capturedColor = terminated ? (cause != null ? cause.color : BounceRayLayer.TERMINATED_COLOR) : color;
 			CaptureBuffer.INSTANCE.offer(new CaptureBuffer.CapturedRay(
-					start, end, terminated ? BounceRayLayer.TERMINATED_COLOR : color,
+					start, end, capturedColor,
 					sourceID, rayIndex, bounceIndex, material, reflectivity, transmission, power,
 					priorImpedance, branchSize, materialLabel, terminated
 			));
 		}
 	}
 
-	public static void addTerminatorCross(Vec3d center) {
+	public static void addTerminatorCross(Vec3d center, @Nullable BounceRayLayer.TerminationCause cause) {
 		if (!pConfig.dRays) {
 			return;
 		}
-		DebugRenderDispatcher.INSTANCE.bounceRays().addTerminatorCross(center);
+		DebugRenderDispatcher.INSTANCE.bounceRays().addTerminatorCross(center, cause);
 	}
 
 	public static void addOcclusionRay(Vec3d start, Vec3d end, int color) {

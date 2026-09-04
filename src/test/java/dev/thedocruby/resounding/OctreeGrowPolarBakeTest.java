@@ -97,10 +97,10 @@ class OctreeGrowPolarBakeTest {
 
         Branch leaf = root.get(sectionOrigin.add(3, 7, 3));
         assertEquals(1, leaf.size);
-        assertEquals(GRASS.impedance(), leaf.mostCommonImpedance);
-        assertEquals(GRASS.impedance(), leaf.leastCommonImpedance);
-        assertEquals(GRASS.impedance(), leaf.avgImpedance);
-        assertNull(leaf.polar, "a single-material leaf has no gradient");
+        assertEquals(GRASS.impedance(), leaf.mostCommonImpedance());
+        assertEquals(GRASS.impedance(), leaf.leastCommonImpedance());
+        assertEquals(GRASS.impedance(), leaf.avgImpedance());
+        assertNull(leaf.polar(), "a single-material leaf has no gradient");
     }
 
     @Test
@@ -126,11 +126,11 @@ class OctreeGrowPolarBakeTest {
         Branch patch = descend(root, sectionOrigin, 2);
         assertEquals(2, patch.size, "the 2-material patch must survive as its own un-pruned size-2 branch");
         // presence tie → stiffer primary; ratio 1 → g_* = material means
-        assertEquals(GRANITE.impedance(), patch.mostCommonImpedance);
-        assertEquals(DIORITE.impedance(), patch.leastCommonImpedance);
-        assertEquals((GRANITE.impedance() + DIORITE.impedance()) / 2.0, patch.avgImpedance);
-        assertEquals(new Vec3d(-8, 0, 0), patch.polar, "axis-striped pattern must polarize along X");
-        assertEquals(0.5, patch.blendCoefficient, 1e-9);
+        assertEquals(GRANITE.impedance(), patch.mostCommonImpedance());
+        assertEquals(DIORITE.impedance(), patch.leastCommonImpedance());
+        assertEquals((GRANITE.impedance() + DIORITE.impedance()) / 2.0, patch.avgImpedance());
+        assertEquals(new Vec3d(-8, 0, 0), patch.polar(), "axis-striped pattern must polarize along X");
+        assertEquals(0.5, patch.blendCoefficient(), 1e-9);
     }
 
     @Test
@@ -155,10 +155,10 @@ class OctreeGrowPolarBakeTest {
 
         Branch patch = descend(root, sectionOrigin.add(8, 0, 0), 2);
         assertEquals(2, patch.size, "the 4-material patch must survive as its own un-pruned size-2 branch");
-        assertEquals(ANDESITE.impedance(), patch.mostCommonImpedance);
-        assertEquals(SANDSTONE.impedance(), patch.leastCommonImpedance);
-        assertEquals(500.0, patch.avgImpedance, "mean of all 8 corners");
-        assertEquals(2.0 / 8.0, patch.blendCoefficient, 1e-9);
+        assertEquals(ANDESITE.impedance(), patch.mostCommonImpedance());
+        assertEquals(SANDSTONE.impedance(), patch.leastCommonImpedance());
+        assertEquals(500.0, patch.avgImpedance(), "mean of all 8 corners");
+        assertEquals(2.0 / 8.0, patch.blendCoefficient(), 1e-9);
     }
 
     @Test
@@ -187,7 +187,7 @@ class OctreeGrowPolarBakeTest {
         };
         double expectedBlend = Polarization.bakeOctant(corners).blendCoefficient();
         assertEquals(0.875, expectedBlend, 1e-9);
-        assertEquals(expectedBlend, patch.blendCoefficient, 1e-9,
+        assertEquals(expectedBlend, patch.blendCoefficient(), 1e-9,
                 "bake must retain Descriptor.blendCoefficient on the Branch for stiff_weight");
     }
 
@@ -233,8 +233,8 @@ class OctreeGrowPolarBakeTest {
         assertEquals(4, size4.size);
         assertEquals(2, childA.size);
         assertEquals(2, childB.size);
-        assertNotNull(childA.polar);
-        assertNotNull(childB.polar);
+        assertNotNull(childA.polar());
+        assertNotNull(childB.polar());
 
         double blendA = Polarization.bakeOctant(new Material[]{
                 ANDESITE, ANDESITE, ANDESITE, ANDESITE, ANDESITE, TUFF, COBBLESTONE, SANDSTONE
@@ -243,20 +243,20 @@ class OctreeGrowPolarBakeTest {
         assertTrue(Math.abs(blendA - 0.5) > 1e-6, "precondition: child A blend must differ from 0.5");
 
         double wrongA = Polarization.stiffWeight(
-                Math.abs(childA.avgImpedance - childA.leastCommonImpedance)
-                        / Math.abs(childA.mostCommonImpedance - childA.leastCommonImpedance));
+                Math.abs(childA.avgImpedance() - childA.leastCommonImpedance())
+                        / Math.abs(childA.mostCommonImpedance() - childA.leastCommonImpedance()));
         double rightA = Polarization.stiffWeight(blendA);
         assertTrue(Math.abs(wrongA - rightA) > 1e-6,
                 "precondition: impedance midpoint identity must disagree with blendCoefficient stiff weight");
 
         Vec3d expected = Polarization.combinePolar(
-                new Vec3d[]{ childA.polar, childB.polar },
+                new Vec3d[]{ childA.polar(), childB.polar() },
                 new double[]{ Polarization.stiffWeight(blendA), Polarization.stiffWeight(blendB) }
         );
-        assertEquals(expected.x, size4.polar.x, 1e-6,
+        assertEquals(expected.x, size4.polar().x, 1e-6,
                 "size>2 polar must weight children by stiffWeight(blendCoefficient), not the midpoint identity");
-        assertEquals(expected.y, size4.polar.y, 1e-6);
-        assertEquals(expected.z, size4.polar.z, 1e-6);
+        assertEquals(expected.y, size4.polar().y, 1e-6);
+        assertEquals(expected.z, size4.polar().z, 1e-6);
     }
 
     private static void fillUniform(SectionChunks.SectionFixture fixture, BlockState state) {

@@ -20,35 +20,91 @@ public class Branch {
     public BlockPos start;
     public int size;
     public @NotNull VoxelShape shape = OctreeManager.CUBE;
-    public @Nullable Material material; // TODO: use!
+    /**
+     * {@code volatile}: read by the raycast/Sound-engine thread while the main thread can
+     * concurrently null this out via {@code invalidatePath} — a reference write is atomic
+     * either way, but plain visibility isn't guaranteed without this.
+     */
+    public volatile @Nullable Material material; // TODO: use!
     /**
      * Acoustic debug label (e.g. {@code grass}). Left null during octree bake; filled lazily by
      * {@link #ensureMaterialLabel(BlockView)} when an overlay / dRays path needs it.
      */
     public @Nullable String materialLabel;
 
-    // Phase 0 baked descriptor (frustums-plan.md "Baked per-branch descriptor"). Populated by
-    // OctreeManager.growOctree's post-order bake pass; NaN/null until that lands (Phase 0 GREEN).
-    /** Presence-split primary endpoint ({@code g_most}) — most-common material's adjusted impedance. */
-    public double mostCommonImpedance = Double.NaN;
-    /** Presence-split secondary endpoint ({@code g_least}) — least-common material's adjusted impedance. */
-    public double leastCommonImpedance = Double.NaN;
-    /** Mean impedance across this octant (leaf-level: same as most/least; internal: mean of children). */
-    public double avgImpedance = Double.NaN;
     /**
-     * Raw corner-sign-sum polarization vector — the same primitive as Phase 0.5's {@code P},
-     * unnormalized. {@code null} means "no gradient" (octant size 1, or a fully homogeneous
-     * octant), distinct from a real {@code (0,0,0)} cancellation (see the checkerboard case in
-     * the plan). Never renormalized after the size&gt;2 weighted average combine, consistent with
-     * staying a "polar" rather than a unit normal.
+     * Phase 0 baked descriptor (frustums-plan.md "Baked per-branch descriptor"): most/least-common
+     * impedance, mean impedance, polarization vector, and blend coefficient, bundled into one
+     * immutable record so a rebake (growOctree's post-order pass, or {@code invalidatePath}
+     * rebaking an ancestor in place) publishes all five values as a single atomic reference swap.
+     * Mutating these fields individually let a concurrent raycast thread observe a torn or
+     * cross-generation mix of old/new values (a live node's fields being overwritten in place by
+     * the main thread while the Sound-engine thread reads them mid-write) — this was the source of
+     * spurious full reflections off plain-air LOD nodes. Always replace via {@link #bake}, never
+     * write the record's own fields after construction.
      */
-    public @Nullable Vec3d polar;
+    public volatile @NotNull NodeDescriptor descriptor = NodeDescriptor.EMPTY;
+
+    /** See {@link #descriptor}. */
+    public record NodeDescriptor(
+            /** Presence-split primary endpoint ({@code g_most}) — most-common material's adjusted impedance. */
+            double mostCommonImpedance,
+            /** Presence-split secondary endpoint ({@code g_least}) — least-common material's adjusted impedance. */
+            double leastCommonImpedance,
+            /** Mean impedance across this octant (leaf-level: same as most/least; internal: mean of children). */
+            double avgImpedance,
+            /**
+             * Phase 0.5 blend coefficient retained from {@link Polarization.Descriptor#blendCoefficient()}
+             * so size&gt;2 aggregation can feed {@link Polarization#stiffWeight(double)} the real presence
+             * dominance, not an impedance-range reconstruction. {@link Double#NaN} until baked.
+             */
+            double blendCoefficient,
+            /**
+             * Raw corner-sign-sum polarization vector — the same primitive as Phase 0.5's {@code P},
+             * unnormalized. {@code null} means "no gradient" (octant size 1, or a fully homogeneous
+             * octant), distinct from a real {@code (0,0,0)} cancellation (see the checkerboard case in
+             * the plan). Never renormalized after the size&gt;2 weighted average combine, consistent with
+             * staying a "polar" rather than a unit normal.
+             */
+            @Nullable Vec3d polar
+    ) {
+        public static final NodeDescriptor EMPTY =
+                new NodeDescriptor(Double.NaN, Double.NaN, Double.NaN, Double.NaN, null);
+    }
+
+    /** Publishes a freshly baked descriptor as one atomic reference swap. See {@link #descriptor}. */
+    public void bake(@NotNull NodeDescriptor next) {
+        this.descriptor = next;
+    }
+
+    public double mostCommonImpedance() { return descriptor.mostCommonImpedance(); }
+    public double leastCommonImpedance() { return descriptor.leastCommonImpedance(); }
+    public double avgImpedance() { return descriptor.avgImpedance(); }
+    public double blendCoefficient() { return descriptor.blendCoefficient(); }
+    public @Nullable Vec3d polar() { return descriptor.polar(); }
+
     /**
-     * Phase 0.5 blend coefficient retained from {@link Polarization.Descriptor#blendCoefficient()}
-     * so size&gt;2 aggregation can feed {@link Polarization#stiffWeight(double)} the real presence
-     * dominance, not an impedance-range reconstruction. {@link Double#NaN} until baked.
+     * Effective impedance for boundary/classification physics: baked avg, then baked most-common,
+     * then the block material's own impedance, in that order — {@link Double#NaN} if none resolve.
+     * One {@link #descriptor} + one {@link #material} read, both consistent with each other.
      */
-    public double blendCoefficient = Double.NaN;
+    public double effectiveImpedance() {
+        NodeDescriptor d = descriptor;
+        if (!Double.isNaN(d.avgImpedance())) {
+            return d.avgImpedance();
+        }
+        if (!Double.isNaN(d.mostCommonImpedance())) {
+            return d.mostCommonImpedance();
+        }
+        Material m = material;
+        return m != null ? m.impedance() : Double.NaN;
+    }
+
+    /** Material permeation, or {@code 1.0} (fully open) when this node has no baked material. */
+    public double effectivePermeation() {
+        Material m = material;
+        return m != null ? m.permeation() : 1.0;
+    }
 
     /**
      * Eight direct octant children, indexed {@code x | (y << 1) | (z << 2)} relative to
@@ -168,11 +224,7 @@ public class Branch {
         int oz = Math.min(Math.max(origin.getZ(), start.getZ()), Math.max(start.getZ(), maxZ));
         Branch virtual = new Branch(new BlockPos(ox, oy, oz), lodSize, material);
         virtual.materialLabel = materialLabel;
-        virtual.mostCommonImpedance = mostCommonImpedance;
-        virtual.leastCommonImpedance = leastCommonImpedance;
-        virtual.avgImpedance = avgImpedance;
-        virtual.polar = polar;
-        virtual.blendCoefficient = blendCoefficient;
+        virtual.bake(descriptor);
         virtual.shape = shape;
         return virtual;
     }
@@ -281,15 +333,13 @@ public class Branch {
 
         // coarser pruned/homogeneous ancestor found first: trivial replication, positioned at
         // the accessor's own size within the larger uniform space.
-        Branch virtual = new Branch(shiftedStart, this.size, current.material);
+        Material currentMaterial = current.material;
+        Branch virtual = new Branch(shiftedStart, this.size, currentMaterial);
         virtual.materialLabel = current.materialLabel;
-        if (current.material != null) {
-            double impedance = current.material.impedance();
-            virtual.mostCommonImpedance = impedance;
-            virtual.leastCommonImpedance = impedance;
-            virtual.avgImpedance = impedance;
+        if (currentMaterial != null) {
+            double impedance = currentMaterial.impedance();
+            virtual.bake(new NodeDescriptor(impedance, impedance, impedance, Double.NaN, null));
         }
-        virtual.polar = null;
         return virtual;
     }
 

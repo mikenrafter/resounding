@@ -21,11 +21,36 @@ public final class BounceRayLayer extends RayLineLayer {
 
 	private static final float BASE_LINE_WIDTH = 4.0F;
 	private static final double REFERENCE_POWER = 128.0D;
-	/** High-contrast marker color for ray path endpoints (drawn without depth test). */
+	/** Fallback marker color for a terminated segment with no {@link TerminationCause} attached. */
 	public static final int TERMINATED_COLOR = 0xFFFF00FF;
 	/** J-cycled active bounce ray (B on): all segments white, drawn without depth test. */
 	public static final int ACTIVE_RAY_COLOR = 0xFFFFFFFF;
 	static final float TERMINATED_LINE_WIDTH = 3.0F;
+
+	/**
+	 * Why a ray's propagation loop stopped, from {@code Engine.raycast}'s {@code terminationReason}
+	 * — one color per cause so a death marker alone tells you which failure mode it was, without
+	 * reading the log. Distinct from white (active ray), green (quartet transmission markers), and
+	 * the polarity-axis purple ({@link OctreeLayer#POLAR_COLOR}).
+	 */
+	public enum TerminationCause {
+		/** Ran out of power / path length / bounce budget — the expected, benign way a ray ends. */
+		BUDGET(0xFFFF3B30),
+		/** Octree/chunk resolution failed at the ray's position ("left the known world"). */
+		LEFT_WORLD(0xFFFF8C00),
+		/** A reflected or transmitted boundary resolved to a degenerate (null) direction —
+		 *  includes stepping into a vacuum-impedance boundary. */
+		NO_DIRECTION(0xFF2979FF),
+		/** Reflected several times in a row while confined to very few octree host cells — see
+		 *  {@code Engine.QUARTET_STALL_REFLECTS}. */
+		STALLED(0xFFFFD400);
+
+		public final int color;
+
+		TerminationCause(int color) {
+			this.color = color;
+		}
+	}
 	private static final double MARKER_HALF_EXTENT = 0.12D;
 	/** Max gap between one segment's end and the next segment's start to stay on the same ray. */
 	static final double CONNECT_EPS = 1e-4;
@@ -98,7 +123,8 @@ public final class BounceRayLayer extends RayLineLayer {
 		renderActiveRay(focused, positionMatrix, projectionMatrix, cameraPos);
 	}
 
-	/** Magenta terminators — drawn last (above white ray and green crosses). */
+	/** Cause-colored terminators (see {@link TerminationCause}) — drawn last (above white ray and
+	 *  quartet-interaction crosses). */
 	void renderTerminatorMarkers(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
 		renderTerminatorCrosses(positionMatrix, projectionMatrix, cameraPos);
 	}
@@ -163,9 +189,11 @@ public final class BounceRayLayer extends RayLineLayer {
 			double transmission,
 			double power,
 			int branchSize,
-			boolean terminated
+			boolean terminated,
+			@Nullable TerminationCause cause
 	) {
-		addSegment(start, end, color, BASE_LINE_WIDTH, terminated, rayIndex, Math.max(0, branchSize));
+		int terminatorColor = cause != null ? cause.color : TERMINATED_COLOR;
+		addSegment(start, end, color, BASE_LINE_WIDTH, terminated, rayIndex, Math.max(0, branchSize), terminatorColor);
 	}
 
 	/**
@@ -219,12 +247,13 @@ public final class BounceRayLayer extends RayLineLayer {
 		return rays;
 	}
 
-	public void addTerminatorCross(Vec3d center) {
+	public void addTerminatorCross(Vec3d center, @Nullable TerminationCause cause) {
 		if (!pConfig.dRays) {
 			return;
 		}
+		int color = cause != null ? cause.color : TERMINATED_COLOR;
 		// Marker-only entry: shares the segment ring buffer so crosses expire with their rays.
-		addSegment(center, center, TERMINATED_COLOR, BASE_LINE_WIDTH, true);
+		addSegment(center, center, color, BASE_LINE_WIDTH, true, -1, 0, color);
 	}
 
 	private void renderTerminatorCrosses(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
@@ -250,9 +279,10 @@ public final class BounceRayLayer extends RayLineLayer {
 				double y = segment.end().y;
 				double z = segment.end().z;
 				double s = MARKER_HALF_EXTENT;
-				GpuLineBuffer.line(builder, x - s, y, z, x + s, y, z, TERMINATED_COLOR);
-				GpuLineBuffer.line(builder, x, y - s, z, x, y + s, z, TERMINATED_COLOR);
-				GpuLineBuffer.line(builder, x, y, z - s, x, y, z + s, TERMINATED_COLOR);
+				int color = segment.terminatorColor();
+				GpuLineBuffer.line(builder, x - s, y, z, x + s, y, z, color);
+				GpuLineBuffer.line(builder, x, y - s, z, x, y + s, z, color);
+				GpuLineBuffer.line(builder, x, y, z - s, x, y, z + s, color);
 			}
 		});
 		terminatorBuffer.draw(positionMatrix, projectionMatrix, cameraPos);

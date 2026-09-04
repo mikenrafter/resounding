@@ -165,7 +165,9 @@ class OctreeLayerLiveRayTest {
 				seg(0.5, 0.5, 0.5, 4.0, 0.5, 0.5, 2, 2)
 		);
 		OctreeLayer.CastPathOverlay overlay = OctreeLayer.collectCastVisitedOverlay(path, pos -> root);
-		assertEquals(List.of(new Vec3d(0.5, 0.5, 0.5)), overlay.nedMarkers());
+		assertEquals(
+				List.of(new OctreeLayer.NedMarker(new Vec3d(0.5, 0.5, 0.5), OctreeLayer.NedMarkerState.TRANSMISSION)),
+				overlay.nedMarkers());
 	}
 
 	@Test
@@ -295,18 +297,11 @@ class OctreeLayerLiveRayTest {
 
 	private static Branch wallTree() {
 		Branch root = new Branch(new BlockPos(0, 0, 0), 16, AIR);
-		root.mostCommonImpedance = AIR.impedance();
-		root.leastCommonImpedance = AIR.impedance();
-		root.avgImpedance = AIR.impedance();
+		root.bake(new Branch.NodeDescriptor(AIR.impedance(), AIR.impedance(), AIR.impedance(), Double.NaN, null));
 		Branch air = new Branch(new BlockPos(0, 0, 0), 8, AIR);
-		air.mostCommonImpedance = AIR.impedance();
-		air.leastCommonImpedance = AIR.impedance();
-		air.avgImpedance = AIR.impedance();
+		air.bake(new Branch.NodeDescriptor(AIR.impedance(), AIR.impedance(), AIR.impedance(), Double.NaN, null));
 		Branch wall = new Branch(new BlockPos(8, 0, 0), 8, STONE);
-		wall.mostCommonImpedance = STONE.impedance();
-		wall.leastCommonImpedance = STONE.impedance();
-		wall.avgImpedance = STONE.impedance();
-		wall.polar = WALL_POLAR;
+		wall.bake(new Branch.NodeDescriptor(STONE.impedance(), STONE.impedance(), STONE.impedance(), Double.NaN, WALL_POLAR));
 		root.put(air.start.asLong(), air);
 		root.put(wall.start.asLong(), wall);
 		return root;

@@ -33,11 +33,11 @@ abstract class RayLineLayer implements DebugLayer {
 	}
 
 	void addSegment(Vec3d start, Vec3d end, int color, float width) {
-		addSegment(start, end, color, width, false, -1, 0);
+		addSegment(start, end, color, width, false, -1, 0, color);
 	}
 
 	void addSegment(Vec3d start, Vec3d end, int color, float width, boolean terminator) {
-		addSegment(start, end, color, width, terminator, -1, 0);
+		addSegment(start, end, color, width, terminator, -1, 0, color);
 	}
 
 	void addSegment(
@@ -49,11 +49,26 @@ abstract class RayLineLayer implements DebugLayer {
 			int rayIndex,
 			int branchSize
 	) {
+		addSegment(start, end, color, width, terminator, rayIndex, branchSize, color);
+	}
+
+	/** {@code terminatorColor} is the marker cross color when {@code terminator} is set (which
+	 *  {@code TerminationCause}/{@code NedMarkerState} killed or classified it); ignored otherwise. */
+	void addSegment(
+			Vec3d start,
+			Vec3d end,
+			int color,
+			float width,
+			boolean terminator,
+			int rayIndex,
+			int branchSize,
+			int terminatorColor
+	) {
 		if (!pConfig.dRays) {
 			return;
 		}
 		synchronized (segments) {
-			segments.offer(new LineSegment(start, end, color, width, terminator, rayIndex, branchSize));
+			segments.offer(new LineSegment(start, end, color, width, terminator, rayIndex, branchSize, terminatorColor));
 			version++;
 		}
 		buffer.markDirty();
@@ -149,10 +164,16 @@ abstract class RayLineLayer implements DebugLayer {
 			/** Env-eval cast index (0..63); {@code -1} for markers / unknown. */
 			int rayIndex,
 			/** LOD cell size the cast resolved this segment at; {@code 0} if unknown. */
-			int branchSize
+			int branchSize,
+			/** Marker cross color when {@link #terminator} is set; meaningless otherwise. */
+			int terminatorColor
 	) {
 		LineSegment(Vec3d start, Vec3d end, int color, float width, boolean terminator) {
-			this(start, end, color, width, terminator, -1, 0);
+			this(start, end, color, width, terminator, -1, 0, color);
+		}
+
+		LineSegment(Vec3d start, Vec3d end, int color, float width, boolean terminator, int rayIndex, int branchSize) {
+			this(start, end, color, width, terminator, rayIndex, branchSize, color);
 		}
 	}
 }

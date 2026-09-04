@@ -63,7 +63,7 @@ public final class DebugRenderDispatcher {
 					&& BounceRayLayer.activeRayIndex() >= 0;
 
 			if (focusedFrustum) {
-				// Bottom → top: other rays, cubes, white focused ray, green contacts, magenta ends.
+				// Bottom → top: other rays, cubes, white focused ray, quartet-interaction crosses, termination markers.
 				profiler.push("bounce_rays_bg");
 				try {
 					bounceRays.renderBackgroundRays(positionMatrix, projectionMatrix, cameraPos);

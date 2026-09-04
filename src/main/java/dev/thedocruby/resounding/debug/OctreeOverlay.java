@@ -152,7 +152,7 @@ public final class OctreeOverlay {
 				node.ensureMaterialLabel(world),
 				size,
 				color,
-				node.polar
+				node.polar()
 		);
 	}
 

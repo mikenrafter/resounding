@@ -40,8 +40,6 @@ public final class OctreeLayer implements DebugLayer {
 	static final int VIRTUAL_COLOR = 0xFF66F0FF;
 	/** Hot magenta for polarity axes (both + and − through the octant). */
 	static final int POLAR_COLOR = 0xFFFF14F0;
-	/** Green N/E/D survey markers on the focused frustum (same cross style as ray terminators). */
-	public static final int NED_MARKER_COLOR = 0xFF00FF00;
 	static final float NED_MARKER_LINE_WIDTH = 3.0F;
 	private static final double NED_MARKER_HALF_EXTENT = 0.12D;
 	/** Nearby fill opacity (at the player). */
@@ -59,6 +57,33 @@ public final class OctreeLayer implements DebugLayer {
 		NEIGHBORHOOD,
 		BEAM_PATH
 	}
+
+	/**
+	 * Outcome a quartet ({@code H+N+E+D}) marker represents, from {@link FrustumLod.Interaction}
+	 * (collapsing {@link FrustumLod.Interaction#CORNER}/{@link FrustumLod.Interaction#FACE} into one
+	 * REFLECTION bucket): distinct, saturated hues that avoid white (active ray), the polarity-axis
+	 * purple ({@link #POLAR_COLOR}), and the ray-termination palette ({@link BounceRayLayer.TerminationCause}).
+	 */
+	public enum NedMarkerState {
+		/** {@link FrustumLod.Interaction#GAP} — the ray passed through; also the default for a
+		 *  marker with no prior segment (ray origin) or no direction change from its predecessor. */
+		TRANSMISSION(0xFF00FF00),
+		/** {@link FrustumLod.Interaction#CORNER} / {@link FrustumLod.Interaction#FACE}, or any
+		 *  voxel-level (branchSize 1, no quartet survey) bounce. */
+		REFLECTION(0xFFFF0000),
+		/** {@link FrustumLod.Interaction#SPLIT} — classified, but {@code Cast} doesn't yet branch
+		 *  into two child beams for it; falls through to a single reflect today. */
+		SPLIT(0xFFFFFF00);
+
+		public final int color;
+
+		NedMarkerState(int color) {
+			this.color = color;
+		}
+	}
+
+	/** A quartet-interaction marker: where it sits on the ray, and what the survey classified there. */
+	public record NedMarker(Vec3d position, NedMarkerState state) {}
 
 	private final GpuLineBuffer buffer = new GpuLineBuffer(VertexBuffer.Usage.STATIC, false, 2.25F);
 	private final GpuFillBuffer fillBuffer = new GpuFillBuffer(VertexBuffer.Usage.STATIC);
@@ -82,7 +107,7 @@ public final class OctreeLayer implements DebugLayer {
 	private int lastBounceVersion = -1;
 	private int lastSelectedRayIndex = Integer.MIN_VALUE;
 	private List<OctreeOverlay.OctantView> octants = List.of();
-	private List<Vec3d> nedMarkers = List.of();
+	private List<NedMarker> nedMarkers = List.of();
 
 	public int octantCount() {
 		return octants.size();
@@ -303,8 +328,9 @@ public final class OctreeLayer implements DebugLayer {
 	/**
 	 * Boxes the cast actually resolved: one octant per recorded segment at that segment's
 	 * {@code branchSize}, plus bounce-off N/E/D neighbors at direction changes when LOD &gt; 1.
-	 * Each H+N+E+D quartet shares {@link OctantColor#forSet}. Green markers sit on the ray at
-	 * first contact with each cast frustum. Overlapping dual-color cubes render as side-by-side halves.
+	 * Each H+N+E+D quartet shares {@link OctantColor#forSet}. {@link NedMarker} crosses sit on the
+	 * ray at first contact with each cast frustum, colored by {@link NedMarkerState}. Overlapping
+	 * dual-color cubes render as side-by-side halves.
 	 */
 	static List<OctreeOverlay.OctantView> collectCastVisitedViews(
 			List<RayLineLayer.LineSegment> path,
@@ -318,7 +344,7 @@ public final class OctreeLayer implements DebugLayer {
 			Function<Vec3d, Branch> rootFor
 	) {
 		LinkedHashMap<Long, Occupancy> byKey = new LinkedHashMap<>();
-		List<Vec3d> markers = new ArrayList<>();
+		List<NedMarker> markers = new ArrayList<>();
 		Vec3d prevDir = null;
 		Vec3d prevEnd = null;
 		int prevBranchSize = 1;
@@ -331,17 +357,27 @@ public final class OctreeLayer implements DebugLayer {
 			}
 			Vec3d dir = delta.multiply(1.0 / length);
 			int stepSize = Math.max(1, segment.branchSize());
-			if (prevDir != null && prevEnd != null && prevBranchSize > 1 && isDirectionChange(prevDir, dir)) {
-				Branch bounceRoot = rootFor.apply(prevEnd);
-				if (bounceRoot != null) {
-					int id = setId++;
-					recordBounceOff(bounceRoot, prevEnd, prevDir, prevBranchSize, byKey,
-							OctantColor.forSet(id), id);
+			// No prior segment / no direction change from it -> this entry is a plain transmit.
+			// A real direction change is a reflect; the quartet survey (LOD > 1 only) can upgrade
+			// that to SPLIT when the forward map classifies it that way.
+			NedMarkerState transition = NedMarkerState.TRANSMISSION;
+			if (prevDir != null && prevEnd != null && isDirectionChange(prevDir, dir)) {
+				if (prevBranchSize > 1) {
+					Branch bounceRoot = rootFor.apply(prevEnd);
+					if (bounceRoot != null) {
+						int id = setId++;
+						transition = recordBounceOff(bounceRoot, prevEnd, prevDir, prevBranchSize, byKey,
+								OctantColor.forSet(id), id);
+					} else {
+						transition = NedMarkerState.REFLECTION;
+					}
+				} else {
+					transition = NedMarkerState.REFLECTION;
 				}
 			}
 			Branch root = rootFor.apply(segment.start());
 			if (root != null) {
-				recordCastCell(root, segment.start(), segment.end(), dir, stepSize, byKey, markers, null, null);
+				recordCastCell(root, segment.start(), segment.end(), dir, stepSize, byKey, markers, null, null, transition);
 			}
 			prevDir = dir;
 			prevEnd = segment.end();
@@ -379,7 +415,7 @@ public final class OctreeLayer implements DebugLayer {
 	) {
 		LinkedHashMap<Long, Occupancy> byKey = new LinkedHashMap<>();
 		Vec3d dir = direction.lengthSquared() > 1e-12 ? direction : new Vec3d(1, 0, 0);
-		recordCastCell(root, start, start.add(dir), dir, branchSize, byKey, null, null, null);
+		recordCastCell(root, start, start.add(dir), dir, branchSize, byKey, null, null, null, NedMarkerState.TRANSMISSION);
 		flushOccupancies(byKey, steps, seen);
 	}
 
@@ -418,9 +454,10 @@ public final class OctreeLayer implements DebugLayer {
 			Vec3d direction,
 			int branchSize,
 			LinkedHashMap<Long, Occupancy> byKey,
-			@Nullable List<Vec3d> markers,
+			@Nullable List<NedMarker> markers,
 			@Nullable Integer color,
-			@Nullable Integer setId
+			@Nullable Integer setId,
+			NedMarkerState transition
 	) {
 		int size = Math.max(1, branchSize);
 		Vec3d dir = direction.lengthSquared() > 1e-12 ? direction : new Vec3d(1, 0, 0);
@@ -432,15 +469,15 @@ public final class OctreeLayer implements DebugLayer {
 		boolean virtual = finest.size > size;
 		Box box = boxOf(cellOrigin, size);
 		Occupancy occ = upsertOccupancy(
-				byKey, cellOrigin, size, virtual, virtual ? null : "leaf", lod.polar, color, setId, dir);
+				byKey, cellOrigin, size, virtual, virtual ? null : "leaf", lod.polar(), color, setId, dir);
 		if (markers != null && occ.contact == null) {
 			Vec3d contact = firstRayContact(start, end, box);
 			occ.contact = contact;
-			markers.add(contact);
+			markers.add(new NedMarker(contact, transition));
 		}
 	}
 
-	private static void recordBounceOff(
+	private static NedMarkerState recordBounceOff(
 			Branch root,
 			Vec3d hit,
 			Vec3d incident,
@@ -469,13 +506,42 @@ public final class OctreeLayer implements DebugLayer {
 
 		FrustumLod.ForwardMap map = FrustumLod.forwardMap(cellBase, step, hit, dir, firstPlane);
 		if (map == null) {
-			return;
+			// No forward survey possible on this axis pairing, but a direction change did happen.
+			return NedMarkerState.REFLECTION;
 		}
+
+		// Re-derive the same host->neighbor classification Cast.surveyForward computed live, from
+		// current octree state, so the marker shows what actually governs this boundary.
+		Branch hostLod = root.getAtLod(hostQuery, step);
+		double hostImpedance = hostLod.effectiveImpedance();
+
+		Branch nBranch = root.getAtLod(
+				hostOrigin.add(map.nOffset().getX(), map.nOffset().getY(), map.nOffset().getZ()), step);
+		boolean nBlocks = FrustumLod.blocksPermeation(
+				hostImpedance, nBranch.effectiveImpedance(), nBranch.effectivePermeation());
 		recordBounceNeighbor(root, hostOrigin, map.nOffset(), step, byKey, setColor, setId, dir);
+
+		boolean eBlocks = false;
+		boolean dBlocks = nBlocks;
 		if (map.hasTangent()) {
+			Branch eBranch = root.getAtLod(
+					hostOrigin.add(map.eOffset().getX(), map.eOffset().getY(), map.eOffset().getZ()), step);
+			eBlocks = FrustumLod.blocksPermeation(
+					hostImpedance, eBranch.effectiveImpedance(), eBranch.effectivePermeation());
 			recordBounceNeighbor(root, hostOrigin, map.eOffset(), step, byKey, setColor, setId, dir);
+
+			Branch dBranch = root.getAtLod(
+					hostOrigin.add(map.dOffset().getX(), map.dOffset().getY(), map.dOffset().getZ()), step);
+			dBlocks = FrustumLod.blocksPermeation(
+					hostImpedance, dBranch.effectiveImpedance(), dBranch.effectivePermeation());
 			recordBounceNeighbor(root, hostOrigin, map.dOffset(), step, byKey, setColor, setId, dir);
 		}
+
+		return switch (FrustumLod.classify(nBlocks, eBlocks, dBlocks)) {
+			case SPLIT -> NedMarkerState.SPLIT;
+			case GAP -> NedMarkerState.TRANSMISSION;
+			case CORNER, FACE -> NedMarkerState.REFLECTION;
+		};
 	}
 
 	private static void recordBounceNeighbor(
@@ -494,7 +560,7 @@ public final class OctreeLayer implements DebugLayer {
 		BlockPos neighbor = hostOrigin.add(offset.getX(), offset.getY(), offset.getZ());
 		Branch lod = root.getAtLod(neighbor, step);
 		BlockPos cellOrigin = FrustumLod.alignOrigin(neighbor, root.start, step);
-		upsertOccupancy(byKey, cellOrigin, step, false, "bounce", lod.polar, setColor, setId, dir);
+		upsertOccupancy(byKey, cellOrigin, step, false, "bounce", lod.polar(), setColor, setId, dir);
 	}
 
 	/**
@@ -745,24 +811,27 @@ public final class OctreeLayer implements DebugLayer {
 		buffer.draw(positionMatrix, projectionMatrix, cameraPos);
 	}
 
-	/** Green contact crosses — above the white ray, below magenta terminators. */
+	/** Quartet-interaction crosses (green=transmission, red=reflection, yellow=split) — above the
+	 *  white ray, below the ray-termination markers. */
 	void renderNedMarkers(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
 		Vec3d playerPos = playerRenderPos();
 		List<OctreeOverlay.OctantView> visible = resolveVisibleFocus(playerPos).visible();
-		List<Vec3d> markers = markersInVisibleOctants(nedMarkers, visible);
+		List<NedMarker> markers = markersInVisibleOctants(nedMarkers, visible);
 		if (markers.isEmpty()) {
 			return;
 		}
 		nedMarkerBuffer.markDirty();
 		nedMarkerBuffer.rebuild(builder -> {
-			for (Vec3d center : markers) {
+			for (NedMarker marker : markers) {
+				Vec3d center = marker.position();
+				int markerColor = marker.state().color;
 				double x = center.x;
 				double y = center.y;
 				double z = center.z;
 				double s = NED_MARKER_HALF_EXTENT;
-				GpuLineBuffer.line(builder, x - s, y, z, x + s, y, z, NED_MARKER_COLOR);
-				GpuLineBuffer.line(builder, x, y - s, z, x, y + s, z, NED_MARKER_COLOR);
-				GpuLineBuffer.line(builder, x, y, z - s, x, y, z + s, NED_MARKER_COLOR);
+				GpuLineBuffer.line(builder, x - s, y, z, x + s, y, z, markerColor);
+				GpuLineBuffer.line(builder, x, y - s, z, x, y + s, z, markerColor);
+				GpuLineBuffer.line(builder, x, y, z - s, x, y, z + s, markerColor);
 			}
 		});
 		nedMarkerBuffer.draw(positionMatrix, projectionMatrix, cameraPos);
@@ -832,14 +901,14 @@ public final class OctreeLayer implements DebugLayer {
 		return new ClusterFocus(kept, true, Set.copyOf(hitSets));
 	}
 
-	static List<Vec3d> markersInVisibleOctants(List<Vec3d> markers, List<OctreeOverlay.OctantView> visible) {
+	static List<NedMarker> markersInVisibleOctants(List<NedMarker> markers, List<OctreeOverlay.OctantView> visible) {
 		if (markers.isEmpty() || visible.isEmpty()) {
 			return List.of();
 		}
-		List<Vec3d> kept = new ArrayList<>();
-		for (Vec3d marker : markers) {
+		List<NedMarker> kept = new ArrayList<>();
+		for (NedMarker marker : markers) {
 			for (OctreeOverlay.OctantView octant : visible) {
-				if (containsInclusive(octant.box(), marker)) {
+				if (containsInclusive(octant.box(), marker.position())) {
 					kept.add(marker);
 					break;
 				}
@@ -983,7 +1052,7 @@ public final class OctreeLayer implements DebugLayer {
 
 	private record Seed(Vec3d origin, Vec3d direction, double maxDistance) {}
 
-	record CastPathOverlay(List<OctreeOverlay.OctantView> views, List<Vec3d> nedMarkers) {}
+	record CastPathOverlay(List<OctreeOverlay.OctantView> views, List<NedMarker> nedMarkers) {}
 
 	/**
 	 * Focused-frustum visibility: when the player occupies cluster member(s), only those clusters

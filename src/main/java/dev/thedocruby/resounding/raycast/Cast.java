@@ -70,6 +70,9 @@ public class Cast {
     public double lastPriorImpedance;
     /** Octree node size (in blocks) the boundary was resolved at; >1 means a coarse cached node, not a single voxel. */
     public int lastBranchSize;
+    /** Origin of the host cell ({@code H}) the boundary was resolved at — together with
+     *  {@link #lastBranchSize} identifies the quartet for the stall guard in {@code Engine}. */
+    public @Nullable BlockPos lastCellOrigin;
     /** Human-readable material tag for the branch entered, for telemetry/debug readouts. */
     public @Nullable String lastMaterialLabel;
     /** Whether this bounce resolved via sub-voxel VoxelShape geometry rather than full-cube stepping. */
@@ -189,6 +192,7 @@ public class Cast {
 
         this.lastOctantColor = OctantColor.forNode(cellOrigin, cellSize);
         this.lastBranchSize = cellSize;
+        this.lastCellOrigin = cellOrigin;
         // Labels are bake-skipped; resolve only when dRays will display them.
         if (pConfig != null && pConfig.dRays) {
             this.lastMaterialLabel = branch.ensureMaterialLabel(world);
@@ -266,11 +270,15 @@ public class Cast {
 
         // Emission segment (impeded unset): exit the origin cell as a full cube with no reflection
         // and no attenuation. Subsequent casts use real geometry and material interaction.
+        // Snapshot once: branch.descriptor is a single volatile read, so every polar/impedance
+        // check below (and the polarizedImpedance/polarContrast/polarBlendWeight calls) agree on
+        // one baked generation instead of possibly re-reading mid-rebake.
+        Branch.NodeDescriptor branchDescriptor = branch.descriptor;
         double newImpedance = interactionMaterial.impedance();
-        if (!emissionCast && branch.polar != null
-                && !Double.isNaN(branch.mostCommonImpedance) && !Double.isNaN(branch.leastCommonImpedance)
-                && branch.mostCommonImpedance != branch.leastCommonImpedance) {
-            newImpedance = polarizedImpedance(branch, vector);
+        if (!emissionCast && branchDescriptor.polar() != null
+                && !Double.isNaN(branchDescriptor.mostCommonImpedance()) && !Double.isNaN(branchDescriptor.leastCommonImpedance())
+                && branchDescriptor.mostCommonImpedance() != branchDescriptor.leastCommonImpedance()) {
+            newImpedance = polarizedImpedance(branchDescriptor, vector);
         }
         if (!emissionCast && isVacuumImpedance(newImpedance)) {
             blank(position);
@@ -303,19 +311,19 @@ public class Cast {
         }
 
         // Polarized LOD cells: notable gate / commit can force reflect vs permeate.
-        if (!emissionCast && branch.polar != null && reflectivity > 0) {
-            double contrast = polarContrast(branch);
+        if (!emissionCast && branchDescriptor.polar() != null && reflectivity > 0) {
+            double contrast = polarContrast(branchDescriptor);
             int splitsLeft = beamBudget.splitsRemaining();
             if (!Physics.isNotableInteraction(contrast, splitsLeft)) {
                 // Not notable at this budget — continue without a hard event (permeate).
                 reflectivity = 0;
                 transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
             } else if (splitsLeft <= 0) {
-                double w = polarBlendWeight(branch, vector);
+                double w = polarBlendWeight(branchDescriptor, vector);
                 if (!Physics.commitReflect(w)) {
                     reflectivity = 0;
                     transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
-                    Vec3d bent = Physics.permeationBend(vector, vector.normalize(), branch.polar.normalize());
+                    Vec3d bent = Physics.permeationBend(vector, vector.normalize(), branchDescriptor.polar().normalize());
                     // Replace transmit direction below when bent.
                     vector = bent;
                 }
@@ -393,8 +401,8 @@ public class Cast {
         this.lastReflectivity = reflectivity;
         this.lastTransmission = transmission;
         this.lastBoundaryResolved = true;
-        this.lastPolarAlignment = (branch.polar != null && branch.polar.lengthSquared() > 1e-12)
-                ? Physics.polarAlignment(vector.normalize(), branch.polar.normalize())
+        this.lastPolarAlignment = (branchDescriptor.polar() != null && branchDescriptor.polar().lengthSquared() > 1e-12)
+                ? Physics.polarAlignment(vector.normalize(), branchDescriptor.polar().normalize())
                 : 1.0;
         this.lastMaterial = interactionMaterial;
     }
@@ -427,39 +435,56 @@ public class Cast {
         }
 
         Branch nBranch = lodAt(cellOrigin.add(map.nOffset().getX(), map.nOffset().getY(), map.nOffset().getZ()), cellSize);
-        double nZ = impedanceOf(nBranch);
-        boolean nBlocks = FrustumLod.blocksPermeation(hostImpedance, nZ, permeationOf(nBranch));
+        NeighborSample n = sampleNeighbor(nBranch);
+        boolean nBlocks = FrustumLod.blocksPermeation(hostImpedance, n.impedance(), n.permeation());
 
-        double eZ = Double.NaN;
-        double dZ = nZ;
+        NeighborSample e = NeighborSample.MISSING;
+        NeighborSample d = n;
         boolean eBlocks = false;
         boolean dBlocks = nBlocks;
         if (map.hasTangent()) {
             Branch eBranch = lodAt(cellOrigin.add(map.eOffset().getX(), map.eOffset().getY(), map.eOffset().getZ()), cellSize);
-            eZ = impedanceOf(eBranch);
-            eBlocks = FrustumLod.blocksPermeation(hostImpedance, eZ, permeationOf(eBranch));
+            e = sampleNeighbor(eBranch);
+            eBlocks = FrustumLod.blocksPermeation(hostImpedance, e.impedance(), e.permeation());
 
             Branch dBranch = lodAt(cellOrigin.add(map.dOffset().getX(), map.dOffset().getY(), map.dOffset().getZ()), cellSize);
-            dZ = impedanceOf(dBranch);
-            dBlocks = FrustumLod.blocksPermeation(hostImpedance, dZ, permeationOf(dBranch));
+            d = sampleNeighbor(dBranch);
+            dBlocks = FrustumLod.blocksPermeation(hostImpedance, d.impedance(), d.permeation());
         }
 
         FrustumLod.Interaction interaction = FrustumLod.classify(nBlocks, eBlocks, dBlocks);
 
         double wall = Double.NEGATIVE_INFINITY;
-        if (Double.isFinite(nZ)) wall = Math.max(wall, nZ);
-        if (Double.isFinite(eZ)) wall = Math.max(wall, eZ);
-        if (Double.isFinite(dZ)) wall = Math.max(wall, dZ);
+        if (Double.isFinite(n.impedance())) wall = Math.max(wall, n.impedance());
+        if (Double.isFinite(e.impedance())) wall = Math.max(wall, e.impedance());
+        if (Double.isFinite(d.impedance())) wall = Math.max(wall, d.impedance());
         double wallImpedance = wall == Double.NEGATIVE_INFINITY ? Double.NaN : wall;
 
         return new ForwardSurvey(interaction, wallImpedance);
     }
 
-    private static double permeationOf(@Nullable Branch b) {
+    /** One neighbor's impedance + permeation, sampled from a single {@code descriptor}/{@code
+     *  material} read each so both values come from the same baked generation — reading them via
+     *  two separate accessor calls let a concurrent rebake land in between, mixing an old
+     *  impedance with a new permeation (or vice versa) for the same neighbor. */
+    private record NeighborSample(double impedance, double permeation) {
+        static final NeighborSample MISSING = new NeighborSample(Double.NaN, Double.NaN);
+    }
+
+    private static NeighborSample sampleNeighbor(@Nullable Branch b) {
         if (b == null) {
-            return Double.NaN;
+            return NeighborSample.MISSING;
         }
-        return b.material != null ? b.material.permeation() : 1.0;
+        // One descriptor read + one material read, reused for both impedance and permeation —
+        // two independent Branch.effectiveImpedance()/effectivePermeation() calls would each read
+        // `material` on their own and could straddle a concurrent rebake.
+        Branch.NodeDescriptor d = b.descriptor;
+        Material material = b.material;
+        double impedance = !Double.isNaN(d.avgImpedance()) ? d.avgImpedance()
+                : !Double.isNaN(d.mostCommonImpedance()) ? d.mostCommonImpedance()
+                : material != null ? material.impedance() : Double.NaN;
+        double permeation = material != null ? material.permeation() : 1.0;
+        return new NeighborSample(impedance, permeation);
     }
 
     private @Nullable Branch lodAt(BlockPos pos, int lod) {
@@ -475,36 +500,24 @@ public class Cast {
         return tree == null ? null : tree.getAtLod(pos, lod);
     }
 
-    private static double impedanceOf(@Nullable Branch b) {
-        if (b == null) {
-            return Double.NaN;
-        }
-        if (!Double.isNaN(b.avgImpedance)) {
-            return b.avgImpedance;
-        }
-        if (!Double.isNaN(b.mostCommonImpedance)) {
-            return b.mostCommonImpedance;
-        }
-        return b.material != null ? b.material.impedance() : Double.NaN;
+    private static double polarizedImpedance(Branch.NodeDescriptor descriptor, Vec3d vector) {
+        double w = polarBlendWeight(descriptor, vector);
+        return Physics.blendImpedance(descriptor.mostCommonImpedance(), descriptor.leastCommonImpedance(), w);
     }
 
-    private static double polarizedImpedance(Branch branch, Vec3d vector) {
-        double w = polarBlendWeight(branch, vector);
-        return Physics.blendImpedance(branch.mostCommonImpedance, branch.leastCommonImpedance, w);
-    }
-
-    private static double polarBlendWeight(Branch branch, Vec3d vector) {
-        Vec3d pol = branch.polar;
+    private static double polarBlendWeight(Branch.NodeDescriptor descriptor, Vec3d vector) {
+        Vec3d pol = descriptor.polar();
         if (pol == null || pol.lengthSquared() < 1e-12) {
             return 0.5;
         }
-        double s = !Double.isNaN(branch.blendCoefficient) && branch.blendCoefficient >= 0.75 ? 2.0 : 1.0;
+        double blend = descriptor.blendCoefficient();
+        double s = !Double.isNaN(blend) && blend >= 0.75 ? 2.0 : 1.0;
         return Physics.polarBlendWeight(Physics.polarAlignment(vector.normalize(), pol.normalize()), s);
     }
 
-    private static double polarContrast(Branch branch) {
-        double most = branch.mostCommonImpedance;
-        double least = branch.leastCommonImpedance;
+    private static double polarContrast(Branch.NodeDescriptor descriptor) {
+        double most = descriptor.mostCommonImpedance();
+        double least = descriptor.leastCommonImpedance();
         double denom = Math.max(Math.abs(most), Math.abs(least));
         if (denom < 1e-9 || Double.isNaN(denom)) {
             return 0.0;

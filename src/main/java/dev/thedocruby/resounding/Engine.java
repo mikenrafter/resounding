@@ -4,6 +4,7 @@ package dev.thedocruby.resounding;
 // internal {
 
 import dev.thedocruby.resounding.openal.Context;
+import dev.thedocruby.resounding.debug.BounceRayLayer;
 import dev.thedocruby.resounding.debug.CaptureBuffer;
 import dev.thedocruby.resounding.raycast.Cast;
 import dev.thedocruby.resounding.raycast.FrustumLod;
@@ -23,8 +24,10 @@ import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
@@ -63,6 +66,20 @@ public class Engine {
 
 	/** Result of {@link #processEnv} including direct-path permeation for debug readout. */
 	private record ProcessedSound(SoundProfile profile, double directPermeation) {}
+
+	/** Identity of the octree host cell ({@code H}) a bounce reflected off, from {@link Cast#lastCellOrigin}
+	 *  / {@link Cast#lastBranchSize} — used only to detect a stalled reflect run below. */
+	private record Quartet(BlockPos origin, int size) {}
+
+	/**
+	 * A ray that reflects {@link #QUARTET_STALL_REFLECTS} times in a row while never leaving
+	 * {@link #QUARTET_STALL_QUARTETS} distinct octree host cells is oscillating in place, not
+	 * propagating (e.g. bouncing back and forth across a corner) — kill it. Replaces a flat
+	 * "3 consecutive reflects" cap, which doesn't fit the frustum algorithm's own back-and-forth
+	 * edge-walk pattern between two adjacent nodes.
+	 */
+	private static final int QUARTET_STALL_REFLECTS = 5;
+	private static final int QUARTET_STALL_QUARTETS = 2;
 
 	// Mixin bridge: set by recordLastSound(), consumed by play().
 	// These statics exist solely because the SoundSystem mixin and Source mixin
@@ -253,6 +270,7 @@ public class Engine {
 		cast.originBlock = BlockPos.ofFloored(ctx.soundPos());
 		cast.prepareEmissionContext(ctx.soundPos());
 		String terminationReason = "ok";
+		BounceRayLayer.TerminationCause cause = BounceRayLayer.TerminationCause.BUDGET;
 		// Only kept when dLog is on, so the consecutive-reflect guard can show whether a ray made
 		// real geometric progress between bounces or was stuck re-resolving the same spot.
 		java.util.ArrayList<Vec3d> trail = pConfig.dLog ? new java.util.ArrayList<>() : null;
@@ -286,7 +304,7 @@ public class Engine {
 				cast.frustumSize = advanceFrustumSize(cast, cast.reflected.length(), cast.lastReflectivity, false);
 				pathLength += cast.reflected.length();
 				debugTail.emit(ctx, cast, id, emissionPos, cast.reflected.position(), cast.reflected.power(),
-						results.size(), false);
+						results.size(), false, null);
 				emissionPos = cast.reflected.position();
 				emissionDir = cast.reflected.vector();
 				emissionPower = cast.reflected.power();
@@ -307,7 +325,7 @@ public class Engine {
 			cast.frustumSize = advanceFrustumSize(cast, cast.transmitted.length(), cast.lastTransmission, true);
 			pathLength = cast.transmitted.length();
 			debugTail.emit(ctx, cast, id, prior, cast.transmitted.position(), ray.power(), results.size(),
-					!(ray.power() > 1 && maxLength > pathLength));
+					!(ray.power() > 1 && maxLength > pathLength), BounceRayLayer.TerminationCause.BUDGET);
 			prior = cast.transmitted.position();
 			break;
 		}
@@ -319,17 +337,21 @@ public class Engine {
 
 		double segmentLength = pathLength;
 		byte reflected = 0;
+		/** Quartets touched during the current unbroken run of reflects; reset alongside {@code reflected}. */
+		Set<Quartet> reflectQuartets = new HashSet<>();
 		/** Propagation bounces only — times we followed the reflected branch (not hit recordings). */
 		int bounceCount = 0;
 		while (true) {
 			if (!(ray.power() > 1 && maxLength > pathLength && bounceCount < pConfig.nRayBounces)) {
 				terminationReason = "budget exhausted";
+				cause = BounceRayLayer.TerminationCause.BUDGET;
 				break;
 			}
 			if (trail != null) trail.add(ray.position());
 			cast.raycast(ray.position(), ray.vector(), ray.power());
 			if (cast.transmitted == null) {
-				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true);
+				cause = BounceRayLayer.TerminationCause.LEFT_WORLD;
+				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true, cause);
 				terminationReason = "left the known world";
 				break;
 			}
@@ -357,12 +379,18 @@ public class Engine {
 
 			if (reflect.apply(cast, results)) {
 				bounceCount++;
-				if (reflected++ > 2) {
-					debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true);
+				reflected++;
+				if (cast.lastCellOrigin != null) {
+					reflectQuartets.add(new Quartet(cast.lastCellOrigin, cast.lastBranchSize));
+				}
+				if (reflected >= QUARTET_STALL_REFLECTS && reflectQuartets.size() <= QUARTET_STALL_QUARTETS) {
+					cause = BounceRayLayer.TerminationCause.STALLED;
+					debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true, cause);
 					terminationReason = trail != null
-							? "3 consecutive reflects (" + (cast.lastShapeMode ? "SHAPE" : "VOXEL")
+							? "stalled (" + reflected + " reflects across " + reflectQuartets.size()
+									+ " quartets, " + (cast.lastShapeMode ? "SHAPE" : "VOXEL")
 									+ ") trail=" + formatTrail(trail)
-							: "3 consecutive reflects";
+							: "stalled (" + reflected + " reflects across " + reflectQuartets.size() + " quartets)";
 					break;
 				}
 				cast.frustumSize = advanceFrustumSize(cast, cast.reflected.length(), cast.lastReflectivity, false);
@@ -370,23 +398,26 @@ public class Engine {
 				segmentLength = 0;
 				ray = cast.reflected;
 				if (ray == null || ray.vector() == null) {
-					debugTail.emit(ctx, cast, id, prior, prior, ray == null ? 0 : ray.power(), results.size(), true);
+					cause = BounceRayLayer.TerminationCause.NO_DIRECTION;
+					debugTail.emit(ctx, cast, id, prior, prior, ray == null ? 0 : ray.power(), results.size(), true, cause);
 					terminationReason = "reflected ray had no direction";
 					break;
 				}
 				boolean continues = ray.power() > 1
 						&& maxLength > pathLength
 						&& bounceCount < pConfig.nRayBounces;
-				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), !continues);
+				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), !continues, cause);
 				prior = ray.position();
 				if (!continues) {
 					terminationReason = "budget exhausted after reflect";
+					cause = BounceRayLayer.TerminationCause.BUDGET;
 					break;
 				}
 				continue;
 			}
 			if (cast.transmitted.vector() == null) {
-				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true);
+				cause = BounceRayLayer.TerminationCause.NO_DIRECTION;
+				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true, cause);
 				terminationReason = "transmitted ray had no direction";
 				break;
 			}
@@ -400,15 +431,17 @@ public class Engine {
 			boolean continues = ray.power() > 1
 					&& maxLength > pathLength
 					&& cast.transmitted.vector() != null;
-			debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), !continues);
+			debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), !continues, cause);
 			prior = ray.position();
 			reflected = 0;
+			reflectQuartets.clear();
 			if (!continues) {
 				terminationReason = "budget exhausted after transmit";
+				cause = BounceRayLayer.TerminationCause.BUDGET;
 				break;
 			}
 		}
-		debugTail.overlayTerminator(ctx, cast, id);
+		debugTail.overlayTerminator(ctx, cast, id, cause);
 		logRayTermination(id, terminationReason, bounceCount, prior);
 		return results;
 	}
@@ -491,12 +524,13 @@ public class Engine {
 				Vec3d segmentEnd,
 				double segmentPower,
 				int bounceIndex,
-				boolean segmentTerminated
+				boolean segmentTerminated,
+				@Nullable BounceRayLayer.TerminationCause cause
 		) {
 			if (!pConfig.dRays || rayId >= MAX_DEBUG_TRACE_RAYS) {
 				return;
 			}
-			emitDebugSegment(ctx, cast, rayId, segmentStart, segmentEnd, segmentPower, bounceIndex, segmentTerminated);
+			emitDebugSegment(ctx, cast, rayId, segmentStart, segmentEnd, segmentPower, bounceIndex, segmentTerminated, cause);
 			this.start = segmentStart;
 			this.end = segmentEnd;
 			this.power = segmentPower;
@@ -504,11 +538,11 @@ public class Engine {
 			this.terminated = segmentTerminated;
 		}
 
-		void overlayTerminator(SoundEvalContext ctx, Cast cast, int rayId) {
+		void overlayTerminator(SoundEvalContext ctx, Cast cast, int rayId, BounceRayLayer.TerminationCause cause) {
 			if (!pConfig.dRays || rayId >= MAX_DEBUG_TRACE_RAYS || end == null || terminated) {
 				return;
 			}
-			Renderer.addTerminatorCross(end);
+			Renderer.addTerminatorCross(end, cause);
 		}
 	}
 
@@ -521,7 +555,8 @@ public class Engine {
 			Vec3d end,
 			double power,
 			int bounceIndex,
-			boolean terminated
+			boolean terminated,
+			@Nullable BounceRayLayer.TerminationCause cause
 	) {
 		Renderer.addSoundBounceRay(
 				start,
@@ -537,7 +572,8 @@ public class Engine {
 				cast.lastPriorImpedance,
 				cast.lastBranchSize,
 				cast.lastMaterialLabel,
-				terminated
+				terminated,
+				cause
 		);
 	}
 

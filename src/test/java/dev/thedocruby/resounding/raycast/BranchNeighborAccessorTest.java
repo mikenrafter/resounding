@@ -38,20 +38,17 @@ class BranchNeighborAccessorTest {
         assertEquals(2, result.size, "virtual node must be the accessor's own size, not the coarser ancestor's");
         assertEquals(new BlockPos(0, 0, 0), result.start);
         assertEquals(STONE, result.material);
-        assertEquals(STONE.impedance(), result.mostCommonImpedance);
-        assertEquals(STONE.impedance(), result.leastCommonImpedance);
-        assertEquals(STONE.impedance(), result.avgImpedance);
-        assertNull(result.polar, "uniform region has no gradient");
+        assertEquals(STONE.impedance(), result.mostCommonImpedance());
+        assertEquals(STONE.impedance(), result.leastCommonImpedance());
+        assertEquals(STONE.impedance(), result.avgImpedance());
+        assertNull(result.polar(), "uniform region has no gradient");
     }
 
     @Test
     void atOrFinerNeighbor_returnsRealPreBakedBranchDirectly_noAggregation() {
         Branch root = new Branch(new BlockPos(0, 0, 0), 4);
         Branch realChild = new Branch(new BlockPos(2, 0, 0), 2, GRASS);
-        realChild.mostCommonImpedance = 640.0;
-        realChild.leastCommonImpedance = 400.0;
-        realChild.avgImpedance = 520.0;
-        realChild.polar = null;
+        realChild.bake(new Branch.NodeDescriptor(640.0, 400.0, 520.0, Double.NaN, null));
         root.put(new BlockPos(2, 0, 0).asLong(), realChild);
         // Root is heterogeneous (non-empty leaves) so growOctree-style pruning does not apply here.
         root.put(new BlockPos(0, 0, 0).asLong(), new Branch(new BlockPos(0, 0, 0), 2, STONE));
@@ -82,8 +79,8 @@ class BranchNeighborAccessorTest {
         assertEquals(2, result.size);
         assertEquals(new BlockPos(16, 0, 0), result.start);
         assertEquals(GRASS, result.material);
-        assertEquals(GRASS.impedance(), result.mostCommonImpedance);
-        assertNull(result.polar);
+        assertEquals(GRASS.impedance(), result.mostCommonImpedance());
+        assertNull(result.polar());
     }
 
     @Test
@@ -101,7 +98,7 @@ class BranchNeighborAccessorTest {
         assertEquals(2, result.size);
         assertEquals(new BlockPos(0, 16, 0), result.start);
         assertEquals(WATER, result.material);
-        assertEquals(WATER.impedance(), result.avgImpedance);
-        assertNull(result.polar);
+        assertEquals(WATER.impedance(), result.avgImpedance());
+        assertNull(result.polar());
     }
 }

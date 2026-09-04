@@ -49,7 +49,7 @@ public final class BeamVisitRecorder {
             boolean virtual = finest.size > step;
 
             BlockPos cellOrigin = FrustumLod.alignOrigin(BlockPos.ofFloored(pos), lod.start, step);
-            visits.add(new VisitedBox(cellOrigin, step, virtual, lod.polar));
+            visits.add(new VisitedBox(cellOrigin, step, virtual, lod.polar()));
 
             pos = pos.add(dir.x * step, dir.y * step, dir.z * step);
             distanceSoFar += step;

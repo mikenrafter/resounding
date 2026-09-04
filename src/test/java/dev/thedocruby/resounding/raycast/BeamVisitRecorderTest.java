@@ -23,9 +23,7 @@ class BeamVisitRecorderTest {
     @Test
     void collectAlongBeam_recordsVirtualStepsInsideHomogeneousLargeLeaf() {
         Branch root = new Branch(new BlockPos(0, 0, 0), 16, AIR);
-        root.mostCommonImpedance = AIR.impedance();
-        root.leastCommonImpedance = AIR.impedance();
-        root.avgImpedance = AIR.impedance();
+        root.bake(new Branch.NodeDescriptor(AIR.impedance(), AIR.impedance(), AIR.impedance(), Double.NaN, null));
 
         Beam beam = new Beam(
                 new Vec3d(0.5, 0.5, 0.5), new Vec3d(1, 0, 0),
@@ -46,9 +44,7 @@ class BeamVisitRecorderTest {
     @Test
     void collectAlongBeam_usesSizeTwoOnceDistanceReachesTier() {
         Branch root = new Branch(new BlockPos(0, 0, 0), 16, AIR);
-        root.mostCommonImpedance = AIR.impedance();
-        root.leastCommonImpedance = AIR.impedance();
-        root.avgImpedance = AIR.impedance();
+        root.bake(new Branch.NodeDescriptor(AIR.impedance(), AIR.impedance(), AIR.impedance(), Double.NaN, null));
 
         Beam beam = new Beam(
                 new Vec3d(0.5, 0.5, 0.5), new Vec3d(1, 0, 0),

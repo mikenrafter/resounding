@@ -228,11 +228,13 @@ public class OctreeManager {
             }
             valid = regionHomogeneous(chunk, start, 2, corner);
             Polarization.Descriptor descriptor = Polarization.bakeOctant(cornerMaterials);
-            root.mostCommonImpedance = descriptor.mostCommonImpedance();
-            root.leastCommonImpedance = descriptor.leastCommonImpedance();
-            root.avgImpedance = descriptor.avgImpedance();
-            root.polar = descriptor.polar();
-            root.blendCoefficient = descriptor.blendCoefficient();
+            root.bake(new Branch.NodeDescriptor(
+                    descriptor.mostCommonImpedance(),
+                    descriptor.leastCommonImpedance(),
+                    descriptor.avgImpedance(),
+                    descriptor.blendCoefficient(),
+                    descriptor.polar()
+            ));
             if (!valid) {
                 root.empty();
                 for (int i = 0; i < blockSequence.length; i++) {
@@ -252,11 +254,7 @@ public class OctreeManager {
     /** Size-1 leaf baked descriptor (frustums-plan.md Phase 0 table): no gradient, max=min=avg. */
     private static void bakeLeafDescriptor(Branch leaf) {
         double impedance = leaf.material != null ? leaf.material.impedance() : Double.NaN;
-        leaf.mostCommonImpedance = impedance;
-        leaf.leastCommonImpedance = impedance;
-        leaf.avgImpedance = impedance;
-        leaf.polar = null;
-        leaf.blendCoefficient = Double.NaN;
+        leaf.bake(new Branch.NodeDescriptor(impedance, impedance, impedance, Double.NaN, null));
     }
 
     /**
@@ -277,37 +275,44 @@ public class OctreeManager {
         List<Vec3d> childPolar = new ArrayList<>(children.length);
         List<Double> childWeight = new ArrayList<>(children.length);
         for (Branch child : children) {
-            sumHigh += child.mostCommonImpedance;
-            sumLow += child.leastCommonImpedance;
-            sumAvg += child.avgImpedance;
-            if (child.polar != null) {
-                double blend = child.blendCoefficient;
+            // Snapshot once: child.descriptor is a single volatile read, so every field below
+            // comes from the same baked generation instead of possibly straddling two.
+            Branch.NodeDescriptor d = child.descriptor;
+            sumHigh += d.mostCommonImpedance();
+            sumLow += d.leastCommonImpedance();
+            sumAvg += d.avgImpedance();
+            if (d.polar() != null) {
+                double blend = d.blendCoefficient();
                 if (Double.isNaN(blend)) {
-                    double range = Math.abs(child.mostCommonImpedance - child.leastCommonImpedance);
+                    double range = Math.abs(d.mostCommonImpedance() - d.leastCommonImpedance());
                     blend = range > 0
-                            ? Math.abs(child.avgImpedance - child.leastCommonImpedance) / range
+                            ? Math.abs(d.avgImpedance() - d.leastCommonImpedance()) / range
                             : 1.0;
                     blend = Math.max(0.0, Math.min(1.0, blend));
                 }
-                childPolar.add(child.polar);
+                childPolar.add(d.polar());
                 childWeight.add(Polarization.stiffWeight(blend));
                 sumBlend += blend;
                 blendCount++;
             }
         }
-        root.mostCommonImpedance = sumHigh / children.length;
-        root.leastCommonImpedance = sumLow / children.length;
-        root.avgImpedance = sumAvg / children.length;
-        root.blendCoefficient = blendCount > 0 ? sumBlend / blendCount : Double.NaN;
+        Vec3d combinedPolar;
         if (childPolar.isEmpty()) {
-            root.polar = null;
+            combinedPolar = null;
         } else {
             double[] weights = new double[childWeight.size()];
             for (int i = 0; i < weights.length; i++) {
                 weights[i] = childWeight.get(i);
             }
-            root.polar = Polarization.combinePolar(childPolar.toArray(new Vec3d[0]), weights);
+            combinedPolar = Polarization.combinePolar(childPolar.toArray(new Vec3d[0]), weights);
         }
+        root.bake(new Branch.NodeDescriptor(
+                sumHigh / children.length,
+                sumLow / children.length,
+                sumAvg / children.length,
+                blendCount > 0 ? sumBlend / blendCount : Double.NaN,
+                combinedPolar
+        ));
     }
 
     /**
