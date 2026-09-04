@@ -337,34 +337,38 @@ public class Cast {
         } else {
             reflectPlane = rstep.plane();
         }
-        // Open-cell exit: survey N/E/D in the forward orthant (hit-face plane) and pick one of
-        // the four maps (CORNER / GAP / SPLIT / FACE). Trailing cells are never surveyed.
-        // Pencil-ray mode (1³): skip the beam occupancy probe — shapes + local materials only.
+        // Open-cell exit: survey N/E/D from the first+second DDA axes when they differ. Same-axis
+        // projection → ordinary non-NED boundary (no forward survey).
         FrustumLod.Interaction forwardInteraction = FrustumLod.Interaction.CORNER;
         if (!emissionCast
                 && cellSize > 1
                 && gridAlignedReflect
                 && step.plane() != Vec3i.ZERO
                 && !isSolidImpedance(newImpedance)) {
-            ForwardSurvey survey = surveyForward(cellOrigin, cellSize, step.plane(), vector, newImpedance);
-            forwardInteraction = survey.interaction();
-            if (forwardInteraction == FrustumLod.Interaction.GAP) {
-                reflectivity = 0;
-                transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
+            ForwardSurvey survey = surveyForward(
+                    cellOrigin, cellBase, cellSize, pposition, step.plane(), vector, newImpedance);
+            if (survey == null) {
+                forwardInteraction = FrustumLod.Interaction.FACE;
             } else {
-                if (reflectivity == 0) {
-                    double wallZ = survey.wallImpedance();
-                    if (Double.isFinite(wallZ) && !impedancesClose(priorImpedance, wallZ)) {
-                        reflectivity = Physics.reflection(priorImpedance, wallZ);
-                        transmission = transmissionForBoundary(
-                                reflectivity, interactionMaterial.permeation(), pdistance);
+                forwardInteraction = survey.interaction();
+                if (forwardInteraction == FrustumLod.Interaction.GAP) {
+                    reflectivity = 0;
+                    transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
+                } else {
+                    if (reflectivity == 0) {
+                        double wallZ = survey.wallImpedance();
+                        if (Double.isFinite(wallZ) && !impedancesClose(priorImpedance, wallZ)) {
+                            reflectivity = Physics.reflection(priorImpedance, wallZ);
+                            transmission = transmissionForBoundary(
+                                    reflectivity, interactionMaterial.permeation(), pdistance);
+                        }
                     }
-                }
-                if (reflectivity > 0) {
-                    // Bounce off the exit face from the open side (SVG H cell), not the entry face.
-                    reflectPlane = step.plane();
-                    rposition = pposition;
-                    rdistance = pdistance;
+                    if (reflectivity > 0) {
+                        // Bounce off the exit face from the open side (SVG H cell), not the entry face.
+                        reflectPlane = step.plane();
+                        rposition = pposition;
+                        rdistance = pdistance;
+                    }
                 }
             }
         }
@@ -404,18 +408,23 @@ public class Cast {
      * Surveys N/E/D at the same LOD as {@code cellOrigin} in one pass, returning both the
      * four-map interaction (host→neighbor interaction permeate, {@link FrustumLod#blocksPermeation},
      * not raw impedance stiffness; missing neighbors count as open) and the wall impedance
-     * ({@code max} of the finite neighbor impedances, or just N's when there's no tangent) needed
-     * to resolve a boundary that turned out non-reflective. Previously these were two separate
-     * methods that each independently walked the same N/E/D octree offsets.
+     * ({@code max} of the finite neighbor impedances) needed to resolve a boundary that turned out
+     * non-reflective. Returns {@code null} when the DDA projection says this exit is a single-axis
+     * (non-NED) step.
      */
-    private ForwardSurvey surveyForward(
+    private @Nullable ForwardSurvey surveyForward(
             BlockPos cellOrigin,
+            Vec3d cellBase,
             int cellSize,
+            Vec3d hitPos,
             Vec3i face,
             Vec3d rayDir,
             double hostImpedance
     ) {
-        FrustumLod.ForwardMap map = FrustumLod.forwardMap(face, rayDir, cellSize);
+        FrustumLod.ForwardMap map = FrustumLod.forwardMap(cellBase, cellSize, hitPos, rayDir, face);
+        if (map == null) {
+            return null;
+        }
 
         Branch nBranch = lodAt(cellOrigin.add(map.nOffset().getX(), map.nOffset().getY(), map.nOffset().getZ()), cellSize);
         double nZ = impedanceOf(nBranch);

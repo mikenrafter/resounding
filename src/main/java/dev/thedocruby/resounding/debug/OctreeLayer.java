@@ -455,8 +455,11 @@ public final class OctreeLayer implements DebugLayer {
 		BlockPos hostQuery = BlockPos.ofFloored(hostProbe);
 		BlockPos hostOrigin = FrustumLod.alignOrigin(hostQuery, root.start, step);
 
+		Vec3d cellBase = new Vec3d(hostOrigin.getX(), hostOrigin.getY(), hostOrigin.getZ());
+		Vec3i firstPlane = FrustumLod.castPlaneAtHit(hit, cellBase, step, dir);
+		Vec3i exitFace = FrustumLod.forwardFace(firstPlane, dir);
+
 		// Recolor H only if the cast already recorded it — do not invent a host cube here.
-		Vec3i exitFace = FrustumLod.dominantExitFace(dir);
 		if (byKey.containsKey(occupancyKey(hostOrigin, step, false))) {
 			Occupancy host = upsertOccupancy(byKey, hostOrigin, step, false, "leaf", null, setColor, setId, dir);
 			if (setId != null) {
@@ -464,8 +467,10 @@ public final class OctreeLayer implements DebugLayer {
 			}
 		}
 
-		Vec3i face = exitFace;
-		FrustumLod.ForwardMap map = FrustumLod.forwardMap(face, dir, step);
+		FrustumLod.ForwardMap map = FrustumLod.forwardMap(cellBase, step, hit, dir, firstPlane);
+		if (map == null) {
+			return;
+		}
 		recordBounceNeighbor(root, hostOrigin, map.nOffset(), step, byKey, setColor, setId, dir);
 		if (map.hasTangent()) {
 			recordBounceNeighbor(root, hostOrigin, map.eOffset(), step, byKey, setColor, setId, dir);

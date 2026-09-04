@@ -5,10 +5,11 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Vec3i;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
- * LOD frustum growth, step schedule, and the 2D forward-orthant interaction map used at a face
- * hit (XY / XZ / YZ).
+ * LOD frustum growth, step schedule, and the forward N/E/D occupancy map used at an open-cell
+ * exit.
  *
  * <p>Footprint width {@code = }{@link #BASE_FOOTPRINT}{@code + growthPerBlock * distance}, where
  * {@code growthPerBlock} comes from {@link #growthPerBlock(int)} — never a hardcoded constant, since
@@ -27,9 +28,13 @@ import org.jetbrains.annotations.NotNull;
  * rather than calling {@link #growthPerBlock(int)} per-cast — it involves asin/sin/tan and has no
  * business running inside the raycast hot path.
  *
- * <p>At a hit, the ray occupies {@code H} (open). The three cells in the forward orthant on the
- * hit-face plane are {@code N} (through the hit face), {@code E} (along the leading tangent), and
- * {@code D} ({@code N+E}). Trailing cells are never surveyed. Four maps (same heading):
+ * <p>N/E/D axes come from the next two octant-sized DDA boundaries the ray will strike (signed
+ * travel directions), not from “face plane + dominant tangent”. The first boundary is the exit
+ * just resolved; the second is projected by continuing Amanatides–Woo arithmetic one same-size
+ * cell forward <em>without</em> fetching that neighbor from the octree. If that projected face
+ * shares the first face's axis, the exit is an ordinary single-axis DDA step (no N/E/D survey).
+ * Otherwise {@code N} is the first axis, {@code E} the second, and {@code D = N+E}. Trailing cells
+ * are never surveyed. Four maps (same heading):
  * <pre>
  *   N | D          1 CORNER  X X / O X  reflect, walk to the shared vertex
  *  ---+---         2 GAP     X O / O O  pass through E/D
@@ -71,8 +76,8 @@ public final class FrustumLod {
     }
 
     /**
-     * Same-size neighbor offsets from {@code H}: {@code N} through the hit face, {@code E} along
-     * the leading tangent of the hit-face plane, {@code D = N+E}.
+     * Same-size neighbor offsets from {@code H}: {@code N} along the first DDA exit axis,
+     * {@code E} along the projected second DDA axis, {@code D = N+E}.
      */
     public record ForwardMap(
             @NotNull Vec3i nOffset,
@@ -174,7 +179,7 @@ public final class FrustumLod {
      * {@code plane = -sign(ray)} on the crossed axis; this recovers the travel sign.
      */
     public static @NotNull Vec3i forwardFace(@NotNull Vec3i face, @NotNull Vec3d rayDir) {
-        int axis = face.getX() != 0 ? 0 : face.getY() != 0 ? 1 : 2;
+        int axis = faceAxis(face);
         int s = axisSign(component(rayDir, axis));
         if (s == 0) {
             int f = axis == 0 ? face.getX() : axis == 1 ? face.getY() : face.getZ();
@@ -187,31 +192,129 @@ public final class FrustumLod {
     }
 
     /**
-     * Forward orthant on the hit-face plane: {@code N} through the face, {@code E} along the
-     * leading tangent (the other face-plane axis with larger {|ray|}; ties prefer the cyclic
-     * next axis), {@code D = N+E}. A head-on ray (no tangent) yields a zero {@code E} offset.
+     * Builds the N/E/D map from the first exit plane and the next same-size DDA face the ray would
+     * strike after crossing it. The second face is pure arithmetic (virtual neighbor cell of
+     * {@code cellSize}) — no octree fetch. Returns {@code null} when that projected face shares
+     * {@code firstPlane}'s axis (ordinary non-NED DDA boundary).
+     *
+     * @param cellBase   min corner of H
+     * @param hitPos     position on the first exit face
+     * @param firstPlane Cast plane ({@code -sign(ray)} on the crossed axis)
      */
-    public static @NotNull ForwardMap forwardMap(@NotNull Vec3i face, @NotNull Vec3d rayDir, int cellSize) {
-        int s = Math.max(1, cellSize);
-        int faceAxis = face.getX() != 0 ? 0 : face.getY() != 0 ? 1 : 2;
-        int a1 = (faceAxis + 1) % 3;
-        int a2 = (faceAxis + 2) % 3;
-        double r1 = component(rayDir, a1);
-        double r2 = component(rayDir, a2);
-        int tangentAxis = Math.abs(r1) >= Math.abs(r2) ? a1 : a2;
-        int nSign = axisSign(component(rayDir, faceAxis));
-        if (nSign == 0) {
-            int f = faceAxis == 0 ? face.getX() : faceAxis == 1 ? face.getY() : face.getZ();
-            nSign = -Integer.signum(f);
-            if (nSign == 0) {
-                nSign = 1;
-            }
+    public static @Nullable ForwardMap forwardMap(
+            @NotNull Vec3d cellBase,
+            int cellSize,
+            @NotNull Vec3d hitPos,
+            @NotNull Vec3d rayDir,
+            @NotNull Vec3i firstPlane
+    ) {
+        if (firstPlane.equals(Vec3i.ZERO)) {
+            return null;
         }
-        int eSign = axisSign(component(rayDir, tangentAxis));
-        Vec3i n = axisUnit(faceAxis, nSign * s);
-        Vec3i e = axisUnit(tangentAxis, eSign * s);
+        int s = Math.max(1, cellSize);
+        int nAxis = faceAxis(firstPlane);
+        int nSign = travelSign(firstPlane, rayDir, nAxis);
+        Vec3i secondPlane = nextDdaPlane(cellBase, s, hitPos, rayDir, nAxis, nSign);
+        if (secondPlane == null || secondPlane.equals(Vec3i.ZERO)) {
+            return null;
+        }
+        int eAxis = faceAxis(secondPlane);
+        if (eAxis == nAxis) {
+            return null;
+        }
+        int eSign = travelSign(secondPlane, rayDir, eAxis);
+        if (eSign == 0) {
+            return null;
+        }
+        Vec3i n = axisUnit(nAxis, nSign * s);
+        Vec3i e = axisUnit(eAxis, eSign * s);
         Vec3i d = new Vec3i(n.getX() + e.getX(), n.getY() + e.getY(), n.getZ() + e.getZ());
-        return new ForwardMap(n, e, d, faceAxis, tangentAxis);
+        return new ForwardMap(n, e, d, nAxis, eAxis);
+    }
+
+    /**
+     * Next face plane the ray would exit after entering the same-size neighbor beyond
+     * {@code firstAxis}/{@code firstTravelSign}. Does not sample the octree — only assumes a
+     * {@code cellSize} cube abutting H. Plane uses Cast's {@code -sign(ray)} convention.
+     */
+    public static @Nullable Vec3i nextDdaPlane(
+            @NotNull Vec3d cellBase,
+            int cellSize,
+            @NotNull Vec3d hitPos,
+            @NotNull Vec3d rayDir,
+            int firstAxis,
+            int firstTravelSign
+    ) {
+        int s = Math.max(1, cellSize);
+        if (firstTravelSign == 0) {
+            return null;
+        }
+        double nextX = cellBase.x + (firstAxis == 0 ? firstTravelSign * s : 0);
+        double nextY = cellBase.y + (firstAxis == 1 ? firstTravelSign * s : 0);
+        double nextZ = cellBase.z + (firstAxis == 2 ? firstTravelSign * s : 0);
+        return ddaExitPlane(nextX, nextY, nextZ, s, hitPos, rayDir);
+    }
+
+    /**
+     * Argmin axis exit from an AABB, matching {@code Cast.getStepPair}'s bound/tie rules. Plane
+     * components are {@code -sign(dir)} on the winning axis.
+     */
+    static @Nullable Vec3i ddaExitPlane(
+            double baseX, double baseY, double baseZ,
+            int size,
+            @NotNull Vec3d position,
+            @NotNull Vec3d vector
+    ) {
+        double xstep = boundAxis(baseX, position.x, size, vector.x);
+        double ystep = boundAxis(baseY, position.y, size, vector.y);
+        double zstep = boundAxis(baseZ, position.z, size, vector.z);
+
+        boolean yWins = ystep < xstep;
+        double coefficient = yWins ? ystep : xstep;
+        int axis = yWins ? 1 : 0;
+
+        boolean zWins = zstep < coefficient;
+        coefficient = zWins ? zstep : coefficient;
+        axis = zWins ? 2 : axis;
+
+        if (!(coefficient > 0) || !Double.isFinite(coefficient)) {
+            return null;
+        }
+        double dir = axis == 0 ? vector.x : axis == 1 ? vector.y : vector.z;
+        int planeSign = dir > 0 ? -1 : dir < 0 ? 1 : 0;
+        if (planeSign == 0) {
+            return null;
+        }
+        return axisUnit(axis, planeSign);
+    }
+
+    /** Same positive-forward bound as {@code Cast.boundAxis}. */
+    static double boundAxis(double base, double pos, double size, double dir) {
+        double value = (base - pos + (dir > 0 ? size : 0)) / dir;
+        if (value <= 0 || Double.isNaN(value)) {
+            return Double.POSITIVE_INFINITY;
+        }
+        return value;
+    }
+
+    private static int faceAxis(@NotNull Vec3i face) {
+        if (face.getX() != 0) {
+            return 0;
+        }
+        if (face.getY() != 0) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private static int travelSign(@NotNull Vec3i plane, @NotNull Vec3d rayDir, int axis) {
+        int s = axisSign(component(rayDir, axis));
+        if (s != 0) {
+            return s;
+        }
+        int f = axis == 0 ? plane.getX() : axis == 1 ? plane.getY() : plane.getZ();
+        s = -Integer.signum(f);
+        return s == 0 ? 1 : s;
     }
 
     /**
@@ -367,6 +470,60 @@ public final class FrustumLod {
             double amount
     ) {
         return edgeWalk(hit, cellBase, cellSize, face, rayDir, amount, Interaction.CORNER);
+    }
+
+    /**
+     * Cast plane ({@code -sign(ray)} on the crossed axis) for a hit that already lies on a face of
+     * {@code [cellBase, cellBase+cellSize]}. Corner/edge hits prefer the candidate axis with the
+     * largest {|ray|} so the known exit matches DDA intent.
+     */
+    public static @NotNull Vec3i castPlaneAtHit(
+            @NotNull Vec3d hit,
+            @NotNull Vec3d cellBase,
+            int cellSize,
+            @NotNull Vec3d rayDir
+    ) {
+        int s = Math.max(1, cellSize);
+        double maxX = cellBase.x + s;
+        double maxY = cellBase.y + s;
+        double maxZ = cellBase.z + s;
+        final double eps = 1e-5;
+        int bestAxis = -1;
+        double bestAbs = -1.0;
+        if (Math.abs(hit.x - cellBase.x) <= eps || Math.abs(hit.x - maxX) <= eps) {
+            double a = Math.abs(rayDir.x);
+            if (a >= bestAbs) {
+                bestAbs = a;
+                bestAxis = 0;
+            }
+        }
+        if (Math.abs(hit.y - cellBase.y) <= eps || Math.abs(hit.y - maxY) <= eps) {
+            double a = Math.abs(rayDir.y);
+            if (a >= bestAbs) {
+                bestAbs = a;
+                bestAxis = 1;
+            }
+        }
+        if (Math.abs(hit.z - cellBase.z) <= eps || Math.abs(hit.z - maxZ) <= eps) {
+            double a = Math.abs(rayDir.z);
+            if (a >= bestAbs) {
+                bestAxis = 2;
+            }
+        }
+        if (bestAxis < 0) {
+            Vec3i face = dominantExitFace(rayDir);
+            return new Vec3i(-face.getX(), -face.getY(), -face.getZ());
+        }
+        double dir = component(rayDir, bestAxis);
+        int planeSign = dir > 0 ? -1 : dir < 0 ? 1 : 0;
+        if (planeSign == 0) {
+            // Hit is on a face but ray is parallel — use which side of the cell the hit sits on.
+            double min = bestAxis == 0 ? cellBase.x : bestAxis == 1 ? cellBase.y : cellBase.z;
+            double max = min + s;
+            double h = component(hit, bestAxis);
+            planeSign = Math.abs(h - max) <= eps ? -1 : 1;
+        }
+        return axisUnit(bestAxis, planeSign);
     }
 
     /** Unit face along the largest {|component|} of {@code dir} (forward through that face). */

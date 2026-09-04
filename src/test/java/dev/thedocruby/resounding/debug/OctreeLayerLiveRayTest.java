@@ -32,8 +32,9 @@ class OctreeLayerLiveRayTest {
 		Branch root = wallTree();
 		List<OctreeOverlay.VisitedStep> steps = new ArrayList<>();
 
+		// Stronger Y component so second DDA face wins over the far +X of the virtual neighbor.
 		OctreeLayer.appendBounceOff(
-				root, new Vec3d(8, 0.5, 0.5), new Vec3d(1, 0, 0), 1, steps, new HashSet<>()
+				root, new Vec3d(8, 0.5, 0.5), new Vec3d(1, 2, 0), 1, steps, new HashSet<>()
 		);
 
 		assertFalse(steps.isEmpty());
@@ -51,13 +52,23 @@ class OctreeLayerLiveRayTest {
 		List<OctreeOverlay.VisitedStep> steps = new ArrayList<>();
 
 		OctreeLayer.appendBounceOff(
-				root, new Vec3d(8, 0.5, 0.5), new Vec3d(-1, 0, 0), 1, steps, new HashSet<>()
+				root, new Vec3d(8, 0.5, 0.5), new Vec3d(-1, 2, 0), 1, steps, new HashSet<>()
 		);
 
 		assertFalse(steps.isEmpty());
 		assertEquals("bounce", steps.getFirst().label());
 		assertTrue(steps.getFirst().box().minX < 8.0);
 		assertTrue(steps.getFirst().box().maxX <= 8.0 + 1e-9);
+	}
+
+	@Test
+	void bounceOffHeadOnSkipsNed() {
+		Branch root = wallTree();
+		List<OctreeOverlay.VisitedStep> steps = new ArrayList<>();
+		OctreeLayer.appendBounceOff(
+				root, new Vec3d(8, 0.5, 0.5), new Vec3d(1, 0, 0), 2, steps, new HashSet<>()
+		);
+		assertTrue(steps.isEmpty(), "same-axis DDA projection must not invent N/E/D neighbors");
 	}
 
 	@Test
@@ -79,10 +90,10 @@ class OctreeLayerLiveRayTest {
 	@Test
 	void collectCastVisitedViewsEmitsBounceOffAtATurnAndKeepsPolar() {
 		Branch root = wallTree();
-		// LOD > 1: frustum N/E/D applies; 1³ pencil-ray skips bounce-off neighbors.
+		// LOD > 1 with oblique approach so first/second DDA axes differ (NED applies).
 		List<RayLineLayer.LineSegment> path = List.of(
-				seg(0.5, 0.5, 0.5, 8.0, 0.5, 0.5, 3, 2),
-				seg(8.0, 0.5, 0.5, 8.0, 0.5, 4.0, 3, 2)
+				seg(0.5, 0.5, 0.5, 8.0, 3.5, 0.5, 3, 2),
+				seg(8.0, 3.5, 0.5, 8.0, 3.5, 4.0, 3, 2)
 		);
 
 		List<OctreeOverlay.OctantView> views = OctreeLayer.collectCastVisitedViews(path, pos -> root);

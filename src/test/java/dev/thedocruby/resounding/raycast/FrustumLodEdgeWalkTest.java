@@ -6,10 +6,12 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Forward-orthant N/E/D maps on XY / XZ / YZ, and edge-walk that only corners on CORNER/SPLIT.
+ * DDA-axis N/E/D maps and edge-walk that only corners on CORNER/SPLIT.
  */
 class FrustumLodEdgeWalkTest {
 
@@ -24,21 +26,23 @@ class FrustumLodEdgeWalkTest {
     }
 
     @Test
-    void xyHitPlusYSurveysForwardXAndDiagonal() {
-        // Hit +Y face of H, ray heading +X +Y (SW→NE in the XY plane).
+    void xyExitPlusYSurveysForwardYThenX() {
+        // Leave H through +Y; from mid-face with +X+Y the next same-size DDA face is +X.
         FrustumLod.ForwardMap map = FrustumLod.forwardMap(
-                new Vec3i(0, 1, 0), new Vec3d(1, 1, 0), 2);
+                Vec3d.ZERO, 2, new Vec3d(1.0, 2.0, 1.0), new Vec3d(1, 1, 0), new Vec3i(0, -1, 0));
+        assertNotNull(map);
         assertEquals(1, map.faceAxis());
-        assertEquals(0, map.tangentAxis(), "leading tangent is +X");
+        assertEquals(0, map.tangentAxis(), "second DDA axis is +X");
         assertEquals(new Vec3i(0, 2, 0), map.nOffset());
         assertEquals(new Vec3i(2, 0, 0), map.eOffset());
         assertEquals(new Vec3i(2, 2, 0), map.dOffset());
     }
 
     @Test
-    void xzHitPlusZSurveysForwardXAndDiagonal() {
+    void xzExitPlusZSurveysForwardZThenX() {
         FrustumLod.ForwardMap map = FrustumLod.forwardMap(
-                new Vec3i(0, 0, 1), new Vec3d(1, 0, 1), 2);
+                Vec3d.ZERO, 2, new Vec3d(1.0, 1.0, 2.0), new Vec3d(1, 0, 1), new Vec3i(0, 0, -1));
+        assertNotNull(map);
         assertEquals(2, map.faceAxis());
         assertEquals(0, map.tangentAxis());
         assertEquals(new Vec3i(0, 0, 2), map.nOffset());
@@ -47,9 +51,10 @@ class FrustumLodEdgeWalkTest {
     }
 
     @Test
-    void yzHitPlusZSurveysForwardYAndDiagonal() {
+    void yzExitPlusZSurveysForwardZThenY() {
         FrustumLod.ForwardMap map = FrustumLod.forwardMap(
-                new Vec3i(0, 0, 1), new Vec3d(0, 1, 1), 2);
+                Vec3d.ZERO, 2, new Vec3d(1.0, 1.0, 2.0), new Vec3d(0, 1, 1), new Vec3i(0, 0, -1));
+        assertNotNull(map);
         assertEquals(2, map.faceAxis());
         assertEquals(1, map.tangentAxis());
         assertEquals(new Vec3i(0, 0, 2), map.nOffset());
@@ -59,20 +64,40 @@ class FrustumLodEdgeWalkTest {
 
     @Test
     void castNegativePlaneIndexStillWalksForwardThroughTheFace() {
-        // Cast stores plane = -sign(ray). Travel +X, plane is -X; N must still be +X.
         FrustumLod.ForwardMap map = FrustumLod.forwardMap(
-                new Vec3i(-1, 0, 0), new Vec3d(1, 1, 0), 2);
+                Vec3d.ZERO, 2, new Vec3d(2.0, 1.0, 1.0), new Vec3d(1, 1, 0), new Vec3i(-1, 0, 0));
+        assertNotNull(map);
         assertEquals(new Vec3i(2, 0, 0), map.nOffset());
         assertEquals(new Vec3i(0, 2, 0), map.eOffset());
     }
 
     @Test
-    void headOnHasNoTangentAndClassifiesAsFace() {
+    void headOnSameAxisProjectionSkipsNed() {
+        // Pure +X: after crossing +X of H, the next face of the virtual neighbor is also +X.
         FrustumLod.ForwardMap map = FrustumLod.forwardMap(
-                new Vec3i(1, 0, 0), new Vec3d(1, 0, 0), 2);
-        assertFalse(map.hasTangent());
-        assertEquals(FrustumLod.Interaction.FACE, FrustumLod.classify(true, false, true));
-        assertEquals(FrustumLod.Interaction.GAP, FrustumLod.classify(false, false, false));
+                Vec3d.ZERO, 2, new Vec3d(2.0, 1.0, 1.0), new Vec3d(1, 0, 0), new Vec3i(-1, 0, 0));
+        assertNull(map);
+    }
+
+    @Test
+    void secondDdaAxisDependsOnHitLocationNotDominantTangent() {
+        // Ray has larger |Z| than |Y|, but from this hit the next DDA face inside the neighbor is +Y.
+        Vec3d dir = new Vec3d(1, 0.5, 2);
+        Vec3d hitNearTop = new Vec3d(2.0, 1.9, 0.1);
+        FrustumLod.ForwardMap map = FrustumLod.forwardMap(
+                Vec3d.ZERO, 2, hitNearTop, dir, new Vec3i(-1, 0, 0));
+        assertNotNull(map);
+        assertEquals(0, map.faceAxis());
+        assertEquals(1, map.tangentAxis(), "near +Y face → second DDA is Y, not dominant Z");
+        assertEquals(new Vec3i(2, 0, 0), map.nOffset());
+        assertEquals(new Vec3i(0, 2, 0), map.eOffset());
+    }
+
+    @Test
+    void nextDdaPlaneIsArithmeticOnly() {
+        Vec3i next = FrustumLod.nextDdaPlane(
+                Vec3d.ZERO, 2, new Vec3d(2.0, 1.0, 1.0), new Vec3d(1, 1, 0), 0, 1);
+        assertEquals(new Vec3i(0, -1, 0), next);
     }
 
     @Test
@@ -143,7 +168,8 @@ class FrustumLodEdgeWalkTest {
     @Test
     void trailingCellsAreNotInTheForwardMap() {
         FrustumLod.ForwardMap map = FrustumLod.forwardMap(
-                new Vec3i(0, 1, 0), new Vec3d(1, 1, 0), 2);
+                Vec3d.ZERO, 2, new Vec3d(1.0, 2.0, 1.0), new Vec3d(1, 1, 0), new Vec3i(0, -1, 0));
+        assertNotNull(map);
         assertTrue(map.nOffset().getY() > 0);
         assertTrue(map.eOffset().getX() > 0);
         assertTrue(map.dOffset().getX() > 0 && map.dOffset().getY() > 0);
