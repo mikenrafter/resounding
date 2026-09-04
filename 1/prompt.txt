@@ -1,0 +1,23 @@
+With the latest log, I'm seeing some reflecting off air and some early ray deaths. I have turned up the max ray bounces to 8, but I am still seeing uncharacteristic deaths and atypical bouncing off quartets (H N E D) containing only air, and no polarity...
+
+Look into the logs and let's figure out why.
+
+---
+
+I am not talking about shared airspace rays that die early. So that conclusion is wrong.
+
+Your fix direction may be sound for the bouncing off air issue. However, I have concerns about the performance of boxing and constructing a whole new octree object to atomically switch to for every invalidatePath. invalidatePath only makes sense in its current configuration if it's mutating state... Far, far cheaper. So, what other sort of options do we have? I'm hesitant to go for thread locks since managing those per frustum thread & octree management will get very slow, very fast... Thoughts?
+
+---
+
+Hm, 3 consecutive reflects doesn't make sense with the new frustum algorithm. Change 3 consecutive reflects to 5 reflects within the same 2 quartets.
+
+Let's start with fix #1, but do not implement fix #2. I'm not convinced it's necessary, and it's easier to just empirically validate it with high ray counts.
+
+Fix the surveyForward one as well.
+
+So: 5 in 2 quartets rule instead of 3 reflects rule (make it named that in the code... HNED is confusing and non-descriptive), nodeDescriptor but no COW children (for now), and consolidate the surveyForward reads. Go.
+
+---
+
+It would be helpful to understand the cause of ray death. Give each ray termination marker a different color. They should remain highly visible like the magenta ones are now, and they should not conflict with the white color used for the actively inspected frustum ray and the green crosses. So darker colors, or ones like the purple used should not be leveraged for this.
