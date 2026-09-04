@@ -5,8 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Frustum growth arming: growth rate is 0 until the second permeate at the current floored LOD
- * since the last bounce; shrink via the energy/alignment blend still applies.
+ * Frustum size: additive growth on permeate only, then energy/alignment shrink on every boundary.
  */
 class FrustumGrowthGateTest {
 
@@ -14,65 +13,61 @@ class FrustumGrowthGateTest {
     private static final double GROWTH = 0.5;
 
     @Test
-    void gatedGrowthRequiresTwoPermeates() {
-        assertEquals(0.0, FrustumLod.gatedGrowthPerBlock(GROWTH, 0), DELTA);
-        assertEquals(0.0, FrustumLod.gatedGrowthPerBlock(GROWTH, 1), DELTA);
-        assertEquals(GROWTH, FrustumLod.gatedGrowthPerBlock(GROWTH, 2), DELTA);
-        assertEquals(GROWTH, FrustumLod.gatedGrowthPerBlock(GROWTH, 5), DELTA);
-    }
-
-    @Test
-    void zeroGrowthRateIsNoOpOnDistanceTerm_blendStillShrinks() {
+    void zeroGrowth_blendStillShrinks() {
+        // growth=0, alignment=0 → blend = energy; size *= 0.5
         double next = FrustumLod.nextFrustumSize(2.0, 10.0, 0.0, 0.0, 0.5);
-        assertEquals(1.0, next, DELTA, "blend*size*(1+0*d) = 0.5*2 = 1 — shrink only");
+        assertEquals(1.0, next, DELTA, "blend*size = 0.5*2 = 1 — shrink only");
     }
 
     @Test
-    void firstPermeateDoesNotGrow_secondDoes() {
+    void permeateGrowsAdditivelyThenShrinks() {
+        // grown = 2 + 0.5*4 = 4; blend = lerp(0.5, 1, 0) = 0.5 → 2
+        double next = FrustumLod.nextFrustumSize(2.0, 4.0, GROWTH, 0.0, 0.5);
+        assertEquals(2.0, next, DELTA);
+    }
+
+    @Test
+    void fullAlignmentLeavesGrownSizeUnchangedByEnergy() {
+        // grown = 1 + 0.5*2 = 2; blend = 1 regardless of energy
+        double next = FrustumLod.nextFrustumSize(1.0, 2.0, GROWTH, 1.0, 0.25);
+        assertEquals(2.0, next, DELTA);
+    }
+
+    @Test
+    void firstPermeateGrowsImmediately() {
         Cast cast = new Cast(null, null, null);
         cast.lastPolarAlignment = 1.0;
         double before = cast.frustumSize;
 
         cast.applyFrustumStep(2.0, GROWTH, 1.0, true);
-        assertEquals(before, cast.frustumSize, DELTA, "1st permeate: growth gated off");
-        assertEquals(1, cast.permeatesAtFrustumLod);
-
-        cast.applyFrustumStep(2.0, GROWTH, 1.0, true);
-        assertEquals(before * (1.0 + GROWTH * 2.0), cast.frustumSize, DELTA, "2nd permeate: growth arms");
-        assertEquals(2, cast.permeatesAtFrustumLod);
+        assertEquals(before + GROWTH * 2.0, cast.frustumSize, DELTA);
     }
 
     @Test
-    void bounceResetsStreak_mustRepayTwoPermeates() {
+    void reflectDoesNotGrow_onlyShrinks() {
         Cast cast = new Cast(null, null, null);
         cast.lastPolarAlignment = 1.0;
-        cast.applyFrustumStep(1.0, GROWTH, 1.0, true);
-        cast.applyFrustumStep(1.0, GROWTH, 1.0, true);
-        double armed = cast.frustumSize;
-        assertEquals(FrustumLod.BASE_FOOTPRINT * (1.0 + GROWTH), armed, DELTA);
+        cast.frustumSize = 3.0;
 
-        cast.applyFrustumStep(1.0, GROWTH, 1.0, false); // bounce
-        assertEquals(0, cast.permeatesAtFrustumLod);
-        assertEquals(armed, cast.frustumSize, DELTA, "bounce with full leftover + alignment does not grow");
+        cast.applyFrustumStep(5.0, GROWTH, 1.0, false);
+        assertEquals(3.0, cast.frustumSize, DELTA, "full leftover + alignment: no change");
 
-        cast.applyFrustumStep(1.0, GROWTH, 1.0, true);
-        assertEquals(armed, cast.frustumSize, DELTA, "1st permeate after bounce still gated");
-        cast.applyFrustumStep(1.0, GROWTH, 1.0, true);
-        assertEquals(armed * (1.0 + GROWTH), cast.frustumSize, DELTA);
+        cast.lastPolarAlignment = 0.0;
+        cast.applyFrustumStep(5.0, GROWTH, 0.5, false);
+        assertEquals(1.5, cast.frustumSize, DELTA, "reflect: shrink only, growth ignored");
     }
 
     @Test
-    void lodStepChangeResetsStreak() {
+    void permeateAfterReflectGrowsFromShrunkenSize() {
         Cast cast = new Cast(null, null, null);
-        cast.lastPolarAlignment = 1.0;
-        // Force a large footprint so floored LOD is already 2, then permeate once.
-        cast.frustumSize = 4.0; // stepForSize(4) = 2
-        cast.frustumGrowthLod = 1;
-        cast.permeatesAtFrustumLod = 5; // stale streak from lod 1
+        cast.lastPolarAlignment = 0.0;
+        cast.frustumSize = 4.0;
 
-        cast.applyFrustumStep(1.0, GROWTH, 1.0, true);
-        assertEquals(2, cast.frustumGrowthLod);
-        assertEquals(1, cast.permeatesAtFrustumLod, "LOD change must zero the streak before counting this permeate");
-        assertEquals(4.0, cast.frustumSize, DELTA, "first permeate at new LOD still gated");
+        cast.applyFrustumStep(1.0, GROWTH, 0.5, false); // → 2.0
+        assertEquals(2.0, cast.frustumSize, DELTA);
+
+        cast.lastPolarAlignment = 1.0;
+        cast.applyFrustumStep(2.0, GROWTH, 1.0, true); // → 2 + 0.5*2 = 3
+        assertEquals(3.0, cast.frustumSize, DELTA);
     }
 }

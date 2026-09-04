@@ -231,7 +231,7 @@ public class Engine {
 	 * Advances {@code cast.frustumSize} through the boundary {@code cast} just resolved.
 	 * {@code stepDistance} is the segment this beam actually traveled; {@code leftoverEnergyCoefficient}
 	 * is the matching {@code cast.lastReflectivity} or {@code cast.lastTransmission}.
-	 * {@code permeated} selects growth arming (second permeate at floored LOD) vs bounce reset.
+	 * {@code permeated} selects additive growth (permeate) vs shrink-only (reflect).
 	 */
 	@Environment(EnvType.CLIENT)
 	private static double advanceFrustumSize(

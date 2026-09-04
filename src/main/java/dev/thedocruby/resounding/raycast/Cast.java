@@ -81,16 +81,6 @@ public class Cast {
      * would be.
      */
     public double frustumSize = FrustumLod.BASE_FOOTPRINT;
-    /**
-     * Floored LOD step ({@link FrustumLod#stepForSize}) the permeate streak is counted against.
-     * When this changes, {@link #permeatesAtFrustumLod} resets.
-     */
-    public int frustumGrowthLod = 1;
-    /**
-     * Consecutive permeations at {@link #frustumGrowthLod} since the last bounce. Growth arms at
-     * &ge;2; a bounce or LOD-step change zeroes this.
-     */
-    public int permeatesAtFrustumLod = 0;
     /** Remaining beam split budget for notable-interaction / commit decisions. */
     public @NotNull BeamBudget beamBudget = BeamBudget.full();
 
@@ -962,10 +952,9 @@ public class Cast {
     // } */
 
     /**
-     * Advances {@link #frustumSize} through one boundary. Growth uses {@code growthPerBlock} only
-     * after the second permeation at the current floored LOD step since the last bounce; bounces
-     * reset that streak and always pass growth rate 0. The energy/alignment blend still shrinks
-     * the footprint either way.
+     * Advances {@link #frustumSize} through one boundary. Permeation applies additive growth
+     * ({@code += distance * growthPerBlock}) before the energy/alignment shrink; reflection
+     * skips growth and only shrinks.
      *
      * @param permeated {@code true} when continuing along the transmitted leg; {@code false} on reflect
      */
@@ -975,24 +964,9 @@ public class Cast {
             double leftoverEnergyCoefficient,
             boolean permeated
     ) {
-        int lod = FrustumLod.stepForSize(frustumSize);
-        if (lod != frustumGrowthLod) {
-            frustumGrowthLod = lod;
-            permeatesAtFrustumLod = 0;
-        }
-        if (permeated) {
-            permeatesAtFrustumLod++;
-        } else {
-            permeatesAtFrustumLod = 0;
-        }
-        double growth = FrustumLod.gatedGrowthPerBlock(growthPerBlock, permeatesAtFrustumLod);
+        double growth = permeated ? growthPerBlock : 0.0;
         frustumSize = FrustumLod.nextFrustumSize(
                 frustumSize, stepDistance, growth, lastPolarAlignment, leftoverEnergyCoefficient);
-        int newLod = FrustumLod.stepForSize(frustumSize);
-        if (newLod != frustumGrowthLod) {
-            frustumGrowthLod = newLod;
-            permeatesAtFrustumLod = 0;
-        }
         return frustumSize;
     }
 

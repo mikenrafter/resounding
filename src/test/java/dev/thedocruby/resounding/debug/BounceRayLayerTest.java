@@ -25,6 +25,11 @@ class BounceRayLayerTest {
 	}
 
 	@Test
+	void activeRayColorIsWhite() {
+		assertEquals(0xFFFFFFFF, BounceRayLayer.ACTIVE_RAY_COLOR);
+	}
+
+	@Test
 	void terminatedMarkersUseDedicatedLineWidth() {
 		assertEquals(3.0F, BounceRayLayer.TERMINATED_LINE_WIDTH, 1e-6);
 	}

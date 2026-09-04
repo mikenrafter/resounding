@@ -22,16 +22,21 @@ public final class BounceRayLayer extends RayLineLayer {
 	private static final double REFERENCE_POWER = 128.0D;
 	/** High-contrast marker color for ray path endpoints (drawn without depth test). */
 	public static final int TERMINATED_COLOR = 0xFFFF00FF;
+	/** J-cycled active bounce ray (B on): all segments white, drawn without depth test. */
+	public static final int ACTIVE_RAY_COLOR = 0xFFFFFFFF;
 	static final float TERMINATED_LINE_WIDTH = 3.0F;
 	private static final double MARKER_HALF_EXTENT = 0.12D;
 	/** Max gap between one segment's end and the next segment's start to stay on the same ray. */
 	static final double CONNECT_EPS = 1e-4;
 
 	private final GpuLineBuffer terminatorBuffer;
+	/** Active-ray overlay: no depth test so the J-selected polyline always punches through. */
+	private final GpuLineBuffer activeRayBuffer;
 
 	public BounceRayLayer() {
 		super(true, BASE_LINE_WIDTH);
 		this.terminatorBuffer = new GpuLineBuffer(VertexBuffer.Usage.DYNAMIC, false, TERMINATED_LINE_WIDTH);
+		this.activeRayBuffer = new GpuLineBuffer(VertexBuffer.Usage.DYNAMIC, false, BASE_LINE_WIDTH);
 	}
 
 	public void clearSegments() {
@@ -42,12 +47,64 @@ public final class BounceRayLayer extends RayLineLayer {
 	void clear() {
 		super.clear();
 		terminatorBuffer.markDirty();
+		activeRayBuffer.markDirty();
 	}
 
 	@Override
 	public void render(Matrix4f positionMatrix, Matrix4f projectionMatrix, Vec3d cameraPos) {
-		super.render(positionMatrix, projectionMatrix, cameraPos);
+		List<LineSegment> snapshot = segmentSnapshot();
+		int activeRay = activeRayIndex();
+		if (activeRay < 0) {
+			renderSegments(snapshot, positionMatrix, projectionMatrix, cameraPos, null);
+		} else {
+			List<LineSegment> background = new ArrayList<>(snapshot.size());
+			List<LineSegment> focused = new ArrayList<>();
+			for (LineSegment segment : snapshot) {
+				if (segment.rayIndex() == activeRay) {
+					focused.add(segment);
+				} else {
+					background.add(segment);
+				}
+			}
+			renderSegments(background, positionMatrix, projectionMatrix, cameraPos, null);
+			renderActiveRay(focused, positionMatrix, projectionMatrix, cameraPos);
+		}
 		renderTerminatorCrosses(positionMatrix, projectionMatrix, cameraPos);
+	}
+
+	/**
+	 * Env-eval cast index selected via J while bounce rays (B) drive frustum mode; {@code -1} when
+	 * nothing is focused (look-frustum fallback, octree off, or neighborhood mode).
+	 */
+	static int activeRayIndex() {
+		OctreeLayer octree = DebugRenderDispatcher.INSTANCE.octree();
+		if (!octree.isEnabled() || octree.displayMode() != OctreeLayer.DisplayMode.BEAM_PATH) {
+			return -1;
+		}
+		return octree.selectedRayIndex();
+	}
+
+	private void renderActiveRay(
+			List<LineSegment> focused,
+			Matrix4f positionMatrix,
+			Matrix4f projectionMatrix,
+			Vec3d cameraPos
+	) {
+		if (focused.isEmpty()) {
+			return;
+		}
+		activeRayBuffer.markDirty();
+		activeRayBuffer.rebuild(builder -> {
+			for (LineSegment segment : focused) {
+				GpuLineBuffer.line(
+						builder,
+						segment.start().x, segment.start().y, segment.start().z,
+						segment.end().x, segment.end().y, segment.end().z,
+						ACTIVE_RAY_COLOR
+				);
+			}
+		});
+		activeRayBuffer.draw(positionMatrix, projectionMatrix, cameraPos, BASE_LINE_WIDTH);
 	}
 
 	public void addSoundBounceRay(

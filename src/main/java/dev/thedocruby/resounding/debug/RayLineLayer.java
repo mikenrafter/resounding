@@ -8,6 +8,8 @@ import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -94,6 +96,20 @@ abstract class RayLineLayer implements DebugLayer {
 		synchronized (segments) {
 			snapshot = segments.asList();
 		}
+		renderSegments(snapshot, positionMatrix, projectionMatrix, cameraPos, null);
+	}
+
+	/**
+	 * Draws {@code snapshot} through this layer's buffer. When {@code colorOverride} is non-null,
+	 * every segment uses that ARGB instead of {@link LineSegment#color()}.
+	 */
+	void renderSegments(
+			List<LineSegment> snapshot,
+			Matrix4f positionMatrix,
+			Matrix4f projectionMatrix,
+			Vec3d cameraPos,
+			@Nullable Integer colorOverride
+	) {
 		if (snapshot.isEmpty()) {
 			return;
 		}
@@ -111,11 +127,12 @@ abstract class RayLineLayer implements DebugLayer {
 			buffer.markDirty();
 			buffer.rebuild(builder -> {
 				for (LineSegment segment : group) {
+					int color = colorOverride != null ? colorOverride : segment.color;
 					GpuLineBuffer.line(
 							builder,
 							segment.start.x, segment.start.y, segment.start.z,
 							segment.end.x, segment.end.y, segment.end.z,
-							segment.color
+							color
 					);
 				}
 			});

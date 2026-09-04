@@ -92,20 +92,20 @@ public final class FrustumLod {
 
     /**
      * Next {@code frustumSize} after traveling {@code stepDistance} blocks through one boundary
-     * interaction: {@code lerp(min: leftoverEnergy, max: 1, t: polarAlignment) * previousSize *
-     * (1 + growthPerBlock * stepDistance)}.
+     * interaction. Growth and shrink are separate:
+     * <pre>
+     *   grown = previousSize + growthPerBlock * stepDistance
+     *   next  = lerp(min: leftoverEnergy, max: 1, t: polarAlignment) * grown
+     * </pre>
+     * Pass {@code growthPerBlock = 0} on reflect (no growth). On permeate, pass the nominal rate so
+     * growth is applied before the energy/alignment shrink coefficient.
      *
      * <p>{@code polarAlignment} is the raw {@code (rayNorm·polNorm)²} alignment at the boundary just
      * resolved (1.0 when the boundary had no polarization vector — a clean, unambiguous interface
      * imposes no throttle). {@code leftoverEnergyCoefficient} is whichever of reflectivity/
      * transmission actually carried the beam forward through that boundary (only one applies per
-     * step: the beam either reflected or transmitted). Full alignment lets the frustum grow at its
-     * nominal geometric rate regardless of energy loss; poor alignment (diffuse/grazing) throttles
-     * toward the fraction of energy that survived (shrink still applies when {@code growthPerBlock}
-     * is 0 — {@code (1 + 0 * distance)} is a no-op).
-     *
-     * <p>Callers should pass {@link #gatedGrowthPerBlock} so growth only arms after the second
-     * permeation at the current floored LOD step since the last bounce.
+     * step: the beam either reflected or transmitted). Full alignment leaves the (grown) footprint
+     * unchanged by energy loss; poor alignment throttles toward the surviving energy fraction.
      *
      * <p>This is the only place {@code frustumSize} advances in the cast process outside of its
      * initial value — callers hold the running size on their own state (e.g. {@code Cast.frustumSize})
@@ -118,17 +118,9 @@ public final class FrustumLod {
             double polarAlignment,
             double leftoverEnergyCoefficient
     ) {
+        double grown = previousSize + growthPerBlock * stepDistance;
         double blend = leftoverEnergyCoefficient + (1.0 - leftoverEnergyCoefficient) * polarAlignment;
-        return blend * previousSize * (1.0 + growthPerBlock * stepDistance);
-    }
-
-    /**
-     * Growth is armed only after the second permeation at the current floored LOD step since the
-     * last bounce. Until then (and on every bounce), return 0 so
-     * {@code (1 + growth * distance)} is a no-op while energy/alignment shrink still applies.
-     */
-    public static double gatedGrowthPerBlock(double growthPerBlock, int permeatesAtSizeSinceBounce) {
-        return permeatesAtSizeSinceBounce >= 2 ? growthPerBlock : 0.0;
+        return blend * grown;
     }
 
     /**
