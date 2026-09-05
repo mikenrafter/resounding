@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1R5ASXDFMYAWSEXN76334QB",
+  "session_id": "f9952aad-cd80-475b-937c-53bfaac48481",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-05T06:50:42.592619984Z",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "src/main/java/dev/thedocruby/resounding/raycast/Cast.java"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "094ca486581a",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 120,
+    "cache_creation_tokens": 425170,
+    "cache_read_tokens": 6001543,
+    "output_tokens": 89031,
+    "api_call_count": 62
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-05T06:50:42.331157047Z",
+    "agent_lines": 2,
+    "agent_removed": 7,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2,
+    "total_lines_changed": 9,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}

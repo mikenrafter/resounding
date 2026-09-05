@@ -1,0 +1,558 @@
+Remember nix develop
+
+---
+
+<task-notification>
+<task-id>a0c321d0bb50f426c</task-id>
+<tool-use-id>toolu_0116ns2Aq6p24HcH1qQ3paR9</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/f9952aad-cd80-475b-937c-53bfaac48481/tasks/a0c321d0bb50f426c.output</output-file>
+<status>completed</status>
+<summary>Agent "Research polarity alignment octant-entry logic" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Findings
+
+**Tools used:** `agentgrep outline` (files too unstructured for it to parse — fell back to `Read`), `agentgrep grep polarAlignment/lastPolarAlignment/rayNorm --type java` (fast, correctly grouped all 4 relevant files and pinpointed exact line numbers), plain `grep -n` for scope-tracing local variable declarations (`agentgrep` doesn't do local-var-scope tracing, and `rg`/`rtk rg` failed in this sandbox with "Not a directory").
+
+### 1. Current formula/call chain
+
+`Physics.polarAlignment(Vec3d rayNorm, Vec3d polNorm)` at `src/main/java/dev/thedocruby/resounding/Physics.java:42-45` is purely `dot = rayNorm·polNorm; return dot*dot`. It takes **only two direction vectors**, no position/octant context at all — confirmed by its unit tests (`PhysicsPolarBlendTest.java:23,28,33,40`), which call it with bare `Vec3d` pairs.
+
+It's invoked from two spots in `Cast.java`:
+- `Cast.java:442-444` — sets `this.lastPolarAlignment = Physics.polarAlignment(vector.normalize(), branchDescriptor.polar().normalize())` right after a boundary is resolved (guarded to `1.0` when `branchDescriptor.polar()` is null/near-zero).
+- `Cast.java:540` (inside `polarBlendWeight(descriptor, vector)`) — same call, feeds `polarBlendWeight`/`blendImpedance` for the reflect/permeate material blend, not just LOD growth.
+
+`lastPolarAlignment` (field decl `Cast.java:60`) then flows into `FrustumLod.nextFrustumSize(previousSize, stepDistance, growthPerBlock, polarAlignment, leftoverEnergyCoefficient)` via `Cast.java:1021-1022` (`applyFrustumStep`), matching the javadoc formula at `FrustumLod.java:99-116`: `next = lerp(leftoverEnergy², 1, polarAlignment) * grown`.
+
+`branchDescriptor.polar()` (the `polNorm` input) comes from `Polarization.bakeOctant()` (`Polarization.java:105-178`), which computes a corner-sign-sum vector (`highDir - lowDir`, `Polarization.java:137-147`) from the 8 corners' impedance-ranked halves — this is the "polarization axis," unrelated to where the ray actually crossed the boundary.
+
+### 2. Octant-center / hit-position availability
+
+Both are already in scope for free at the `Cast.java:442-444` call site, no new plumbing needed:
+- `cellBase` (`Cast.java:205`, `Vec3d`, the octant's min corner, reassigned to `blockToVec(originBlock)` for emission at `Cast.java:252`) and `cellSize` (`Cast.java:201`, `int`, edge length — this **is** the same value stored as `this.lastBranchSize`, `Cast.java:209`) give the octant bounds directly. Center = `cellBase.add(cellSize/2.0, cellSize/2.0, cellSize/2.0)`.
+- `pposition` (`Cast.java:225`, computed via `exitPosition(...)` at `Cast.java:263` or `geometry.transmitPosition()` at `Cast.java:247`) is the actual boundary-crossing point (the "incident point") — same method scope, no getter/passing needed, just reference it 200 lines later since it's all one `raycast()` method body (lines 172-447 confirmed to be a single method).
+
+So `incidentPointToCenterVec = cellBase.add(cellSize/2.0,...).subtract(pposition)` (or the reverse sign) is computable with zero new state threading, only a local edit inside `Cast.java` right before line 442-444.
+
+### 3. Existing math helpers to reuse vs. new
+
+`Vec3d` already exposes `.add`, `.subtract`, `.multiply`, `.normalize`, `.dotProduct`, `.lengthSquared` (used throughout Cast/Physics/Polarization). There is **no existing "average two unit vectors" or generic Vec3d-lerp helper** — `Acoustics.lerp` (`Acoustics.java:36`) and `FrustumLod`'s private `lerp` (`FrustumLod.java:571`) are scalar-only. The averaging step (`incidentPointToCenterVec.add(rayDirVec).multiply(0.5).normalize()`) would need to be written inline or as a small new `Vec3d`-returning helper (e.g. in `Physics` or `Polarization`), likely alongside `Physics.polarAlignment`, changing its signature to accept the blended vector (or add an overload taking `rayNorm, incidentPoint, octantCenter, polNorm`).</result>
+<usage><subagent_tokens>42776</subagent_tokens><tool_uses>22</tool_uses><duration_ms>83518</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ac1fe6532f77e15ca</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/f9952aad-cd80-475b-937c-53bfaac48481/tasks/ac1fe6532f77e15ca.output</output-file>
+<status>completed</status>
+<summary>Agent "Research debug ray focus and keybind logging" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Report: "K to kapture" focused-ray log dump
+
+Tools used: `agentgrep grep` (KeyBinding, GLFW, focus, Recorder, CaptureBuffer, rayId, dLog, logBounceIfNeeded, cycleLiveFrustumRay, selectedRayOrdinal, debugTail), `agentgrep outline` (Engine.java, Cast.java, DebugPicker.java, BounceRayLayer.java, RayLineLayer.java, BeamVisitRecorder.java, CaptureBuffer.java) to quickly locate structure before full reads.
+
+### 1. Keybinding registration
+
+All debug keys are Fabric `KeyBindingHelper.registerKeyBinding` fields in `src/main/java/dev/thedocruby/resounding/debug/DebugKeybinds.java:19-58`, each a `static final KeyBinding` built with `InputUtil.Type.KEYSYM` + a `GLFW.GLFW_KEY_*` constant, all under one `CATEGORY` string (line 17). Polling (not event callbacks) happens once per client tick in `DebugKeybinds.register()` via `ClientTickEvents.END_CLIENT_TICK.register(...)` (line 63), gated on `Engine.isActive` (line 64), using `while (BINDING.wasPressed())` loops (lines 68, 72, 76, 103, 134). Adding a `K` binding is a direct copy of this pattern: a new `KeyBindingHelper.registerKeyBinding(new KeyBinding("key.resounding.debug.kapture_ray", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_K, CATEGORY))` field plus a `while (KAPTURE_RAY.wasPressed()) {...}` block in the same tick handler (`GLFW_KEY_K` is currently unused — B, N, O, J, C are taken).
+
+### 2. "b+j" ray-debug mode and focused-ray selection
+
+`B` = `TOGGLE_BOUNCE_RAYS` (DebugKeybinds.java:19-26) toggles `BounceRayLayer.isEnabled()` (line 70). `J` = `CYCLE_FRUSTUM_RAY` (lines 43-50) calls `OctreeLayer.cycleLiveFrustumRay()` when bounce rays are on (line 108). That method, `OctreeLayer.java:157-175`, is where the focused ray actually lives: it sets `displayMode = BEAM_PATH`, `allowLookFallback = false`, and cycles `selectedRayIndex` (field at `OctreeLayer.java:99`) through `rayIndexes` — a list of live `rayIndex` values gathered from `BounceRayLayer.groupByRayIndex(...)` (`refreshRayIndexes()`, lines 187-197). So the "focused ray" identifier is a plain `int` (the env-eval cast's `rayIndex`, 0..63), stored as `OctreeLayer.selectedRayIndex`, exposed via `selectedRayIndex()`/`selectedRayOrdinal()` (lines 124-130). This is the id a `K` handler would read to know which ray to dump; it's `-1` when nothing is focused.
+
+### 3. Per-bounce data already available vs. new state needed
+
+- **Transient only, inside `Engine.raycast`'s loop** (`Engine.java:344-436`): `cast.lastMaterialLabel`, `cast.lastPriorImpedance`, `cast.lastResolvedImpedance`, `cast.lastReflectivity`, `cast.lastTransmission`, `cast.lastBranchSize`, `cast.lastShapeMode`, `cast.lastBlankReason`, `ray.power()`, position, and `BounceRayLayer.TerminationCause`. This is exactly what `logBounceIfNeeded` (`Engine.java:446-479`) formats into one `Utils.LOGGER.info` line per bounce when `pConfig.dLog` is set — the precedent format for a richer dump. This data is **not persisted per-ray**; it's recomputed/discarded each bounce unless captured.
+- **Rendering-only, no rich fields**: `BounceRayLayer`'s `LineSegment` record (`RayLineLayer.java:158-178`) stores only `start, end, color, width, terminator, rayIndex, branchSize, terminatorColor` — material/impedance/R/T/power are baked into a color, not retrievable.
+- **`BeamVisitRecorder`** (`raycast/BeamVisitRecorder.java`) is a static geometric re-walk over the LOD octree for the octant-box overlay (`OctreeLayer.java:764`), not a physical per-bounce recorder — it produces `VisitedBox(start, size, virtual, polar)` with no material/impedance/R/T data. Not usable for this feature as-is.
+- **The closest existing "recorder" precedent** is `CaptureBuffer.CapturedRay` (`debug/CaptureBuffer.java:22-40`): `start, end, color, soundEventId, rayIndex, bounceIndex, material, reflectivity, transmission, power, priorImpedance, branchSize, materialLabel, terminated`. It's populated per-bounce by `Renderer.addSoundBounceRay` (`raycast/Renderer.java:19-51`, offer call at lines 45-49) whenever `CaptureBuffer.INSTANCE.isCapturing()` — toggled by the existing `C` key (DebugKeybinds.java:51-58, 134-140). `CaptureBuffer.segmentsForRayIndex(rayIndex)` (CaptureBuffer.java:116-124) already returns exactly "all bounce records for one ray index."
+
+**Conclusion**: a `K` handler could either (a) require `C` (capture) to already be on and simply log `CaptureBuffer.segmentsForRayIndex(OctreeLayer.selectedRayIndex)` — needs no new accumulation, just a formatter — or (b) if it must work without `C`, needs new lightweight per-ray accumulation (missing field: `cast.lastResolvedImpedance`/Z isn't currently passed into `CapturedRay`/`Renderer.addSoundBounceRay` at all, only `priorImpedance` is).</result>
+<usage><subagent_tokens>46151</subagent_tokens><tool_uses>27</tool_uses><duration_ms>99030</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a537f058d1f602b1c</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/f9952aad-cd80-475b-937c-53bfaac48481/tasks/a537f058d1f602b1c.output</output-file>
+<status>completed</status>
+<summary>Agent "Research frustum air:air reflection bug" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>This confirms `classify(false,...)` (N open) always returns GAP — exactly the correction the `cellSize &gt; 1` gate withholds from small frustums. I have enough to write the report now.
+
+## 1. Reflect-vs-transmit decision path
+
+`Engine.raycast` (`src/main/java/dev/thedocruby/resounding/Engine.java:265-436`) calls `Cast.raycast` (`src/main/java/dev/thedocruby/resounding/raycast/Cast.java:172-447`) once per boundary. Inside `Cast.raycast`:
+
+- `requestedLod = FrustumLod.stepForSize(frustumSize)` (Cast.java:183) picks the octree LOD; `cellSize = min(requestedLod, branch.size)` (Cast.java:201).
+- Base reflectivity comes from `impedancesClose(priorImpedance, newImpedance) ? 0 : Physics.reflection(...)` (Cast.java:336-339).
+- Only **when `cellSize &gt; 1`** (Cast.java:399-403) does `surveyForward` run, calling `FrustumLod.forwardMap` → `FrustumLod.classify(nBlocks, eBlocks, dBlocks)` (FrustumLod.java:333-345). If `classify` returns `GAP`, Cast.java:411-413 *forces* `reflectivity = 0` — this is the explicit "don't invent reflectivity from neighbor impedances" correction (comment at Cast.java:392-397, FrustumLod.java:329-331).
+- Back in `Engine.raycast`, the reflect/transmit branch choice is `reflect.apply(cast, results)` (Engine.java:231-237): `if (lastBoundaryResolved &amp;&amp; lastReflectivity &lt;= 0) return false;` else compare `reflected.power()` vs `transmitted.power()*factor`. Independently, `recordReflectHitIfAny` (Engine.java:485-507) logs a reverb "hit" whenever `lastReflectivity &gt; 0`, regardless of which branch propagation actually follows — so any spurious `reflectivity&gt;0` shows up as a phantom reflection even if the ray keeps transmitting.
+
+## 2. Why frustumSize &lt; 2 produces spurious air:air reflects
+
+`FrustumLod.stepForSize` (FrustumLod.java:139-146) collapses the *entire* range `footprint ∈ [0, 2)` to `step = 1`, so `requestedLod == 1` and therefore `cellSize == 1` for every boundary while `frustumSize &lt; 2` — exactly newly-emitted rays, since `frustumSize` now starts at `pConfig.frustumGrowthPerBlock` (commit `6c7e2eb`, Cast.java:101) instead of `BASE_FOOTPRINT`. This gate is unaffected by the base-footprint change itself; the real problem is that **the `cellSize &gt; 1` condition at Cast.java:399-403 is a hard cutoff, not a `cellSize &gt;= 1` one**: the GAP-correction path that exists specifically to stop "air-labeled cells reflecting in place forever" (Cast.java:344-346, FrustumLod.classify test at `FrustumLodEdgeWalkTest.java:21-34` confirms `N open ⇒ always GAP`) is completely unavailable at `cellSize == 1`. Any residual reflectivity produced by the plain `impedancesClose`/full-cube path — e.g., from a live-leaf re-lookup (`getBlock`, Cast.java:865-880) sampling a slightly different Material instance than the previously-committed `impeded` (Cast.java:771-778), or `IMPEDANCE_MATCH_TOLERANCE = 0.15` not quite absorbing it — has no downstream safety net for small/young frustums, whereas the identical situation at `cellSize &gt; 1` is caught and zeroed by GAP. Since young rays are pinned at `cellSize == 1` until `frustumSize` grows past 2, and growth is shrink-heavy (`FrustumLod.nextFrustumSize` squares the leftover-energy coefficient before blending, FrustumLod.java:122-133; a reflect step doesn't grow at all, Cast.java:1020), a ray that reflects even once early can stay stuck under the LOD-1 threshold for many bounces — compounding the missing correction.
+
+## 3. Other correctness issues specific to small/young frustums
+
+- **Reflect origin/plane placed at the wrong face.** When `reflectivity &gt; 0`, Cast.java:377-383 moves the reflect origin to `pposition` (the cell's *far* exit face) and sets `reflectPlane = step.plane()` (the far face's axis) — even though the impedance mismatch was computed against the *entry* boundary (`priorImpedance` vs `newImpedance`). At `cellSize == 1` this "far face" is only one block away and can be on a completely different axis than the true interface for a diagonal ray, injecting a geometrically wrong bounce direction. This effect is diluted at large LOD cells but maximally exposed at `cellSize == 1`.
+- **`forwardInteraction` defaults to `CORNER`** (Cast.java:398) whenever the survey doesn't run (all `cellSize == 1` boundaries), so `FrustumLod.edgeWalk` (Cast.java:428-433) always performs the CORNER vertex-walk (`amount = 0.85`) for any reflect at small frustum sizes, never `GAP`/`FACE`/`SPLIT` — inconsistent with the four-map model that larger LOD gets.
+- **`getBlock`'s live-leaf fallback runs on essentially every small-frustum cast** (Cast.java:189-194, `lodBranch.size == 1` is true whenever `requestedLod == 1`), re-walking the *real* tree via `Branch.get` (Branch.java:181-187) instead of the LOD-aware `getAtLod`. If a coarse ancestor is `size &gt; 1` and `children == null` at that point, `getBlock` (Cast.java:865-880) returns that node's baked descriptor directly, bypassing the LOD-consistent virtual-cell path (`virtualLodCell`, Branch.java:216-230) — a second, independent route to the same node with slightly different provenance guarantees, worth auditing for drift.
+
+**Useful invocations:** `agentgrep outline` for a quick file map, `agentgrep grep "frustumSize" --type java --path src` and `git log --oneline -- Cast.java FrustumLod.java Polarization.java` to find the relevant commits (`6c7e2eb`, `d82087c`), and `Read` for close inspection since `agentgrep grep`'s `rg` backend errored on single-file `--path` targets in this environment (directory paths worked fine).</result>
+<usage><subagent_tokens>121427</subagent_tokens><tool_uses>32</tool_uses><duration_ms>431198</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a303527708e60068b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/f9952aad-cd80-475b-937c-53bfaac48481/tasks/a303527708e60068b.output</output-file>
+<status>completed</status>
+<summary>Agent "Fable design consult: dual-derived polarity alignment" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Verified the load-bearing code myself (Physics.java:42-55, Cast.java:295-370/438-444/528-541, and the test file). The prior research pass's description checks out. Here's my recommendation.
+
+## 1. Sign of the position-derived vector
+
+**Definitive: `octantCenter - incidentPoint`, normalized — pointing inward, from the crossing point toward the cell center.**
+
+Reasoning: the incident point sits on a face of the cell being *entered*, so the ray direction points into the cell. `center - incidentPoint` also points into the cell — same hemisphere — so averaging them is well-conditioned and semantically coherent ("where the ray is headed" blended with "where the mass of this octant is relative to entry"). The two limit cases confirm this sign and *only* this sign:
+
+- **Dead-center entry aimed at the center**: `C - P` is exactly parallel to the ray → blend is a no-op → alignment equals the current pure-angle result. (With the reversed sign `P - C`, this case sums two anti-parallel unit vectors to the zero vector — degenerate exactly where behavior must be unchanged. That kills the reversed sign outright.)
+- **Tangent entry**: a ray grazing the cube's silhouette travels nearly parallel to a face, so `C - P` is nearly perpendicular to the ray. The normalized sum is the exact angular bisector, 45° off the ray. If the ray was perfectly pol-aligned (raw alignment 1.0), the blended alignment is cos²45° = **exactly 0.5** — precisely the "~halfway between the two" the product requirement asks for. The geometry produces the requested number with no fudge factor; that is strong evidence this interpretation is right.
+
+Degenerate guard: if `(C - P)` has `lengthSquared() &lt; 1e-12`, or the sum `rayNorm + normalize(C-P)` has `lengthSquared() &lt; 1e-12`, fall back to raw `rayNorm`. (The anti-parallel case can't occur for a genuine entry crossing, but floating-point exit-face hits shouldn't NaN the impedance path.)
+
+## 2. API design
+
+**Do not change `polarAlignment`'s signature.** It's the tested, documented core primitive and remains correct as the final stage. Add two methods to `Physics.java` beside it:
+
+```java
+/** Blended "effective ray norm": normalize(rayNorm + normalize(octantCenter - incidentPoint)).
+ *  Falls back to normalize(rayNorm) when either the offset or the sum is degenerate. */
+public static Vec3d dualDerivedNorm(@NotNull Vec3d rayNorm, @NotNull Vec3d incidentPoint, @NotNull Vec3d octantCenter)
+
+/** polarAlignment(dualDerivedNorm(...), polNorm) — position-aware alignment. */
+public static double dualDerivedAlignment(@NotNull Vec3d rayNorm, @NotNull Vec3d incidentPoint, @NotNull Vec3d octantCenter, @NotNull Vec3d polNorm)
+```
+
+`dualDerivedNorm` should normalize `rayNorm` internally (cheap, removes a whole bug class; call sites already pass `vector.normalize()` but the helper shouldn't depend on it). Sum-then-normalize is mathematically identical to average-then-normalize — implement as sum, document as the mean.
+
+Physics.java is the right home: it's pure vector math, already hosts `polarAlignment`/`permeationBend`, and is directly unit-testable without Minecraft world scaffolding. Cast plumbing:
+
+- Compute `Vec3d octantCenter = cellBase.add(cellSize * 0.5, cellSize * 0.5, cellSize * 0.5)` once in `raycast()` after cellBase/cellSize are set.
+- Change Cast's private `polarBlendWeight(descriptor, vector)` → `polarBlendWeight(descriptor, vector, incidentPoint, octantCenter)` (private, no external breakage), swapping its `Physics.polarAlignment(...)` call for `Physics.dualDerivedAlignment(...)`; `polarizedImpedance` gets the same two extra params and forwards them. Sites 302 and 353 pass `pposition, octantCenter`.
+- Site 442-444 calls `Physics.dualDerivedAlignment(vector.normalize(), pposition, octantCenter, polar.normalize())` directly. Note `vector` may have been reassigned by `permeationBend` between 353 and 442 — use the current `vector` at each site (correct: post-bend alignment is what the frustum-growth blend should see).
+
+Existing 3 tests in `PhysicsPolarBlendTest.java` stay green untouched.
+
+## 3. Uniform vs. per-site
+
+**Uniform at all three sites.** All three consume the same physical quantity — "how aligned is this crossing with the cell's polarity" — and two of them must agree with each other regardless: the reflect-vs-permeate gate at 353 and the impedance blend at 302 use the same `w`; letting them diverge produces reflect decisions inconsistent with the blended impedance actually applied. And `lastPolarAlignment` (442) is the telemetry you'll use to debug the other two — if it's computed on a different formula, debugging becomes lying-instrument territory. One formula, one helper, three call sites.
+
+## 4. RED test list (add to `PhysicsPolarBlendTest.java`)
+
+Geometry fixture throughout: `cellBase (0,0,0)`, `cellSize 2`, so `center C = (1,1,1)`. `DELTA = 1e-9`.
+
+1. **`dualDerivedAlignmentDeadCenterEntryMatchesPureAngle`** — ray `(1,0,0)`, P `(0,1,1)` (center of −X face, `C−P ∥ ray`). Assert `dualDerivedAlignment(ray, P, C, pol) == polarAlignment(ray, pol)` for pol `(1,0,0)` (→1.0) and pol `(s,s,0)`, `s=√2/2` (→0.5).
+2. **`tangentEntryWithFullyAlignedRayIsExactlyOneHalf`** — ray `(1,0,0)`, pol `(1,0,0)`, P `(1,2,1)` (center of +Y face; `C−P = (0,−1,0) ⊥ ray`). Assert `0.5`.
+3. **`tangentEntryWithPerpendicularPolIsAlsoOneHalf`** — same geometry, pol `(0,1,0)`. Blended `= (1,−1,0)/√2`, dot² `= 0.5`. Pins that the blend pulls both extremes toward the middle.
+4. **`sumThenNormalizeFormulaExactValue`** — ray `(1,0,0)`, P `(0,2,1)` (top edge of −X face; `C−P = (1,−1,0)/√2`), pol `(1,0,0)`. Assert `(2 + Math.sqrt(2)) / 4` (≈0.8535533906). Closed form pins the exact formula against alternatives (e.g. averaging angles, or averaging without normalizing `C−P` first).
+5. **`degenerateOffsetFallsBackToRawRay`** — P `== C` exactly. Assert equals `polarAlignment(rayNorm, pol)`.
+6. **`antiParallelSumFallsBackToRawRay`** — ray `(1,0,0)`, P `(2,1,1)` (+X face center; `C−P = (−1,0,0)`, sum = 0). Assert equals `polarAlignment(rayNorm, pol)`, no NaN.
+7. **`dualDerivedNormIsUnitLength`** — loop 3-4 assorted ray/P combos; assert `dualDerivedNorm(...).length() == 1.0` within DELTA.
+8. **`dualDerivedNormNormalizesRayInput`** — ray `(2,0,0)` vs `(1,0,0)`, same P/C: identical result (pins internal normalization).
+9. **`polSignInvarianceStillHolds`** — fixture from test 4 with pol `(−1,0,0)`: same `(2+√2)/4` (squared dot, side-agnostic).
+
+(Cast-level wiring correctness — that 302/353/442 all switched over — is best pinned by whatever existing Cast/raycast harness the repo has for `lastPolarAlignment`; if none exists, don't invent one in this phase, the Physics tests above pin the formula and the wiring is a three-line mechanical change.)</result>
+<usage><subagent_tokens>20401</subagent_tokens><tool_uses>3</tool_uses><duration_ms>88946</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aa3e5bfa959cf18be</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/f9952aad-cd80-475b-937c-53bfaac48481/tasks/aa3e5bfa959cf18be.output</output-file>
+<status>completed</status>
+<summary>Agent "Fable design consult: K-key focused-ray log capture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All load-bearing claims from the research pass check out (I re-verified `DebugKeybinds`, `CaptureBuffer`, `Renderer.addSoundBounceRay`, `Engine.emitDebugSegment`/`logBounceIfNeeded`, and the `Cast` fields). One extra constraint the research missed: **capture is double-gated on `pConfig.dRays`** — `Engine.debugTail.emit` (Engine.java:562) and `Renderer.addSoundBounceRay` (Renderer.java:36) both early-return without it, and `emit` also drops `rayId &gt;= MAX_DEBUG_TRACE_RAYS`. Any design must surface that, or K fails silently.
+
+## 1. K standalone vs. requiring C — recommend a hybrid, implemented as "dump-or-arm"
+
+**Recommendation: K works standalone, but by reusing `CaptureBuffer`'s existing one-shot machinery — never by reading live `Cast` state.** Concretely, on K press (in the same tick loop as the other keys):
+
+1. If no ray is focused (`OctreeLayer.selectedRayIndex() &lt; 0`) or bounce rays are off → actionbar warning, done.
+2. Else if `CaptureBuffer.INSTANCE.segmentsForRayIndex(selected)` is non-empty → dump it immediately (Section 3).
+3. Else → call `CaptureBuffer.INSTANCE.startCapture(1)` and set a `pendingKaptureRayIndex` field; each subsequent tick, the loop checks `pendingKaptureRayIndex &gt;= 0 &amp;&amp; !isCapturing()` and, once the one-shot completes, dumps and clears the pending flag (warn-and-clear if the completed capture still has nothing for that index).
+
+Justification: "kapture the full ray data" means the whole bounce sequence; per-bounce `Cast` state is transient, so a keypress-instant read yields one bounce at best — Option A's data source is the only complete one. But pure Option A ("no-op if buffer empty") makes the common flow B→J→K a dead key, which contradicts "major improvement in logging." The dump-or-arm hybrid costs one field and one tick-loop check, and `startCapture(1)`/`onSoundEvalEnd` already implement the one-shot window. Caveat to log loudly: if `pConfig.dRays` is false, capture can never populate — step 3 must emit a warning line ("kapture armed but dRays is disabled — nothing will be captured") instead of arming.
+
+## 2. Data model — extend `CapturedRay` unconditionally
+
+**Recommendation: add the missing fields to `CapturedRay` itself; no parallel record.** A second record means duplicating the offer plumbing in `Renderer.addSoundBounceRay` and keeping two near-identical types in sync forever; five extra fields on a debug-only record capped at 16384 entries is negligible, and regular C-capture consumers get them for free. To avoid pushing `addSoundBounceRay` past 20 positional params, change its signature to accept the `Cast` directly (it's in the same `raycast` package; `emitDebugSegment` at Engine.java:582 already has it in scope) and snapshot fields inside `Renderer`. Final field list (existing 14 plus):
+
+- `double resolvedImpedance` — `cast.lastResolvedImpedance` (post-polarization-blend Z)
+- `double polarAlignment` — `cast.lastPolarAlignment`
+- `double frustumSize` — `cast.frustumSize`
+- `@Nullable String blankReason` — `cast.lastBlankReason == NONE ? null : cast.lastBlankReason.name()` (string, matching the `materialLabel` convention, avoids a debug→raycast enum dependency)
+- `boolean shapeMode` — `cast.lastShapeMode`
+
+## 3. Log format — one info line per bounce, framed by header/footer
+
+Per-line (not one multi-line blob): grep-ability and log-viewer friendliness match the existing `logBounceIfNeeded` idiom, and the file already establishes the key=value vocabulary. Put the dump in a new small class, `src/main/java/dev/thedocruby/resounding/debug/KaptureLogger.java`, with a static `dump(int rayIndex, List&lt;CapturedRay&gt; bounces)`; replicate `formatPos`'s exact format (`String.format(Locale.ROOT, "%.4f,%.4f,%.4f", ...)`, Engine.java:527-529 — it's private, and widening Engine's API for a debug logger isn't worth it).
+
+```
+Resounding KAPTURE ray #{rayIndex} sound={soundEventId} bounces={n} ---
+Resounding KAPTURE: ray #{} bounce #{} node={}³ mode={SHAPE|VOXEL} start={formatPos} end={formatPos} material={label or ?} Zprev=%.1f Z=%.1f R=%.3f T=%.3f power=%.1f polar=%.3f frustum=%.2f[ blank={reason}][ TERMINATED]
+Resounding KAPTURE ray #{rayIndex} --- end
+```
+
+Field ordering/formats deliberately mirror Engine.java:464-478 (`%.1f` impedance/power, `%.3f` R/T; `polar` gets `%.3f` like other unit-range values, `frustum` `%.2f`). Differences from `logBounceIfNeeded`: both endpoints (CapturedRay has them; the live line only has one), the `KAPTURE` tag for grepping, and no `dLog`/id gating — K is an explicit user request, so it always logs.
+
+## 4. Red-pass test list
+
+`CaptureBuffer`/`KaptureLogger` are plain classes; test the extracted decision logic, not GLFW. Extract the K-handler body into a package-visible, testable method (e.g. `KaptureController.onKapturePressed(int selectedRayIndex, boolean bounceRaysEnabled, boolean dRays, CaptureBuffer buf)` returning an enum/result) so tests don't need a Minecraft client.
+
+1. **No ray focused:** fresh `CaptureBuffer`; call handler with `selectedRayIndex = -1` → returns `NO_FOCUS` (or equivalent), no exception, `startCapture` not invoked (`isCapturing()` still false), nothing logged.
+2. **Focused ray with resident data:** `startCapture(1)`, `offer(...)` three `CapturedRay`s with `rayIndex=7` (bounces 0..2) plus one with `rayIndex=3`; `onSoundEvalEnd()`; handler with `selectedRayIndex=7` → result `DUMPED` with exactly 3 bounces, in bounce order; assert the formatted lines (via an injectable line-consumer on `KaptureLogger.dump`) contain `ray #7`, `bounce #0..2`, and the new fields (`polar=`, `frustum=`), and header says `bounces=3`.
+3. **Focused ray, empty buffer, dRays on:** fresh buffer; handler with `selectedRayIndex=7, dRays=true` → result `ARMED`, `buf.isCapturing()` true, `pendingKaptureRayIndex == 7`; then simulate: `offer` rays for index 7, `onSoundEvalEnd()`, call the tick-poll method → dump fires once, pending cleared, second poll is a no-op.
+4. **Armed but sound never contains focused ray:** as (3), but offer only `rayIndex=3` before `onSoundEvalEnd()` → poll logs a "no data for ray 7" warning, clears pending, does not dump ray 3.
+5. **dRays disabled:** empty buffer, `dRays=false` → result `DRAYS_DISABLED`, `startCapture` not called, warning surfaced.
+6. **Record round-trip:** construct `CapturedRay` with the five new fields; assert accessors and that `Renderer`-side snapshot maps `lastBlankReason=NONE → null` and non-NONE → its `name()`.</result>
+<usage><subagent_tokens>27161</subagent_tokens><tool_uses>8</tool_uses><duration_ms>86697</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a2a48461584ae17b8</task-id>
+<tool-use-id>toolu_01XJKrPWzbuMZTysJUY1opXj</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/f9952aad-cd80-475b-937c-53bfaac48481/tasks/a2a48461584ae17b8.output</output-file>
+<status>completed</status>
+<summary>Agent "Fable design consult: small-frustum air:air reflects" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I verified the load-bearing code directly (Cast.java raycast body, surveyForward, impedancesClose, FrustumLod.stepForSize/classify/forwardMap, and the test idioms). Findings below.
+
+## 1. Root cause: confirmed, with one refinement
+
+The `cellSize &gt; 1` gate (Cast.java:400) is real and is why the GAP safety net never fires for young rays. But note *where* the phantom R is minted at cellSize==1: plain air:air passes `impedancesClose` (0.15 relative tolerance easily absorbs float noise on identical materials). The likely minting path is Cast.java:189-194 — the live-leaf override only applies when `lodBranch.size == 1`. If the octree merged air into a coarse node, `branch` stays coarse with a polar descriptor even though cellSize==1, so `polarizedImpedance` (Cast.java:299-307) blends most/least-common Z into something ≥15% off the committed `impeded`, and at `splitsLeft == 0` the stochastic `Physics.commitReflect(w)` (Cast.java:363) hard-reflects. The survey would zero exactly this, and it's the one correction small frustums can't reach.
+
+Relaxing to run at cellSize==1 is correct and safe — `forwardMap` is pure arithmetic; the survey costs at most 3 `lodAt` fetches, comparable to the 3 lookups every cast already does (lines 185-190). But do NOT run it unconditionally: today the survey runs even when `reflectivity == 0`, where its result is dead (GAP-zeroing is a no-op; `forwardInteraction` is only consumed inside `reflectivity &gt; 0` branches at 414 and 428). Add `reflectivity &gt; 0` to the guard — behavior-preserving, and it makes the cellSize==1 relaxation nearly free because the survey then only runs on the (soon rare) phantom-reflect events.
+
+One gap the hypothesis misses: `surveyForward == null` (single-axis/head-on exit) maps to FACE (Cast.java:408) and R survives — so head-on air:air reflects are uncorrected at **every** LOD, not just 1.
+
+## 2. Fix plan — three ordered, separable commits, all in Cast.java
+
+**Fix A (the bug):** Change the guard at Cast.java:399-403 to `!emissionCast &amp;&amp; reflectivity &gt; 0 &amp;&amp; gridAlignedReflect &amp;&amp; step.plane() != Vec3i.ZERO &amp;&amp; !isSolidImpedance(...)` (drop cellSize; add reflectivity&gt;0). Also extend `surveyForward` (Cast.java:458-489): when `forwardMap` returns null, sample the single forward neighbor via `FrustumLod.forwardFace(face, rayDir)` scaled by cellSize and return `classify(nBlocks, false, nBlocks)` — GAP when open, FACE when blocked — instead of null. Delete the `survey == null → FACE` branch. Extract the guard into a package-private static (e.g. `shouldSurveyForward(...)`) so it's unit-testable without a world.
+
+**Fix C (CORNER default — do second, it's one line and independent):** Cast.java:398 default `FACE`, not `CORNER`. FACE means "stay on the hit face" — the conservative walk. CORNER's 0.85 vertex-walk was designed for coarse corner geometry; as a default it displaces every un-surveyed reflect origin by up to ~0.85·cellSize diagonally.
+
+**Fix B (reflect geometry — last, depends on A):** The research pass's framing needs pushback: Cast.java:377-383's move-to-exit-face was a deliberate fix for rays stuck ping-ponging on one point (comment at 379-380) — but that stuck loop was *caused by the phantom R* that Fix A removes. Once A lands, restore physically-correct entry-face reflection: `reflectPlane = entryPlane(position, cellBase, cellSize, vector)`, `rposition = position`, `rdistance = 0`, keeping `gridAlignedReflect = true` (grid-exact origin, no nudge — normalize()'s octant pick depends on it). Landing B before A regresses the stuck-ray bug. B is the riskiest change; ship A+C first and validate in-game before B.
+
+## 3. Red-pass tests (match `FrustumLodEdgeWalkTest` static-unit idiom; full `raycast` needs a world, so test the extracted statics)
+
+In a new `CastSmallFrustumSurveyTest`:
+- `stepForSize(0.05) == 1` and `stepForSize(1.99) == 1` → documents that all young rays are cellSize==1 (regression lock on FrustumLod.java:139-146).
+- `shouldSurveyForward(false, 1, 0.5, true, X_PLANE, airZ)` → true (the fix); `(..., cellSize=16, ...)` → still true.
+- `shouldSurveyForward(false, 1, 0.0, ...)` → false (R==0 skips survey — perf contract).
+- `shouldSurveyForward(true /*emissionCast*/, 1, 0.5, ...)` → false (emission casts force cellSize=1 at Cast.java:183/201 but must keep their separate `shouldReflectAtEmissionExit` physics untouched).
+- `shouldSurveyForward(false, 1, 0.5, true, plane, solidZ)` → false (solid host still reflects normally).
+- Head-on: new static (or surveyForward decomposition) → open forward neighbor classifies GAP, blocked classifies FACE; assert GAP forces R=0 via the same zeroing contract `FrustumLodEdgeWalkTest.matchedHostReflectivityIgnoresNeighborWallImpedance` locks.
+- `edgeWalk(faceHit, base, 1, plane, dir, 0.85, FACE)` returns the hit unchanged at cellSize==1 (default-FACE means no vertex walk for un-surveyed reflects).
+- For Fix B: `entryPlane(pos, cellBase, 1, diagonalVector)` returns the entry axis when entry axis ≠ exit axis (assert against `getStep`'s exit plane differing); after B, assert the reflect origin static returns `position` with rdistance 0.
+- `blocksPermeation(airZ, NaN, NaN)` → false (missing chunk neighbor = open = GAP, so unloaded-chunk edges transmit rather than reflect at cellSize==1).
+
+## 4. Other small-ray problems noticed
+
+- The head-on/null-survey FACE fallback (item 1) affects coarse LODs too — fold into Fix A.
+- `surveyForward`'s `dBlocks = nBlocks` default (Cast.java:477) is what makes the null-map extension classify correctly for free; keep it.
+- The polar minting path (Cast.java:299-307, 351-371) at `virtualLod` cellSize==1 is worth a telemetry counter, but Fix A neutralizes its damage; don't touch polar logic in this pass.
+- Verified nothing else needs changing in FrustumLod.java or the tests' current assertions — all three fixes live in `/home/v0id/Documents/repos/resounding/src/main/java/dev/thedocruby/resounding/raycast/Cast.java`.</result>
+<usage><subagent_tokens>32419</subagent_tokens><tool_uses>8</tool_uses><duration_ms>136955</duration_ms></usage>
+</task-notification>
+
+---
+
+B-The fix plan is wrong. What I would rather do in this case is ONLY GRAB THE REAL SMALLEST NODE. Grab the smallest octant. Grab a virtual one if need be (the ray won't know the difference...) - small frustums should be behaving like vanilla DDA for all CUBE shapes. The 3 fixes you have listed don't actually fix the problem, they just undo a lot of what I've done recently. If we're extracting polarized and averaged 1^3 octants, we're doing something seriously wrong. 1^3 octants should always be of one clear material, without polarity. In the case of non-CUBE octants, we do the shapeTraversal, in the case of CUBE octants it's simple DDA, through a simple octant.
+C-Looks good.
+D-Make it a dead key when nothing has been captured. Provide visual feedback in the form of the ray flashing in & out of visibility (leave the frustum octants rendered the whole time) 3x in 1.5s. white -> transparent -> white -> transparent -> white -> transparent -> white -> no more flashing. The technical direction you have is fine. Looks good.
+E-This isn't about beam splitting.
+  #1-Do not use the dual derived alignment as it's incorrect for this usecase. Use the simpler singular polar alignment. The ray will already be within the octant, so the dual blended version will produce incorrect behavior, even with normalization.
+  #2-Frustum splitting is a later problem. Right now, I'm concerned about a ray being in the former position and growing into the latter:
+(* is the ray, in this 2D example, it's headed y=0.6x)
+```
+// two 2^3 (in 2D) octants next to eachother
+XXOO <-- former
+*OOO <-- former
+
+**OO <-- latter
+**OO <-- latter
+// it should not grow, instead it should:
+// This is where the lossless reflection happens: (should not count as a bounce, gets marked as a refraction but uses a different angle)
+XXOO <-- lossless reflection
+O*OO <-- lossless reflection
+// ^ it examined the parent octant, and saw the polarity (vertical in this 2D example), then reflected (roughly, just spitballing numbers here) to a slope of y=-.3x, and then on the next step, grew into:
+XX** <-- now that it's not re-covering its past space via a parent octant
+OO** <-- it actually grows. Between *OOO and O*OO it should not grow at all, but between O*OO and OO** it should, and should act like it (if it passes the threshold of 2.0, that is)
+```
+  #3-No, see my description in #2.
+
+- overlapping in worldspace
+- every growth step
+- The permeation costs of traversing the smaller octants still applies, just no extra cost from the parent polarity redirection.
+E (P.S.) This will cause frustums to glide along walls more often (like real waves do).
+
+---
+
+<task-notification>
+<task-id>a8036529ed30ce457</task-id>
+<tool-use-id>toolu_011hzViuv5HVdqvit1Xtr9DP</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/f9952aad-cd80-475b-937c-53bfaac48481/tasks/a8036529ed30ce457.output</output-file>
+<status>completed</status>
+<summary>Agent "Fable consult: simplify K-capture to dead-key + flash feedback" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have what I need. Key discovery: the focused ray is **already rendered as a solid white overlay** (`ACTIVE_RAY_COLOR = 0xFFFFFFFF`, `BounceRayLayer.java:27`) via `renderFocusedWhiteRay()` → `renderActiveRay()` (`BounceRayLayer.java:113-125, 158-179`), on a dedicated no-depth-test `activeRayBuffer` — completely separate from `OctreeLayer`'s octant-box rendering (its own `DebugLayer` with its own buffers). No time-based animation exists anywhere in the debug package; this is the first.
+
+## 1. Flash state: location and driving
+
+Put the state on **`BounceRayLayer`** — it owns the render decision the flash modifies; `OctreeLayer` must be untouched (owner: octants keep rendering). Two instance fields:
+
+```java
+private volatile long flashStartMillis = -1L;  // -1 = not flashing
+private volatile int flashRayIndex = -1;
+```
+
+Plus `public void startKaptureFlash(int rayIndex)` setting both (`flashStartMillis = System.currentTimeMillis()`). Set from the new K handler in `DebugKeybinds.register()`: after the dead-key/data checks pass, call `KaptureLogger.dump(...)` then `DebugRenderDispatcher.INSTANCE.bounceRays().startKaptureFlash(rayIndex)`. Read in `renderFocusedWhiteRay()`: if `flashStartMillis &gt;= 0 &amp;&amp; activeRayIndex() == flashRayIndex` and the current phase is transparent, skip `renderActiveRay(...)` entirely; once elapsed ≥ 1500ms, reset `flashStartMillis = -1`. Storing `flashRayIndex` prevents a mid-flash J-press from transferring the flash to a different ray.
+
+Put the **timing math in a tiny pure class** `KaptureFlash` (static methods, no MC imports) so it's unit-testable; `BounceRayLayer` just calls it with `System.currentTimeMillis() - flashStartMillis`.
+
+## 2. Timing formula
+
+7 equal phases over 1500ms (period ≈ 214.29ms), integer math to avoid float drift:
+
+```java
+static boolean isFlashing(long elapsedMs) { return elapsedMs &gt;= 0 &amp;&amp; elapsedMs &lt; 1500; }
+static int phaseIndex(long elapsedMs)     { return (int) ((elapsedMs * 7) / 1500); }  // 0..6
+static boolean isVisible(long elapsedMs)  { return !isFlashing(elapsedMs) || phaseIndex(elapsedMs) % 2 == 0; }
+```
+
+Phases 0/2/4/6 = white, 1/3/5 = transparent; at ≥1500ms `isFlashing` is false → steady visible, and the render path clears `flashStartMillis`.
+
+**"White" interpretation: full-opacity normal focused rendering, no recolor.** The focused ray is *already* drawn solid white when selected — the owner's "white → transparent → white" exactly describes toggling the existing white overlay's visibility. Do not touch the `TerminationCause` color scheme (background rays and terminator crosses keep their cause colors). Note the focused ray's colored segments are already excluded from the background pass (`BounceRayLayer.java:102` `continue`), so skipping `renderActiveRay` makes the line genuinely vanish during transparent phases — matching "flashing in &amp; out of visibility."
+
+## 3. Scope of the flash
+
+Only the focused ray's white polyline. Minimal gate — one condition at the top of the render of the focused ray:
+
+```java
+void renderFocusedWhiteRay(...) {
+    int activeRay = activeRayIndex();
+    if (activeRay &lt; 0) return;
+    if (flashStartMillis &gt;= 0 &amp;&amp; activeRay == flashRayIndex) {
+        long elapsed = System.currentTimeMillis() - flashStartMillis;
+        if (!KaptureFlash.isFlashing(elapsed)) flashStartMillis = -1;
+        else if (!KaptureFlash.isVisible(elapsed)) return;  // transparent phase
+    }
+    ... existing collection + renderActiveRay ...
+}
+```
+
+No per-segment work needed — `renderActiveRay` already receives only focused-ray segments. `OctreeLayer` renders its octant boxes in a separate layer/render call and is never consulted here, so it stays visible throughout — no changes to it. Leave `renderTerminatorCrosses` alone (crosses are cause-colored markers, not "the ray").
+
+## 4. Red-pass test list (JUnit)
+
+**`KaptureFlashTest`** (pure, no MC):
+- `t0_isWhite`: `isFlashing(0)` → true; `phaseIndex(0)` → 0; `isVisible(0)` → true.
+- `t107_stillFirstWhite`: `phaseIndex(107)` → 0; `isVisible(107)` → true.
+- `t215_firstTransparent`: `phaseIndex(215)` → 1; `isVisible(215)` → false.
+- `t750_middleTransparent`: `phaseIndex(750)` → 3; `isVisible(750)` → false.
+- `t1499_lastWhite`: `phaseIndex(1499)` → 6; `isVisible(1499)` → true.
+- `t1600_steadyNotFlashing`: `isFlashing(1600)` → false; `isVisible(1600)` → true.
+- `boundaries`: `phaseIndex(214)` → 0 (214·7=1498&lt;1500), `phaseIndex(215)` → 1; `isFlashing(1500)` → false.
+
+**`KaptureActionTest`** — extract the K-handler body into a testable static, e.g. `KaptureAction.execute(int selectedRayIndex, List&lt;CapturedRay&gt; bounces, Consumer&lt;String&gt; logSink) : boolean` (returns "flash should start"; `DebugKeybinds` wires the return to `startKaptureFlash`):
+- `deadKey_noFocus`: `selectedRayIndex = -1`, any bounces → returns false, logSink never invoked.
+- `deadKey_emptyCapture`: valid index, empty list → returns false, no log lines.
+- `withData_logsAndFlashes`: index 5, 3 synthetic `CapturedRay`s → returns true; logSink received exactly 3 lines (plus header if the approved `KaptureLogger` format has one), each matching the approved `%.1f`/`%.3f` format (regex-assert one representative line, including `resolvedImpedance`/`frustumSize` fields).
+
+**`BounceRayLayerFlashStateTest`** (if constructible headlessly — `GpuLineBuffer` in the constructor likely needs GL, so instead test `startKaptureFlash` state via the pure fields only if extracted; otherwise skip this and rely on the two pure suites above — do not force an MC bootstrap for it).
+
+Relevant files: `/home/v0id/Documents/repos/resounding/src/main/java/dev/thedocruby/resounding/debug/BounceRayLayer.java`, `.../RayLineLayer.java`, `.../DebugKeybinds.java`, `.../CaptureBuffer.java`.</result>
+<usage><subagent_tokens>22748</subagent_tokens><tool_uses>6</tool_uses><duration_ms>80010</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a09b0e14efa90f6ae</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/f9952aad-cd80-475b-937c-53bfaac48481/tasks/a09b0e14efa90f6ae.output</output-file>
+<status>completed</status>
+<summary>Agent "Fable consult: patient frustum growth vs double-cover" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All verified against source. Key grounding facts: `polar = highDir − lowDir` (`Polarization.java:147`) points from the open half toward the solid half; `frustumSize` initializes to `growthPerBlock` (`Cast.java:101`); the bend precedent already lives inside `Cast.raycast`'s permeate branch (`Cast.java:351-371`); Engine's bounce counters only move when `reflect.apply(...)` follows the reflected branch (`Engine.java:367-369`), and transmit resets `reflected = 0` (`Engine.java:429`).
+
+## 1. The double-cover predicate
+
+New pure static in `FrustumLod`:
+
+```java
+public static boolean wouldDoubleCover(
+        Vec3d cellBase, int cellSize, Vec3d exitPos,
+        @Nullable Vec3d polar, double candidateSize, double currentSize)
+```
+
+Logic:
+- `polar == null || polar.lengthSquared() &lt;= 1e-12` → false. `candidateSize &lt;= currentSize` (no growth attempted, e.g. reflect leg) → false.
+- `a = argmax |polar component|`; `s = sign(polar[a])` (+ points toward the solid half).
+- Polarity mid-plane: `mid = component(cellBase, a) + cellSize / 2.0`.
+- Clearance from the step's exit point to the boundary, measured toward solid: `clearance = max(0, s &gt; 0 ? mid − exitPos[a] : exitPos[a] − mid)` (negative = already past the plane → clamp to 0, always triggers).
+- Return `candidateSize / 2.0 &gt; clearance`.
+
+Sanity check on the worked example (left octant `cellBase=(0,0)`, `cellSize=2`, wall on top, `polar ≈ (0,+1)`, ray at `y≈0.5`): `mid=1.0`, `clearance=0.5`. Candidate grown footprint that would cover both rows is ≥ 2.0 → half = 1.0 &gt; 0.5 → triggers, at both the `*OOO` and `O*OO` positions (matching "between *OOO and O*OO it should not grow at all"). Once the beam's step resolves in the right octant (fully open, `polar == null`) the predicate is false and growth proceeds — no special "resume" code; `stepForSize`'s existing slot boundaries (`floor(footprint − BASE)`, first LOD jump as footprint clears 2.0-ish slots) handle the owner's 2.0-threshold reference untouched.
+
+Candidate size at the call site: `candidate = frustumSize + pConfig.frustumGrowthPerBlock * pdistance` (pdistance = the transmit leg length already in scope).
+
+## 2. Placement and the bend
+
+**Predicate + bend: inside `Cast.raycast`, on the permeate path**, immediately after the polarized-LOD block (`Cast.java:351-371`) and before `transmitted` is computed at line 424-426 — that is the only place `cellBase`, `cellSize`, `pposition`, `branchDescriptor.polar()`, and `vector` coexist, and it's where the two existing `permeationBend` calls already mutate `vector`. **Deferral: inside `Cast.applyFrustumStep`** via a new `boolean lastGrowthDeferred` field (reset at the top of each `raycast`, alongside `lastBoundaryResolved`): when set, `applyFrustumStep` early-returns `frustumSize` unchanged — no growth, and critically no shrink blend either. `Engine.advanceFrustumSize` and both Engine call sites stay byte-identical.
+
+**`permeationBend` cannot be reused.** It is sign-copy only (`Math.copySign` per component, `Physics.java:81-85`) — it preserves each component's magnitude exactly, so slope 0.6 can only become ±0.6, never ~−0.3, and for the example ray (rayNorm ≈ (0.857, 0.514), n = 0.514, t ≈ 0.26, target ≈ (0.63, +0.26)) it doesn't even flip the sign. New method:
+
+```java
+public static Vec3d grazeBend(Vec3d ray, Vec3d rayNorm, Vec3d polNorm) {
+    double n = polNorm.dotProduct(rayNorm);
+    if (n &lt;= 0) return ray;                      // already heading away from solid
+    double align = n * n;                        // polarAlignment
+    Vec3d tangent = rayNorm.subtract(polNorm.multiply(n));
+    Vec3d bent = tangent.subtract(polNorm.multiply(n * (1.0 - align)));
+    return bent.normalize().multiply(ray.length());  // magnitude preserved
+}
+```
+
+Normal component flips and is damped by `(1 − align)`; tangent is preserved; total speed preserved. Example: (1, 0.6) → bent normal −0.514·0.736 ≈ −0.378 → slope ≈ −0.44, in the owner's "roughly −0.3" ballpark, and head-on rays (align→1) collapse to pure tangent glide — exactly the wall-gliding effect. Apply with `polNorm` oriented toward solid (`polar.normalize()`, already the right sign). When the predicate holds but `n ≤ 0`, still defer growth, skip the bend.
+
+Tag it: extend the existing debug plumbing with a `lastFreeRefraction` boolean (or a value on the existing blank/interaction enums) so `debugTail`/logs can render it distinctly. Ignore `BeamBudget` entirely.
+
+## 3. Bounce/loss accounting
+
+Almost free, by construction:
+- **No bounce**: the refraction lives on the transmit leg. Engine's `bounceCount`/`reflected` only increment inside the `reflect.apply` branch (`Engine.java:367-369`); the transmit branch resets `reflected = 0`. No Engine change needed.
+- **No reverb hit**: `recordReflectHitIfAny` gates on `cast.reflected.power() &gt; 0` — the refraction produces no reflected power of its own; whatever ordinary reflectivity the boundary independently had is untouched (correct: that loss "would already be paid anyway").
+- **No extra loss**: `transmission = transmissionForBoundary(...)` runs unmodified — normal permeation cost stands.
+- **No shrink**: `lastGrowthDeferred` early-return in `applyFrustumStep` skips `nextFrustumSize` entirely, so neither the `growthPerBlock` term nor the `leftoverEnergy²/polarAlignment` blend applies. Do not fake `leftoverEnergyCoefficient = 1.0` — that still multiplies by `blend·grown` semantics and invites drift; a hard early-return is exact.
+
+## 4. Red-pass tests
+
+New files: `FrustumLodDoubleCoverTest`, `PhysicsGrazeBendTest`, plus cases in `CastFrustumStepTest`-style and an Engine-level test (mirror `EngineBounceEnergyTest` fixtures).
+
+1. **Predicate triggers on worked geometry**: `cellBase=(0,0,0)`, `cellSize=2`, `polar=(0,1,0)`, `exitPos=(0.9,0.5,0)`, `current=1.0`, `candidate=2.0` → assert true. Variant at `exitPos.x=1.5` (`O*OO`) → still true.
+2. **Clears one octant later**: same call with `polar=null` (open right octant) → false; also `cellBase=(2,0,0)`, unpolarized descriptor → false; and polarized-but-clear case `exitPos=(0.5,0.2,0)`, `candidate=0.3` → false (half 0.15 &lt; clearance 0.8).
+3. **No-growth guard**: `candidate == current` (reflect leg) → false even at zero clearance.
+4. **Past-plane clamp**: `exitPos[a]` beyond `mid` on the solid side, any positive growth → true.
+5. **`grazeBend` direction/magnitude**: ray `(1,0.6,0)`, pol `(0,1,0)` → assert `result.y &lt; 0`, `|result.y| &lt; 0.6`, `|result| == |ray|` within 1e-9, `result.x &gt; 0` unchanged sign; assert `result.y / result.x` within `[-0.5, -0.25]` (locks the "partial, not mirror" band). Ray moving away (`(1,-0.6,0)`) → returned unchanged.
+6. **Deferral is exact**: set `cast.lastGrowthDeferred = true`, `frustumSize = 1.7`, call `applyFrustumStep(dist=5, growth=0.4, leftover=0.3, permeated=true)` → assert `frustumSize == 1.7` exactly (no growth, no shrink). Flag false → equals `FrustumLod.nextFrustumSize(...)`.
+7. **Accounting untouched**: Engine-level fixture forcing one deferred-refraction transmit → assert `bounceCount`/reflect counter unchanged, no new reverb `Hit` added by that step, `cast.lastTransmission` equals plain `transmissionForBoundary` for the cell, and the refraction event is tagged (`lastFreeRefraction == true`) while `lastGrowthDeferred` resets on the next ordinary cast.
+
+Files: `/home/v0id/Documents/repos/resounding/src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java`, `.../raycast/Cast.java` (lines 351-371, 424-437, 1014-1024), `.../Physics.java` (75-86), `.../Engine.java` (254-262 — unchanged).</result>
+<usage><subagent_tokens>53350</subagent_tokens><tool_uses>10</tool_uses><duration_ms>154119</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a0cf3b9f3bd6029d1</task-id>
+<tool-use-id>toolu_01UGCTqjDjoS3BvoR5J8zqwU</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/f9952aad-cd80-475b-937c-53bfaac48481/tasks/a0cf3b9f3bd6029d1.output</output-file>
+<status>completed</status>
+<summary>Agent "Fable re-consult: root-cause fix for polarized 1³ leaves" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All claims below are verified against the actual source, not the summary.
+
+## 1. Where `polar()` is set, and whether a genuine 1×1×1 leaf can carry it
+
+Polar is baked in three places, all in `/home/v0id/Documents/repos/resounding/src/main/java/dev/thedocruby/resounding/OctreeManager.java`: `bakeOctant` (size-2, lines 230-237), `bakeAggregateDescriptor` (size&gt;2, lines 269-316), and `bakeLeafDescriptor` (size-1, lines 255-258, always `polar=null`). `Cast.liveLeaf` (Cast.java:882) leaves descriptor `EMPTY` (polar null). So **no genuine size-1 leaf ever bakes a non-null polar** — the invariant holds at bake time.
+
+But **pruned coarse nodes can be polarized**: in `growOctree` scale==1 (lines 229-249), `bakeOctant` runs *before* the `valid` prune decision, and when `regionHomogeneous` passes the polarized descriptor is *retained* on a `children==null` node. `sameAcousticCell` (line 326) returns true early on `reference.getBlock() == sample.getBlock()` even when the two *states* map to different Materials/impedances — so a "homogeneous" pruned node can have `max != min` in `bakeOctant` → `polar != null` on a childless size-2 node, which then propagates upward through `bakeAggregateDescriptor` into larger pruned ancestors.
+
+## 2. The actual mechanism (the summary's premise is half wrong)
+
+`Branch.getAtLod(pos, 1)` (Branch.java:194-214) **always returns a size-1 node** — every branch of that method terminates at `size==lod` (real leaf) or `virtualLodCell(pos, 1)`. So "`lodBranch.size` comes back &gt;1" never happens at lod 1. The coarse polarized descriptor leaks through two doors instead:
+
+- **Door A — `virtualLodCell` (Branch.java:216-229):** line 227 `virtual.bake(descriptor)` copies the coarse node's descriptor *verbatim* into the size-1 virtual cell. Correct for lod&gt;1 (the LOD aggregate is the point); wrong for lod==1 when the pruned source node carries a polar (per §1) — you get a polarized "1³ leaf."
+- **Door B — `Cast.getBlock` (Cast.java:865-880):** because `lodBranch.size==1` is always true at lod 1, the live override at Cast.java:189-193 fires and **replaces** the size-1 virtual with `getBlock`'s return — and `getBlock` line 876-877 returns the raw coarse branch whenever `tree.get(block)` lands on a `size&gt;1` node (pruned region, null child slot, unbaked root). Then Cast.java:201 clamps `cellSize` to 1 while `branchDescriptor = branch.descriptor` (line 296) is the coarse, possibly-polarized descriptor. This is the dominant path: the override *undoes* the size-1 resolution it was gated on.
+
+`finest = tree.get(queryPos)` (line 186) is currently only used for the `virtualLod` debug flag (line 206) and is the same node `getBlock` finds — it is *not* guaranteed size-1 either.
+
+## 3. The fix (two prongs at the source, one guard)
+
+**Prong A — `Branch.virtualLodCell`:** when `lodSize == 1`, do not copy `descriptor`; bake a single-material leaf descriptor exactly like `Branch.neighbor`'s coarser-replication path already does (Branch.java:339-342): `imp = material.impedance()` → `new NodeDescriptor(imp, imp, imp, NaN, null)` (EMPTY when material is null). Keep verbatim copy for `lodSize &gt; 1`.
+
+**Prong B — `Cast.getBlock`:** delete the `if (branch.size &gt; 1) return branch;` early return (lines 876-878) and always return `liveLeaf(block, shape, mat, state)` — state/shape/mat are already computed unconditionally at lines 868-870, so this costs nothing. This also fixes a latent bug in `interactionMaterialAt` (Cast.java:793-797), where `resolveShape(branch)` on a coarse branch reads the shape at `branch.start`, a *different block* than the queried position. `getBlock` then always honors its name: a real or virtual 1³ leaf, single material, no polarity — the ray can't tell the difference, per the owner's design.
+
+**Guard:** after line 296, `assert emissionCast || cellSize &gt; 1 || branchDescriptor.polar() == null : "1³ cell resolved a polarized descriptor";`. Optionally also add `cellSize &gt; 1 &amp;&amp;` to the polar gates at lines 299 and 351 — that is the invariant stated positively ("polarity is a coarse-cell concept"), not an undo of recent work. Do **not** touch N/E/D survey code. Separately worth flagging (not required for this fix): the `sameAcousticCell` same-Block shortcut is why polarized-pruned nodes exist at all; tightening it is a follow-up, not part of this change.
+
+## 4. CUBE-vs-shape routing: yes, no additional change needed
+
+With `cellSize==1` and a full-CUBE shape, `ShapeTraversal.resolve` returns `Result.voxel()` for full cubes/empty/miss (ShapeTraversal.java:18, 65-86), so Cast falls into the plain `getStep`/`exitPosition` DDA (lines 256-283). With polar correctly null, lines 299-307 and 351-371 are dead, and reflectivity is pure `impedancesClose`/`Physics.reflection` (336-339) — air:air gives R=0 via `impedancesClose`. Partial shapes still route through `ShapeTraversal.resolve`. That is exactly "vanilla DDA through a simple octant."
+
+## 5. Red-pass tests
+
+1. **`virtualLodCell` lod-1 purity:** build a size-2 Branch, `bake` a descriptor with `polar=(2,0,0)`, `children=null`, material=AIR-like → `getAtLod(pos, 1)` → assert `size==1`, `polar()==null`, `mostCommonImpedance == material.impedance()`.
+2. **lod&gt;1 unchanged:** same node, `getAtLod(pos, 2)` → descriptor copied verbatim (polar preserved). Pins that Prong A doesn't regress LOD aggregation.
+3. **`getBlock` never coarse:** tree whose `get(block)` lands on a pruned size-4 node with a polarized descriptor → `Cast.getBlock(pos)` → assert returned `size==1` and `polar()==null`, material from live blockstate.
+4. **End-to-end small-frustum air:air:** Cast with `impededSet` (non-emission), `frustumSize` below `BASE_FOOTPRINT`, through a coarse-pruned-but-polarized all-air region → assert `lastBranchSize==1`, reflectivity 0 (transmit, no reflect step recorded), no `VACUUM`/blank.
+5. **Invariant assert:** with `-ea`, drive the same cast and assert no `AssertionError`; then a negative control that hand-injects a polarized descriptor into a size-1 branch and expects the assert to fire.
+
+None of these touch or observe the N/E/D survey.</result>
+<usage><subagent_tokens>55895</subagent_tokens><tool_uses>12</tool_uses><duration_ms>194035</duration_ms></usage>
+</task-notification>
+
+---
+
+No more consulting fable. 
+
+All looks good, let's begin.
+
+---
+
+<task-notification>
+<task-id>a09b1e5727443140b</task-id>
+<tool-use-id>toolu_01DK9hELueyp5ko2kU9eEnDb</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/f9952aad-cd80-475b-937c-53bfaac48481/tasks/a09b1e5727443140b.output</output-file>
+<status>completed</status>
+<summary>Agent "Red pass: polarized 1³ leaf leak tests" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Confirmed: only new test files were added, nothing under `src/main/java` was touched.
+
+## Summary
+
+Created three RED test files under `src/test/java/dev/thedocruby/resounding/raycast/`, all failing for the expected reasons (verified via `nix develop -c ./gradlew test`):
+
+**1. `BranchVirtualLodCellPolarPurityTest.java`** — targets `Branch.virtualLodCell` (leak #1). Two tests: `lod1_stripsPolarAndUsesUnderlyingMaterialImpedance_notTheBlendedAggregate` (FAILS: `expected: &lt;null&gt; but was: &lt;(2.0, 0.0, 0.0)&gt;` on `cell.descriptor.polar()`) and `lodGreaterThanOne_stillCopiesTheCoarseAggregateDescriptorVerbatim` (PASSES — pins that real LOD≥2 aggregation must keep working after the fix). Built a size-4 pruned `Branch` (`children == null`) baked with a polarized `NodeDescriptor`, then called `getAtLod` with lod 1 vs lod 2.
+
+**2. `CastGetBlockCoarseBranchPurityTest.java`** — targets `Cast.getBlock`'s `if (branch.size &gt; 1) return branch;` early return (leak #2). FAILS: `expected: &lt;1&gt; but was: &lt;4&gt;` on `result.size`. Used a `Mockito.mock(WorldChunk.class, withSettings().extraInterfaces(ChunkChain.class))` so a single mock satisfies both the `ChunkChain` field type and the `(WorldChunk)` cast inside `getBlock`.
+
+**3. `CastSmallFrustumAirBoundaryPurityTest.java`** — full `Cast.raycast` end-to-end regression. FAILS: `expected: &lt;0.0&gt; but was: &lt;0.9993677555011217&gt;` on `cast.lastReflectivity`. Drove a real `raycast()` call with `frustumSize = 1.5` (&lt; 2, forcing `requestedLod == 1`), `impededSet = true`, and an exhausted `BeamBudget` (all four tiers consumed) so `Physics.commitReflect(w)` — with `w` pushed to 1.0 by a polar vector fully aligned with the ray — commits to a spurious near-total reflect off what should be plain air.
+
+Both Cast-constructing tests needed a `@BeforeEach`/`@AfterEach` that builds and installs a real `PrecomputedConfig.pConfig` (mirroring the existing `PrecomputedConfigRayBudgetTest` idiom) — this was necessary because `Cast`'s constructor unconditionally reads `pConfig.frustumGrowthPerBlock`, and `pConfig` is `null` unless some other test class happens to have set it first. This is a pre-existing, order-dependent flakiness in the suite (confirmed: `CastBlankBoundaryTest`, `CastImpededTest`, and `FrustumGrowthGateTest` already fail the same way in isolation or under certain suite orderings) — not something introduced by these changes, and I left it as-is for classes I didn't write since fixing it is out of scope (no production code changes allowed, and it's unrelated to the polarization-purity bug).
+
+Full-suite run before and after: 372 tests, 10 failed both times (7 pre-existing unrelated failures + these 3 new intentional RED failures) — confirming no regressions were introduced.
+
+No API-shape guessing was needed beyond following the existing `FakeChunkChain`/`SectionChunks`/`PrecomputedConfigRayBudgetTest` fixture idioms already in the test suite; all class/method signatures matched the task description exactly.</result>
+<usage><subagent_tokens>166909</subagent_tokens><tool_uses>66</tool_uses><duration_ms>771318</duration_ms></usage>
+</task-notification>
+
+---
+
+Do me a favor and distill the full plan in full detail to a .md file with the agentgrep and rtk commands to restore context for a future agent. This session is running long, so we're going to reboot the orchestration.
+
+Please only launch agents with medium, not high thinking mode. Things are well enough specified, and we have codebase instrumentation that should keep them on track.
+
+Just commit, then write the file, reference the file path and end your turn.
