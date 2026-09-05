@@ -45,6 +45,7 @@ design/consultation work; only implementation remains for B–E.
 ## Status snapshot (commits so far, newest last)
 
 ```
+51ec568 Task B: strip polarity from genuine 1x1x1 leaves in virtualLodCell and getBlock.  [B — DONE]
 6300ac9 Red pass: pin the polarized-1³-leaf leak (task B) with 3 failing tests.
 6c7e2eb Start frustumSize at the growth rate instead of the base footprint.   [A — DONE]
 7b48412 Fix vacuum/blank telemetry, group-adjust clamp, and remove thin-membrane special case.  [pre-existing WIP, committed as baseline]
@@ -52,8 +53,28 @@ design/consultation work; only implementation remains for B–E.
 
 - **A** — done, committed (`6c7e2eb`). `Cast.frustumSize` now initializes to
   `pConfig.frustumGrowthPerBlock` instead of `FrustumLod.BASE_FOOTPRINT`.
-- **B** — red pass done, committed (`6300ac9`). **Implementation pass is next
-  action for the new session.** See "Task B" below.
+- **B** — done, committed (`51ec568`). `Branch.virtualLodCell` bakes a
+  single-material descriptor for `lodSize == 1` instead of copying the coarse
+  descriptor verbatim; `Cast.getBlock` no longer short-circuits on
+  `branch.size > 1`, always resolving through `liveLeaf`; defensive assert
+  added at `Cast.java` ~296. Full suite: 372 tests, 9 failed (8 pre-existing
+  + unrelated, 0 new regressions) — one more pre-existing failure than the
+  original "expect 7" estimate: `OctreeLayerLiveRayTest` was already broken
+  independently of this branch's work. **New known flaky-order issue found
+  during verification, not fixed (out of scope for B, same category as the
+  `pConfig` flakiness already documented below):**
+  `CastSmallFrustumAirBoundaryPurityTest` passes cleanly in isolation but
+  fails when run after `OctreeGrowSweepTest` in the full suite, because
+  `MaterialRegistry.baked` (`MaterialRegistry.java:35`) is a
+  `static volatile` field with process-wide lifetime and no reset hook;
+  `OctreeGrowSweepTest`'s `@BeforeEach` (`OctreeGrowSweepTest.java:46-53`)
+  calls `MaterialRegistry.publish(...)` with a local `AIR = new
+  Material(1.2, 1.0, 0.5)` and never restores the real registry, so every
+  later test in the same JVM sees air impedance 1.2 instead of `DEFAULT`
+  (412.0). At least 3 other test classes
+  (`OctreeInvalidationTest`, `PatchAggregatorTest`, `OctreeGrowPolarBakeTest`)
+  have the same unguarded-publish pattern. Flag for a future cleanup pass;
+  not touched here.
 - **C, D, E** — not started. Fully designed below; go in order C → D → E
   (or D → E, order between them doesn't matter — just don't run C and E
   concurrently since both touch `Physics.java`).
