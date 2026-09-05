@@ -1,6 +1,10 @@
 package dev.thedocruby.resounding.raycast;
 
+import dev.thedocruby.resounding.config.PrecomputedConfig;
+import dev.thedocruby.resounding.config.ResoundingConfig;
 import net.minecraft.util.math.Vec3d;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,6 +14,22 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CastBlankBoundaryTest {
+
+	@BeforeEach
+	void activateConfig() throws CloneNotSupportedException {
+		if (PrecomputedConfig.pConfig != null) {
+			PrecomputedConfig.pConfig.deactivate();
+		}
+		PrecomputedConfig.pConfig = new PrecomputedConfig(new ResoundingConfig());
+	}
+
+	@AfterEach
+	void deactivateConfig() {
+		if (PrecomputedConfig.pConfig != null) {
+			PrecomputedConfig.pConfig.deactivate();
+			PrecomputedConfig.pConfig = null;
+		}
+	}
 
 	@Test
 	void blankClearsStaleReflectivitySoEngineCannotFollowDegenerateReflect() {

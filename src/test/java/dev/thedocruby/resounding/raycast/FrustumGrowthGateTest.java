@@ -1,5 +1,9 @@
 package dev.thedocruby.resounding.raycast;
 
+import dev.thedocruby.resounding.config.PrecomputedConfig;
+import dev.thedocruby.resounding.config.ResoundingConfig;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,6 +15,22 @@ class FrustumGrowthGateTest {
 
     private static final double DELTA = 1e-9;
     private static final double GROWTH = 0.5;
+
+    @BeforeEach
+    void activateConfig() throws CloneNotSupportedException {
+        if (PrecomputedConfig.pConfig != null) {
+            PrecomputedConfig.pConfig.deactivate();
+        }
+        PrecomputedConfig.pConfig = new PrecomputedConfig(new ResoundingConfig());
+    }
+
+    @AfterEach
+    void deactivateConfig() {
+        if (PrecomputedConfig.pConfig != null) {
+            PrecomputedConfig.pConfig.deactivate();
+            PrecomputedConfig.pConfig = null;
+        }
+    }
 
     @Test
     void zeroGrowth_blendStillShrinks() {
