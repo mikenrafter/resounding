@@ -70,9 +70,23 @@ public final class Polarization {
     /**
      * Presence-split impedance adjuster:
      * {@code f(mostly_mean, other_mean, overall_ratio) = other_mean * (1 - overall_ratio²)
-     * + mostly_mean * √overall_ratio}.
+     * + mostly_mean * √overall_ratio} for {@code overall_ratio ∈ (0,1)}.
+     *
+     * <p>{@code overall_ratio} is a presence fraction. Callers that pass a count ratio
+     * ({@code mostCount/leastCount}) may exceed 1 — that is treated as fully committed to the
+     * mostly-group ({@code → mostlyMean}). Without that clamp, {@code 1 - ratio²} goes negative and
+     * soft-majority octants (air+wool, etc.) bake huge negative endpoints that Cast treats as vacuum.
      */
     public static double groupAdjust(double mostlyMean, double otherMean, double overallRatio) {
+        if (!Double.isFinite(mostlyMean) || !Double.isFinite(otherMean)) {
+            return Double.NaN;
+        }
+        if (!Double.isFinite(overallRatio) || !(overallRatio > 0.0)) {
+            return otherMean;
+        }
+        if (overallRatio >= 1.0) {
+            return mostlyMean;
+        }
         return otherMean * (1.0 - overallRatio * overallRatio)
                 + mostlyMean * Math.sqrt(overallRatio);
     }

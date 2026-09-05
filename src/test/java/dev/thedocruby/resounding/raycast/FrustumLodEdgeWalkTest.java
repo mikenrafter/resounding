@@ -26,6 +26,28 @@ class FrustumLodEdgeWalkTest {
     }
 
     @Test
+    void openExitFaceIsGapEvenWhenSideWallsBlock() {
+        // N open + E/D solid used to return FACE and Cast upgraded air:air hosts to R=1.
+        assertEquals(FrustumLod.Interaction.GAP, FrustumLod.classify(false, true, true));
+        assertEquals(FrustumLod.Interaction.GAP, FrustumLod.classify(false, true, false));
+        assertEquals(FrustumLod.Interaction.GAP, FrustumLod.classify(false, false, true));
+        assertEquals(FrustumLod.Interaction.GAP, FrustumLod.classify(false, false, false));
+    }
+
+    @Test
+    void matchedHostReflectivityIgnoresNeighborWallImpedance() {
+        // Regression lock for latest.log air lod2 Zprev=Z=air R∈(0,1]: reflectivity is only from
+        // prior↔host. Neighbor walls may block the forward map but must not mint R on their own.
+        double air = 426.9;
+        assertEquals(0.0, Cast.impedancesClose(air, air) ? 0.0 : 1.0, 0.0);
+        assertTrue(FrustumLod.blocksPermeation(air, 1e7, 0.05), "N can still block");
+        assertEquals(
+                FrustumLod.Interaction.FACE,
+                FrustumLod.classify(true, false, true),
+                "FACE map is fine — Cast must still keep R=0 when prior≈host");
+    }
+
+    @Test
     void xyExitPlusYSurveysForwardYThenX() {
         // Leave H through +Y; from mid-face with +X+Y the next same-size DDA face is +X.
         FrustumLod.ForwardMap map = FrustumLod.forwardMap(

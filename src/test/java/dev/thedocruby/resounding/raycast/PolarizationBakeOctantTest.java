@@ -132,6 +132,22 @@ class PolarizationBakeOctantTest {
         assertEquals(100.0, Polarization.groupAdjust(100.0, 1000.0, 1.0), DELTA);
     }
 
+    @Test
+    void groupAdjustRatioAboveOneStaysAtMostlyMeanNotNegative() {
+        // Soft-majority count ratio 6/2=3 used to yield 2000*(1-9)+200*√3 ≈ -16000 (vacuum).
+        assertEquals(200.0, Polarization.groupAdjust(200.0, 2000.0, 6.0 / 2.0), DELTA);
+        assertTrue(Polarization.groupAdjust(200.0, 2000.0, 6.0 / 2.0) > 0.0);
+    }
+
+    @Test
+    void airMajorityBakesPositiveEndpoints() {
+        Material[] corners = { X, O, O, O, X, O, O, O };
+        Polarization.Descriptor d = Polarization.bakeOctant(corners);
+        assertTrue(d.mostCommonImpedance() > 0.0, "g_most must stay acoustic");
+        assertTrue(d.leastCommonImpedance() > 0.0, "g_least must stay acoustic");
+        assertEquals(200.0, d.mostCommonImpedance(), DELTA);
+    }
+
     // --- multi-material: middle tier in polar halves; g_* from most/least materials only ------
 
     @Test

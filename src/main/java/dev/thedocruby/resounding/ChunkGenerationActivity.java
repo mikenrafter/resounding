@@ -50,7 +50,8 @@ public final class ChunkGenerationActivity {
             ChunkPos gen = new ChunkPos(e.getKey());
             int dx = Math.abs(pos.x - gen.x);
             int dz = Math.abs(pos.z - gen.z);
-            if (Math.max(dx, dz) <= NEIGHBOR_RADIUS) {
+            // in the immediate 5 neighbors
+            if (Math.max(dx, dz) <= NEIGHBOR_RADIUS * 5) {
                 return true;
             }
         }

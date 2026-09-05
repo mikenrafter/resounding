@@ -38,8 +38,9 @@ public final class BounceRayLayer extends RayLineLayer {
 		BUDGET(0xFFFF3B30),
 		/** Octree/chunk resolution failed at the ray's position ("left the known world"). */
 		LEFT_WORLD(0xFFFF8C00),
-		/** A reflected or transmitted boundary resolved to a degenerate (null) direction —
-		 *  includes stepping into a vacuum-impedance boundary. */
+		/** Vacuum / soft-stop blank ({@code Cast.blank}) — null transmit dir after unusable medium. */
+		VACUUM(0xFF00BCD4),
+		/** A reflected boundary resolved to a degenerate (null) direction. */
 		NO_DIRECTION(0xFF2979FF),
 		/** Reflected several times in a row while confined to very few octree host cells — see
 		 *  {@code Engine.QUARTET_STALL_REFLECTS}. */

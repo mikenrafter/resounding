@@ -46,13 +46,7 @@ public class Cast {
     public double impeded; // prior impedance
     /** False while the ray is still exiting the emission cell (equivalent to the old {@code impeded == null}). */
     public boolean impededSet = false;
-    /** Impedance of the medium the ray was in before entering the current solid transit. */
-    @Nullable Double enteredFrom = null;
-    /** Distance permeated through the current solid transit (blocks). */
-    double solidTransitDistance = 0.0;
-    double lastPermeationDistance = 0.0;
 
-    static final double THIN_MEMBRANE_MAX_THICKNESS = 1.5;
     static final double IMPEDANCE_MATCH_TOLERANCE = 0.15;
     static final double SOLID_IMPEDANCE_MIN = 10_000.0;
 
@@ -65,7 +59,28 @@ public class Cast {
     /** Polar alignment {@code (rayNorm·polNorm)²} at the last resolved boundary; 1.0 (unthrottled) when the boundary had no polarization vector. */
     public double lastPolarAlignment = 1.0;
     public @Nullable Material lastMaterial;
+    /** Impedance actually used for R/T at the last boundary (may be polarized; can differ from
+     *  {@link #lastMaterial}{@code .impedance()} when the label is air but polar blends stiff). */
+    public double lastResolvedImpedance;
+    /**
+     * Why {@link #blank} / a soft-stop last ran. Survives the boundary clear so {@code Engine} can
+     * color terminators and log the pre-clear Z ({@link #lastBlankImpedance}).
+     */
+    public BlankReason lastBlankReason = BlankReason.NONE;
+    /** Impedance that triggered the blank (vacuum Z, or NaN for non-finite step). */
+    public double lastBlankImpedance = Double.NaN;
     public int lastOctantColor;
+
+    /** Soft-stop / null-direction cause recorded on {@link Cast} for overlay + dLog. */
+    public enum BlankReason {
+        NONE,
+        /** {@link #isVacuumImpedance} after polar/interaction resolve. */
+        VACUUM,
+        /** DDA produced a non-finite step length (misaligned / no forward face). */
+        NONFINITE_STEP,
+        /** Emission exit cell was vacuum / unknown. */
+        EMISSION_VACUUM
+    }
     /** Impedance this bounce's reflectivity was computed against — the medium the ray was previously in. */
     public double lastPriorImpedance;
     /** Octree node size (in blocks) the boundary was resolved at; >1 means a coarse cached node, not a single voxel. */
@@ -160,7 +175,7 @@ public class Cast {
         chunk = chunk.access((int) normalized.x >> 4, (int) normalized.z >> 4);
         if (chunk != null) tree = chunk.getBranch((int) normalized.y >> 4);
         if (tree == null || chunk == null) {
-            blank(position);
+            leaveWorld(position);
             return;
         }
 
@@ -179,7 +194,7 @@ public class Cast {
         }
 
         if (branch == null) {
-            blank(position);
+            leaveWorld(position);
             return;
         }
 
@@ -240,6 +255,11 @@ public class Cast {
             }
             step = getStep(cellBase, cellSize, position, vector);
             pdistance = step.step().length();
+            if (!Double.isFinite(pdistance)) {
+                // Misaligned / no forward face — left-world (orange), not a vacuum cyan blank.
+                leaveWorld(position, BlankReason.NONFINITE_STEP);
+                return;
+            }
             pposition = exitPosition(position, step, cellBase, cellSize);
             if (emissionCast) {
                 pposition = nudgeEmissionExit(pposition, vector);
@@ -274,19 +294,31 @@ public class Cast {
         // check below (and the polarizedImpedance/polarContrast/polarBlendWeight calls) agree on
         // one baked generation instead of possibly re-reading mid-rebake.
         Branch.NodeDescriptor branchDescriptor = branch.descriptor;
-        double newImpedance = interactionMaterial.impedance();
+        double hostImpedance = interactionMaterial.impedance();
+        double newImpedance = hostImpedance;
         if (!emissionCast && branchDescriptor.polar() != null
                 && !Double.isNaN(branchDescriptor.mostCommonImpedance()) && !Double.isNaN(branchDescriptor.leastCommonImpedance())
                 && branchDescriptor.mostCommonImpedance() != branchDescriptor.leastCommonImpedance()) {
             newImpedance = polarizedImpedance(branchDescriptor, vector);
+            // Soft-majority groupAdjust used to bake negative endpoints; refuse vacuum blends.
+            if (isVacuumImpedance(newImpedance)) {
+                newImpedance = hostImpedance;
+            }
         }
         if (!emissionCast && isVacuumImpedance(newImpedance)) {
-            blank(position);
+            blank(position, BlankReason.VACUUM, newImpedance);
             return;
+        }
+        // Geometrically open cell with a stale solid prior → sync. Otherwise stone→air R=1 forever
+        // (commitPermeation only runs on the transmit path, so reflect keeps solid impeded).
+        if (!emissionCast && impededSet
+                && isSolidImpedance(impeded)
+                && !isSolidImpedance(hostImpedance)) {
+            impeded = hostImpedance;
         }
         double priorImpedance = priorImpedanceForCast(impededSet, impeded, newImpedance);
         this.lastPriorImpedance = priorImpedance;
-        boolean thinExit = !emissionCast && isThinMembraneExit(newImpedance);
+        this.lastBlankReason = BlankReason.NONE;
         double reflectivity;
         double transmission;
         if (emissionCast) {
@@ -300,9 +332,6 @@ public class Cast {
                 reflectivity = 0;
                 transmission = 1;
             }
-        } else if (thinExit) {
-            reflectivity = 0;
-            transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
         } else {
             reflectivity = impedancesClose(priorImpedance, newImpedance)
                     ? 0
@@ -311,21 +340,32 @@ public class Cast {
         }
 
         // Polarized LOD cells: notable gate / commit can force reflect vs permeate.
+        //
+        // When splits remain, a notable hit is supposed to SPLIT (reflect child + permeate child).
+        // That split is not implemented yet — falling through with R>0 made air-labeled coarse
+        // cells reflect in place forever (latest.log ray #21: same pos, Zprev=Z=air, R≈1).
+        // Until split exists, permeate (optionally bend) instead of inventing a solo reflect.
+        //
+        // When splits are exhausted, commitReflect(w) chooses hard reflect vs permeate+bend.
+        // (Physics.isNotableInteraction is false at splitsLeft==0, so it must not gate this path.)
         if (!emissionCast && branchDescriptor.polar() != null && reflectivity > 0) {
-            double contrast = polarContrast(branchDescriptor);
             int splitsLeft = beamBudget.splitsRemaining();
-            if (!Physics.isNotableInteraction(contrast, splitsLeft)) {
-                // Not notable at this budget — continue without a hard event (permeate).
+            double w = polarBlendWeight(branchDescriptor, vector);
+            if (splitsLeft > 0) {
                 reflectivity = 0;
                 transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
-            } else if (splitsLeft <= 0) {
-                double w = polarBlendWeight(branchDescriptor, vector);
-                if (!Physics.commitReflect(w)) {
-                    reflectivity = 0;
-                    transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
-                    Vec3d bent = Physics.permeationBend(vector, vector.normalize(), branchDescriptor.polar().normalize());
-                    // Replace transmit direction below when bent.
-                    vector = bent;
+                double contrast = polarContrast(branchDescriptor);
+                if (Physics.isNotableInteraction(contrast, splitsLeft)
+                        && branchDescriptor.polar().lengthSquared() > 1e-12) {
+                    vector = Physics.permeationBend(
+                            vector, vector.normalize(), branchDescriptor.polar().normalize());
+                }
+            } else if (!Physics.commitReflect(w)) {
+                reflectivity = 0;
+                transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
+                if (branchDescriptor.polar().lengthSquared() > 1e-12) {
+                    vector = Physics.permeationBend(
+                            vector, vector.normalize(), branchDescriptor.polar().normalize());
                 }
             }
         }
@@ -335,8 +375,12 @@ public class Cast {
         Vec3i transmitPlane = shapeMode ? rstep.plane() : step.plane();
         Vec3i reflectPlane;
         if (gridAlignedReflect) {
-            if (emissionCast && reflectivity > 0) {
+            if (reflectivity > 0 && step.plane() != Vec3i.ZERO) {
+                // Voxel reflect from the exit face we just stepped to — not the entry position with
+                // rdistance=0 (that left rays stuck on one point for consecutive "air" reflects).
                 reflectPlane = step.plane();
+                rposition = pposition;
+                rdistance = pdistance;
             } else {
                 reflectPlane = entryPlane(position, cellBase, cellSize, vector);
             }
@@ -347,14 +391,19 @@ public class Cast {
         }
         // Open-cell exit: survey N/E/D from the first+second DDA axes when they differ. Same-axis
         // projection → ordinary non-NED boundary (no forward survey).
+        //
+        // NED classifies edge-walk geometry only. It must NOT invent reflectivity from neighbor
+        // impedances. Gate openness on the interaction material (air host), not polarized Z —
+        // polar can look "solid" while the host is still an open cell that needs the survey.
         FrustumLod.Interaction forwardInteraction = FrustumLod.Interaction.CORNER;
         if (!emissionCast
                 && cellSize > 1
                 && gridAlignedReflect
                 && step.plane() != Vec3i.ZERO
-                && !isSolidImpedance(newImpedance)) {
+                && !isSolidImpedance(interactionMaterial.impedance())) {
             ForwardSurvey survey = surveyForward(
-                    cellOrigin, cellBase, cellSize, pposition, step.plane(), vector, newImpedance);
+                    cellOrigin, cellBase, cellSize, pposition, step.plane(), vector,
+                    interactionMaterial.impedance());
             if (survey == null) {
                 forwardInteraction = FrustumLod.Interaction.FACE;
             } else {
@@ -362,21 +411,11 @@ public class Cast {
                 if (forwardInteraction == FrustumLod.Interaction.GAP) {
                     reflectivity = 0;
                     transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
-                } else {
-                    if (reflectivity == 0) {
-                        double wallZ = survey.wallImpedance();
-                        if (Double.isFinite(wallZ) && !impedancesClose(priorImpedance, wallZ)) {
-                            reflectivity = Physics.reflection(priorImpedance, wallZ);
-                            transmission = transmissionForBoundary(
-                                    reflectivity, interactionMaterial.permeation(), pdistance);
-                        }
-                    }
-                    if (reflectivity > 0) {
-                        // Bounce off the exit face from the open side (SVG H cell), not the entry face.
-                        reflectPlane = step.plane();
-                        rposition = pposition;
-                        rdistance = pdistance;
-                    }
+                } else if (reflectivity > 0) {
+                    // Edge-walk from the exit face (already set above); map only chooses CORNER/FACE walk.
+                    reflectPlane = step.plane();
+                    rposition = pposition;
+                    rdistance = pdistance;
                 }
             }
         }
@@ -397,7 +436,6 @@ public class Cast {
         reflect(reflectivity * power, reflectStart, reflectedDir, rdistance);
         transmit(transmission * power, pposition, transmitted, pdistance);
         stood = step;
-        this.lastPermeationDistance = pdistance;
         this.lastReflectivity = reflectivity;
         this.lastTransmission = transmission;
         this.lastBoundaryResolved = true;
@@ -405,19 +443,16 @@ public class Cast {
                 ? Physics.polarAlignment(vector.normalize(), branchDescriptor.polar().normalize())
                 : 1.0;
         this.lastMaterial = interactionMaterial;
+        this.lastResolvedImpedance = newImpedance;
     }
 
-    /** Combined result of {@link #surveyForward}: the four-map interaction classification plus
-     *  the stiffest finite neighbor impedance found during that same survey (or {@link Double#NaN}
-     *  when no neighbor resolved to a finite impedance). */
-    private record ForwardSurvey(FrustumLod.Interaction interaction, double wallImpedance) {}
+    /** Combined result of {@link #surveyForward}: the four-map interaction classification. */
+    private record ForwardSurvey(FrustumLod.Interaction interaction) {}
 
     /**
-     * Surveys N/E/D at the same LOD as {@code cellOrigin} in one pass, returning both the
-     * four-map interaction (host→neighbor interaction permeate, {@link FrustumLod#blocksPermeation},
-     * not raw impedance stiffness; missing neighbors count as open) and the wall impedance
-     * ({@code max} of the finite neighbor impedances) needed to resolve a boundary that turned out
-     * non-reflective. Returns {@code null} when the DDA projection says this exit is a single-axis
+     * Surveys N/E/D at the same LOD as {@code cellOrigin} for the four-map interaction
+     * (host→neighbor interaction permeate, {@link FrustumLod#blocksPermeation}; missing neighbors
+     * count as open). Returns {@code null} when the DDA projection says this exit is a single-axis
      * (non-NED) step.
      */
     private @Nullable ForwardSurvey surveyForward(
@@ -438,29 +473,19 @@ public class Cast {
         NeighborSample n = sampleNeighbor(nBranch);
         boolean nBlocks = FrustumLod.blocksPermeation(hostImpedance, n.impedance(), n.permeation());
 
-        NeighborSample e = NeighborSample.MISSING;
-        NeighborSample d = n;
         boolean eBlocks = false;
         boolean dBlocks = nBlocks;
         if (map.hasTangent()) {
             Branch eBranch = lodAt(cellOrigin.add(map.eOffset().getX(), map.eOffset().getY(), map.eOffset().getZ()), cellSize);
-            e = sampleNeighbor(eBranch);
+            NeighborSample e = sampleNeighbor(eBranch);
             eBlocks = FrustumLod.blocksPermeation(hostImpedance, e.impedance(), e.permeation());
 
             Branch dBranch = lodAt(cellOrigin.add(map.dOffset().getX(), map.dOffset().getY(), map.dOffset().getZ()), cellSize);
-            d = sampleNeighbor(dBranch);
+            NeighborSample d = sampleNeighbor(dBranch);
             dBlocks = FrustumLod.blocksPermeation(hostImpedance, d.impedance(), d.permeation());
         }
 
-        FrustumLod.Interaction interaction = FrustumLod.classify(nBlocks, eBlocks, dBlocks);
-
-        double wall = Double.NEGATIVE_INFINITY;
-        if (Double.isFinite(n.impedance())) wall = Math.max(wall, n.impedance());
-        if (Double.isFinite(e.impedance())) wall = Math.max(wall, e.impedance());
-        if (Double.isFinite(d.impedance())) wall = Math.max(wall, d.impedance());
-        double wallImpedance = wall == Double.NEGATIVE_INFINITY ? Double.NaN : wall;
-
-        return new ForwardSurvey(interaction, wallImpedance);
+        return new ForwardSurvey(FrustumLod.classify(nBlocks, eBlocks, dBlocks));
     }
 
     /** One neighbor's impedance + permeation, sampled from a single {@code descriptor}/{@code
@@ -721,26 +746,12 @@ public class Cast {
         return impedance >= SOLID_IMPEDANCE_MIN;
     }
 
-    /**
-     * Exiting a thin solid back into the same medium the ray entered from — skip the second
-     * full half-space mismatch (see {@code research/transmission-upgrade.md}).
-     */
-    boolean isThinMembraneExit(double newImpedance) {
-        if (enteredFrom == null || solidTransitDistance > THIN_MEMBRANE_MAX_THICKNESS) {
-            return false;
-        }
-        if (!impededSet || !isSolidImpedance(impeded)) {
-            return false;
-        }
-        return impedancesClose(newImpedance, enteredFrom);
-    }
-
     /** Commits the entered branch impedance after the caller chooses permeation (not reflection). */
     public void commitPermeation() {
         if (lastMaterial == null) {
             return;
         }
-        commitEnteredImpedance(lastMaterial.impedance(), lastPermeationDistance);
+        commitEnteredImpedance(lastMaterial.impedance());
     }
 
     /**
@@ -753,34 +764,18 @@ public class Cast {
     public boolean commitEmissionExit(Vec3d exitPosition, Vec3d direction) {
         Material exitMedium = interactionMaterialAt(exitPosition, direction);
         if (exitMedium == null || isVacuumImpedance(exitMedium.impedance())) {
-            blank(exitPosition);
+            blank(exitPosition, BlankReason.EMISSION_VACUUM,
+                    exitMedium == null ? Double.NaN : exitMedium.impedance());
             return false;
         }
         impeded = exitMedium.impedance();
         impededSet = true;
-        enteredFrom = null;
-        solidTransitDistance = 0.0;
         return true;
     }
 
-    private void commitEnteredImpedance(double newImpedance, double step) {
-        if (impededSet && enteredFrom == null
-                && isSolidImpedance(newImpedance) && !isSolidImpedance(impeded)) {
-            enteredFrom = impeded;
-            solidTransitDistance = 0.0;
-        }
-
-        if (isSolidImpedance(newImpedance)) {
-            solidTransitDistance += step;
-        }
-
+    private void commitEnteredImpedance(double newImpedance) {
         impeded = newImpedance;
         impededSet = true;
-
-        if (enteredFrom != null && impedancesClose(newImpedance, enteredFrom)) {
-            enteredFrom = null;
-            solidTransitDistance = 0.0;
-        }
     }
 
     @Nullable
@@ -934,7 +929,7 @@ public class Cast {
             default -> zUnit(vector.z);
         };
 
-		if (coefficient == Double.POSITIVE_INFINITY) {
+		if (coefficient == Double.POSITIVE_INFINITY && size > 0) {
 			LOGGER.warn(
 					"invalid coefficient (no forward face hit) base={} size={} pos={} dir={}",
 					base, size, position, vector
@@ -966,10 +961,41 @@ public class Cast {
     }
     // } */
     //* mutate {
+    /**
+     * Soft stop (vacuum / unusable medium): zero-power rays with null directions. Keeps
+     * {@link #lastBlankReason} / {@link #lastBlankImpedance} / {@link #lastResolvedImpedance} for
+     * dLog + overlay; clears boundary flags so Engine cannot follow a stale R&gt;0.
+     */
     public void blank(Vec3d position) {
+        blank(position, BlankReason.VACUUM, Double.NaN);
+    }
+
+    public void blank(Vec3d position, BlankReason reason, double impedanceHint) {
         this.reflected = new Ray(0, position, null, 0);
         this.transmitted = new Ray(0, position, null, 0);
+        this.lastBlankReason = reason;
+        this.lastBlankImpedance = impedanceHint;
+        this.lastResolvedImpedance = impedanceHint;
+        this.lastBoundaryResolved = false;
+        this.lastReflectivity = 0.0;
+        this.lastTransmission = 0.0;
     }
+
+    /** Missing octree/chunk / non-finite DDA: {@code transmitted == null} → left-world. */
+    private void leaveWorld(Vec3d position) {
+        leaveWorld(position, BlankReason.NONE);
+    }
+
+    private void leaveWorld(Vec3d position, BlankReason reason) {
+        this.reflected = new Ray(0, position, null, 0);
+        this.transmitted = null;
+        this.lastBlankReason = reason;
+        this.lastBlankImpedance = Double.NaN;
+        this.lastBoundaryResolved = false;
+        this.lastReflectivity = 0.0;
+        this.lastTransmission = 0.0;
+    }
+
     private void reflect(double power, Vec3d position, Vec3d angle, double distance) {
         this.reflected = new Ray(power, position, angle, distance);
     }

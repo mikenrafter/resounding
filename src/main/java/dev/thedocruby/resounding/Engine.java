@@ -352,28 +352,15 @@ public class Engine {
 			if (cast.transmitted == null) {
 				cause = BounceRayLayer.TerminationCause.LEFT_WORLD;
 				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true, cause);
-				terminationReason = "left the known world";
+				terminationReason = cast.lastBlankReason == Cast.BlankReason.NONFINITE_STEP
+						? "left the known world (non-finite step)"
+						: "left the known world";
+				logBounceIfNeeded(id, bounceCount, reflected, cast, ray, true);
 				break;
 			}
 
-			// Always log during a reflect run (reflected > 0), regardless of id, so a stuck run's
-			// material/impedance is visible for every ray, not just the id<4 sample.
-			if (pConfig.dLog && (id < 4 || reflected > 0)) {
-				Utils.LOGGER.info(
-						"Resounding: ray #{} bounce #{} node={}³ mode={} pos={} material={} Zprev={} Z={} R={} T={} power={}",
-						id,
-						bounceCount,
-						cast.lastBranchSize,
-						cast.lastShapeMode ? "SHAPE" : "VOXEL",
-						formatPos(ray.position()),
-						cast.lastMaterialLabel == null ? "?" : cast.lastMaterialLabel,
-						String.format("%.1f", cast.lastPriorImpedance),
-						cast.lastMaterial == null ? "-" : String.format("%.1f", cast.lastMaterial.impedance()),
-						String.format("%.3f", cast.lastBoundaryResolved ? cast.lastReflectivity : 0.0),
-						String.format("%.3f", cast.lastBoundaryResolved ? cast.lastTransmission : 0.0),
-						String.format("%.1f", ray.power())
-				);
-			}
+			boolean softStop = cast.transmitted.vector() == null;
+			logBounceIfNeeded(id, bounceCount, reflected, cast, ray, softStop);
 
 			recordReflectHitIfAny(cast, results, ray, pathLength, segmentLength, ctx.listenerPos());
 
@@ -416,9 +403,15 @@ public class Engine {
 				continue;
 			}
 			if (cast.transmitted.vector() == null) {
-				cause = BounceRayLayer.TerminationCause.NO_DIRECTION;
+				cause = switch (cast.lastBlankReason) {
+					case VACUUM, EMISSION_VACUUM -> BounceRayLayer.TerminationCause.VACUUM;
+					default -> BounceRayLayer.TerminationCause.NO_DIRECTION;
+				};
 				debugTail.emit(ctx, cast, id, prior, ray.position(), ray.power(), results.size(), true, cause);
-				terminationReason = "transmitted ray had no direction";
+				terminationReason = cast.lastBlankReason == Cast.BlankReason.NONE
+						? "transmitted ray had no direction"
+						: "transmitted ray had no direction (" + cast.lastBlankReason
+								+ " Z=" + String.format("%.1f", cast.lastBlankImpedance) + ")";
 				break;
 			}
 			double advance = cast.transmitted.length();
@@ -444,6 +437,45 @@ public class Engine {
 		debugTail.overlayTerminator(ctx, cast, id, cause);
 		logRayTermination(id, terminationReason, bounceCount, prior);
 		return results;
+	}
+
+	/**
+	 * Per-bounce dLog line. Forced on soft-stop so high ray ids still show the blanking cast.
+	 */
+	@Environment(EnvType.CLIENT)
+	private static void logBounceIfNeeded(
+			int id,
+			int bounceCount,
+			byte reflected,
+			Cast cast,
+			Ray ray,
+			boolean force
+	) {
+		if (!pConfig.dLog) {
+			return;
+		}
+		// id<4 sample, active reflect run, or a failing cast (blank/vacuum) — always show the corpse.
+		if (!force && id >= 4 && reflected <= 0) {
+			return;
+		}
+		String blank = cast.lastBlankReason != Cast.BlankReason.NONE
+				? " blank=" + cast.lastBlankReason
+				: "";
+		Utils.LOGGER.info(
+				"Resounding: ray #{} bounce #{} node={}³ mode={} pos={} material={} Zprev={} Z={} R={} T={} power={}{}",
+				id,
+				bounceCount,
+				cast.lastBranchSize,
+				cast.lastShapeMode ? "SHAPE" : "VOXEL",
+				formatPos(ray.position()),
+				cast.lastMaterialLabel == null ? "?" : cast.lastMaterialLabel,
+				String.format("%.1f", cast.lastPriorImpedance),
+				String.format("%.1f", cast.lastResolvedImpedance),
+				String.format("%.3f", cast.lastBoundaryResolved ? cast.lastReflectivity : 0.0),
+				String.format("%.3f", cast.lastBoundaryResolved ? cast.lastTransmission : 0.0),
+				String.format("%.1f", ray.power()),
+				blank
+		);
 	}
 
 	/**

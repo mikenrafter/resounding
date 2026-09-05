@@ -100,7 +100,7 @@ public final class FrustumLod {
      * interaction. Growth and shrink are separate:
      * <pre>
      *   grown = previousSize + growthPerBlock * stepDistance
-     *   next  = lerp(min: leftoverEnergy, max: 1, t: polarAlignment) * grown
+     *   next  = lerp(min: leftoverEnergy², max: 1, t: polarAlignment) * grown
      * </pre>
      * Pass {@code growthPerBlock = 0} on reflect (no growth). On permeate, pass the nominal rate so
      * growth is applied before the energy/alignment shrink coefficient.
@@ -109,8 +109,11 @@ public final class FrustumLod {
      * resolved (1.0 when the boundary had no polarization vector — a clean, unambiguous interface
      * imposes no throttle). {@code leftoverEnergyCoefficient} is whichever of reflectivity/
      * transmission actually carried the beam forward through that boundary (only one applies per
-     * step: the beam either reflected or transmitted). Full alignment leaves the (grown) footprint
-     * unchanged by energy loss; poor alignment throttles toward the surviving energy fraction.
+     * step: the beam either reflected or transmitted); it is squared before blending so shrink grows
+     * faster than the raw coefficient falls off — a beam that only carries half its energy forward
+     * loses three-quarters of its footprint headroom, not half. Full alignment leaves the (grown)
+     * footprint unchanged by energy loss; poor alignment throttles toward the surviving energy
+     * fraction.
      *
      * <p>This is the only place {@code frustumSize} advances in the cast process outside of its
      * initial value — callers hold the running size on their own state (e.g. {@code Cast.frustumSize})
@@ -124,7 +127,8 @@ public final class FrustumLod {
             double leftoverEnergyCoefficient
     ) {
         double grown = previousSize + growthPerBlock * stepDistance;
-        double blend = leftoverEnergyCoefficient + (1.0 - leftoverEnergyCoefficient) * polarAlignment;
+        double leftoverEnergySquared = leftoverEnergyCoefficient * leftoverEnergyCoefficient;
+        double blend = leftoverEnergySquared + (1.0 - leftoverEnergySquared) * polarAlignment;
         return blend * grown;
     }
 
@@ -321,6 +325,10 @@ public final class FrustumLod {
      * Four-map classifier. {@code n}/{@code e}/{@code d} are whether the host→neighbor interaction
      * blocks (low permeate — see {@link #blocksPermeation}). Head-on (no {@code E}) is
      * {@link Interaction#FACE} when {@code N} blocks, else {@link Interaction#GAP}.
+     *
+     * <p>When {@code N} is open, the exit is always {@link Interaction#GAP} — side walls on
+     * {@code E}/{@code D} must not invent a face reflection through an open exit (that was
+     * counting matched air:air hosts as R=1).
      */
     public static @NotNull Interaction classify(boolean nBlocks, boolean eBlocks, boolean dBlocks) {
         if (nBlocks && eBlocks && dBlocks) {
@@ -332,12 +340,7 @@ public final class FrustumLod {
         if (nBlocks && dBlocks) {
             return Interaction.FACE;
         }
-        if (nBlocks) {
-            return Interaction.GAP;
-        }
-        if (eBlocks && dBlocks) {
-            return Interaction.FACE;
-        }
+        // N open, or N alone blocks with E/D open: transmit through the exit (GAP).
         return Interaction.GAP;
     }
 
