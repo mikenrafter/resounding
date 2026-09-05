@@ -1,0 +1,40 @@
+Generate a title that will help the user recognize this T3 Code thread weeks later.
+Return JSON with exactly one key: title.
+
+Before answering, silently reduce the request to:
+- Subject: What system, feature, or problem is this really about?
+- Outcome: What does the user ultimately want to understand or change?
+- Incidental instructions: What only describes how the agent should do the work?
+
+Title the subject and outcome. Discard incidental instructions.
+
+Editorial rules:
+- 3-8 words, fewer than 40 characters.
+- Use a compact noun phrase or clear action phrase.
+- Capture the umbrella goal when the request lists several symptoms or steps.
+- Name the product change, not the mock, plan, report, branch, or PR used to produce it.
+- Models, subagents, tools, output formats, and monitoring instructions do not belong in the title unless they are themselves the topic.
+- For reviews, name what is being reviewed and the relevant concern. Avoid generic titles such as "Review PR 123" when linked or attached context reveals the subject.
+- For research, name the question domain rather than the requested research process.
+- Do not claim the work is complete.
+- Do not copy and truncate the user's message.
+- Avoid project names already visible in the UI, quotes, labels, filler, and trailing punctuation.
+- Use attached images as primary context for UI issues.
+- When a URL or attachment is the only source of the subject, use available tools to inspect it. If it cannot be resolved, remain accurate rather than guessing.
+
+User message:
+We're going to do 5 things in this session. For each, I want to walk through the current implementation, what things should look like, consult fable with a comprehensive set of context passed to it (give it good pointers, good prompts and tell it about the tools you also use: `agentgrep` and `rtk`) AND implement the changes in a tdd fashion. First commit the baseline, then have a subagent (sonnet please, no expensive models past this point) make a red pass, then launch an implementation subagent who knows all of the failing tests and the implementation points. Then commit, move to the next one, passing each agent "here's what has been done" and iterate until completion. Alright, with that out of the way, here are the things:
+
+A: FrustumSize should start at growthRate instead of 1. (simple, no need for full ceremony, just do).
+B: A deep dive into why frustums with size < 2 keep "reflecting" on air:air boundaries and other problems with the little rays.
+C: Dual derived polarity alignment calculations. The current implementation only looks at angle of incident, but completely ignores which part of the octant is entered. If a beam/frustum/ray enters mostly aligned with polarity, but near the point on the cube where the tangent line is, it should be treated as ~halfway between the two. Basically, get the average vector of (<incident point <-> center of octant> + <incident angle>) / 2 (the mean) before running the polarity alignment calculation.
+D: In-log ray tagging of the b+j mode ray. Basically, an alternate path to the general debugging toggle, for only the focused ray. Entering ray debug mode, and focusing on a ray makes it so when the user presses the K key, it "kaptures" the full ray data in the log for examination. Will be a major improvement in logging.
+E: Patient Frustum Growth. Preliminary polarity alignment checking + waiting until growth doesn't double-cover an area + using parent polarity when ready to grow to adjust the refraction angle, but without incurring a full impedence / reflection / permeation energy or size loss. 3 cases here, I'd like for you to expand on that and I'll correct any misunderstandings here prior to you asking fable about this.
+
+Implement A, run the gather + consult steps on B-D. Then gather and we'll discuss about E.
+
+Once E is all cleared up and has had a fable pass, we'll begin the phased TDD implementation.
+
+Remember, use and suggest usage of `agentgrep` and `rtk`. Not just the tools, but specific invocations you have found helpful in your initial gathering process here.
+
+Begin.
