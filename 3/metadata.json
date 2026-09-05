@@ -1,0 +1,72 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1R010NMF7453YGN453PHBEM",
+  "session_id": "e36e4615-6a03-4cc1-8eb5-520583a78f74",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-05T05:17:58.317428338Z",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "src/main/java/dev/thedocruby/resounding/Engine.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Cast.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java",
+    "src/test/java/dev/thedocruby/resounding/raycast/CastBlankBoundaryTest.java",
+    "src/test/java/dev/thedocruby/resounding/raycast/FrustumGrowthGateTest.java",
+    "src/test/java/dev/thedocruby/resounding/raycast/FrustumLodEdgeWalkTest.java"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "bfadca2ec5d8",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 50,
+    "cache_creation_tokens": 32589,
+    "cache_read_tokens": 913688,
+    "output_tokens": 10369,
+    "api_call_count": 25
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-05T05:17:58.278151321Z",
+    "agent_lines": 67,
+    "agent_removed": 80,
+    "human_added": 0,
+    "human_modified": 34,
+    "human_removed": 27,
+    "total_committed": 101,
+    "total_lines_changed": 285,
+    "agent_percentage": 51.578947368421055,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 138,
+      "user_lines_removed": 61,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "src/main/java/dev/thedocruby/resounding/Engine.java": 1,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 80,
+        "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java": 5,
+        "src/test/java/dev/thedocruby/resounding/raycast/CastBlankBoundaryTest.java": 30,
+        "src/test/java/dev/thedocruby/resounding/raycast/FrustumLodEdgeWalkTest.java": 22
+      },
+      "user_removed_per_file": {
+        "src/main/java/dev/thedocruby/resounding/Engine.java": 1,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 54,
+        "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java": 6
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 155,
+      "agent_lines_removed": 74
+    }
+  ]
+}

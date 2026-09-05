@@ -1,0 +1,5 @@
+Frustum size shrink should be controlled by energyCoefficient^2, rather than energyCoefficient. permeation/transmission should shrink it more than it does currently.
+
+---
+
+Are you sure? energyCoefficients should be (>= 0 && <= 1)... So, squaring them should make a frustum lose *more* of its footprint, not less... One operation should be additive (distance * growthRate) and one should be multiplicative (*= lerp(alignment, energyCoefficient^2, 1))...
