@@ -1,0 +1,78 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1R010NMF7453YGN453PHBEM",
+  "session_id": "e058c8cb-2035-427d-be61-5927f168104b",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-05T05:17:58.026329645Z",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "src/main/java/dev/thedocruby/resounding/ChunkGenerationActivity.java",
+    "src/main/java/dev/thedocruby/resounding/Engine.java",
+    "src/main/java/dev/thedocruby/resounding/debug/BounceRayLayer.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Cast.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Polarization.java",
+    "src/test/java/dev/thedocruby/resounding/raycast/CastBlankBoundaryTest.java",
+    "src/test/java/dev/thedocruby/resounding/raycast/FrustumGrowthGateTest.java",
+    "src/test/java/dev/thedocruby/resounding/raycast/FrustumLodEdgeWalkTest.java",
+    "src/test/java/dev/thedocruby/resounding/raycast/PolarizationBakeOctantTest.java"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "11425a1def52",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 2,
+    "cache_creation_tokens": 24572,
+    "cache_read_tokens": 0,
+    "output_tokens": 67,
+    "api_call_count": 1
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-05T05:17:57.994609061Z",
+    "agent_lines": 0,
+    "agent_removed": 30,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 115,
+    "total_committed": 2,
+    "total_lines_changed": 219,
+    "agent_percentage": 13.698630136986301,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 300,
+      "user_lines_removed": 115,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "src/main/java/dev/thedocruby/resounding/ChunkGenerationActivity.java": 2,
+        "src/main/java/dev/thedocruby/resounding/Engine.java": 53,
+        "src/main/java/dev/thedocruby/resounding/debug/BounceRayLayer.java": 3,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 125,
+        "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java": 13,
+        "src/main/java/dev/thedocruby/resounding/raycast/Polarization.java": 15,
+        "src/test/java/dev/thedocruby/resounding/raycast/CastBlankBoundaryTest.java": 42,
+        "src/test/java/dev/thedocruby/resounding/raycast/FrustumGrowthGateTest.java": 9,
+        "src/test/java/dev/thedocruby/resounding/raycast/FrustumLodEdgeWalkTest.java": 22,
+        "src/test/java/dev/thedocruby/resounding/raycast/PolarizationBakeOctantTest.java": 16
+      },
+      "user_removed_per_file": {
+        "src/main/java/dev/thedocruby/resounding/ChunkGenerationActivity.java": 1,
+        "src/main/java/dev/thedocruby/resounding/Engine.java": 21,
+        "src/main/java/dev/thedocruby/resounding/debug/BounceRayLayer.java": 2,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 71,
+        "src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java": 10,
+        "src/main/java/dev/thedocruby/resounding/raycast/Polarization.java": 1,
+        "src/test/java/dev/thedocruby/resounding/raycast/FrustumGrowthGateTest.java": 9
+      }
+    }
+  ]
+}
