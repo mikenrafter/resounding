@@ -114,10 +114,17 @@ public class Physics {
     /**
      * Free graze-refraction bend toward the open half when frustum growth would double-cover past
      * the polarity plane. Partial flip damped by plain {@link #polarAlignment} (not dual-derived).
-     * Magnitude of {@code ray} is preserved. Stub — returns {@code ray} unchanged until Task E.
+     * Magnitude of {@code ray} is preserved.
      */
     public static @NotNull Vec3d grazeBend(@NotNull Vec3d ray, @NotNull Vec3d rayNorm, @NotNull Vec3d polNorm) {
-        return ray;
+        double n = polNorm.dotProduct(rayNorm);
+        if (n <= 0) {
+            return ray; // already heading away from solid
+        }
+        double align = polarAlignment(rayNorm, polNorm);
+        Vec3d tangent = rayNorm.subtract(polNorm.multiply(n));
+        Vec3d bent = tangent.subtract(polNorm.multiply(n * (1.0 - align)));
+        return bent.normalize().multiply(ray.length());
     }
 
     /**

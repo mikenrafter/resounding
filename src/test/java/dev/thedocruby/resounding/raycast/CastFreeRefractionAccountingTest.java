@@ -91,8 +91,11 @@ class CastFreeRefractionAccountingTest {
                 cast.lastTransmission, true);
         assertEquals(sizeBefore, cast.frustumSize, DELTA, "deferred step must not grow or shrink");
 
-        // Next ordinary cast clears the deferral flag at entry.
-        cast.raycast(new Vec3d(2.5, 0.5, 0.5), new Vec3d(1, 0, 0), 1.0);
+        // Next cast entry clears deferral at the top of raycast (leave-world path — no second
+        // double-cover opportunity).
+        Mockito.when(chunkChain.getBranch(Mockito.anyInt())).thenReturn(null);
+        cast.raycast(new Vec3d(0.5, 0.5, 0.5), new Vec3d(1, 0, 0), 1.0);
         assertFalse(cast.lastGrowthDeferred, "next raycast must reset lastGrowthDeferred");
+        assertFalse(cast.lastFreeRefraction, "next raycast must reset lastFreeRefraction");
     }
 }

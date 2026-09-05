@@ -181,6 +181,8 @@ public class Cast {
         raycast(position, angle, 128);
     }
     public void raycast(@NotNull Vec3d position, @NotNull Vec3d vector, double power) {
+        this.lastGrowthDeferred = false;
+        this.lastFreeRefraction = false;
         //* access branch {
         final Vec3d normalized = normalize(position, vector);
         chunk = chunk.access((int) normalized.x >> 4, (int) normalized.z >> 4);
@@ -380,6 +382,21 @@ public class Cast {
                 if (branchDescriptor.polar().lengthSquared() > 1e-12) {
                     vector = Physics.permeationBend(
                             vector, vector.normalize(), branchDescriptor.polar().normalize());
+                }
+            }
+        }
+
+        // Patient growth: if the next permeate footprint would double-cover past the polarity
+        // mid-plane, defer growth and free-graze toward the open half (plain polarAlignment, not
+        // dual-derived — the ray is already inside the octant).
+        if (!emissionCast && reflectivity == 0) {
+            double candidate = frustumSize + pConfig.frustumGrowthPerBlock * pdistance;
+            Vec3d polar = branchDescriptor.polar();
+            if (FrustumLod.wouldDoubleCover(cellBase, cellSize, pposition, polar, candidate, frustumSize)) {
+                this.lastGrowthDeferred = true;
+                this.lastFreeRefraction = true;
+                if (polar != null && polar.lengthSquared() > 1e-12) {
+                    vector = Physics.grazeBend(vector, vector.normalize(), polar.normalize());
                 }
             }
         }
@@ -1025,6 +1042,9 @@ public class Cast {
             double leftoverEnergyCoefficient,
             boolean permeated
     ) {
+        if (lastGrowthDeferred) {
+            return frustumSize;
+        }
         double growth = permeated ? growthPerBlock : 0.0;
         frustumSize = FrustumLod.nextFrustumSize(
                 frustumSize, stepDistance, growth, lastPolarAlignment, leftoverEnergyCoefficient);

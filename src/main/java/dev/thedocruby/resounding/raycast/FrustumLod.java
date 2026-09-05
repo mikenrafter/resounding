@@ -135,13 +135,33 @@ public final class FrustumLod {
     /**
      * Whether growing the frustum to {@code candidateSize} from {@code exitPos} would double-cover
      * space already swept past the polarity mid-plane (solid half). Used to defer growth and trigger
-     * a free graze-refraction instead. Stub — always {@code false} until Task E lands.
+     * a free graze-refraction instead.
      */
     public static boolean wouldDoubleCover(
             Vec3d cellBase, int cellSize, Vec3d exitPos,
             @Nullable Vec3d polar, double candidateSize, double currentSize
     ) {
-        return false;
+        if (polar == null || polar.lengthSquared() <= 1e-12) {
+            return false;
+        }
+        if (candidateSize <= currentSize) {
+            return false;
+        }
+        int a = 0;
+        double best = Math.abs(polar.x);
+        if (Math.abs(polar.y) > best) {
+            a = 1;
+            best = Math.abs(polar.y);
+        }
+        if (Math.abs(polar.z) > best) {
+            a = 2;
+        }
+        double polA = a == 0 ? polar.x : (a == 1 ? polar.y : polar.z);
+        double s = polA >= 0.0 ? 1.0 : -1.0;
+        double mid = (a == 0 ? cellBase.x : (a == 1 ? cellBase.y : cellBase.z)) + cellSize / 2.0;
+        double exitA = a == 0 ? exitPos.x : (a == 1 ? exitPos.y : exitPos.z);
+        double clearance = Math.max(0.0, s > 0.0 ? mid - exitA : exitA - mid);
+        return candidateSize / 2.0 > clearance;
     }
 
     /**
