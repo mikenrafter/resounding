@@ -3,7 +3,7 @@
   "checkpoint_id": "01M1R010NMF7453YGN453PHBEM",
   "strategy": "manual-commit",
   "branch": "beam-tracing-frustums",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     "src/main/java/dev/thedocruby/resounding/ChunkGenerationActivity.java",
     "src/main/java/dev/thedocruby/resounding/Engine.java",
@@ -24,13 +24,20 @@
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
       "prompt": "/0/prompt.txt"
+    },
+    {
+      "metadata": "/1/metadata.json",
+      "transcript": "/1/full.jsonl",
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "prompt": "/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 2,
-    "cache_creation_tokens": 25370,
-    "cache_read_tokens": 0,
-    "output_tokens": 1145,
-    "api_call_count": 1
+    "input_tokens": 4,
+    "cache_creation_tokens": 32961,
+    "cache_read_tokens": 16779,
+    "output_tokens": 1212,
+    "api_call_count": 2
   }
 }
