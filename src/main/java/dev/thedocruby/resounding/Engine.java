@@ -591,19 +591,13 @@ public class Engine {
 			@Nullable BounceRayLayer.TerminationCause cause
 	) {
 		Renderer.addSoundBounceRay(
+				cast,
 				start,
 				end,
-				cast.lastOctantColor,
 				bounceIndex,
 				ctx.sourceID(),
 				rayId,
-				cast.lastMaterial,
-				cast.lastBoundaryResolved ? cast.lastReflectivity : 0.0,
-				cast.lastBoundaryResolved ? cast.lastTransmission : 0.0,
 				power,
-				cast.lastPriorImpedance,
-				cast.lastBranchSize,
-				cast.lastMaterialLabel,
 				terminated,
 				cause
 		);

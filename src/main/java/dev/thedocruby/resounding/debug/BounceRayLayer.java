@@ -60,6 +60,11 @@ public final class BounceRayLayer extends RayLineLayer {
 	/** Active-ray overlay: no depth test so the J-selected polyline always punches through. */
 	private final GpuLineBuffer activeRayBuffer;
 
+	/** {@code System.currentTimeMillis()} the K-key kapture flash started; {@code -1} when idle. */
+	private volatile long flashStartMillis = -1L;
+	/** Env-eval ray index the active kapture flash applies to; {@code -1} when idle. */
+	private volatile int flashRayIndex = -1;
+
 	public BounceRayLayer() {
 		super(true, BASE_LINE_WIDTH);
 		this.terminatorBuffer = new GpuLineBuffer(VertexBuffer.Usage.DYNAMIC, false, TERMINATED_LINE_WIDTH);
@@ -68,6 +73,12 @@ public final class BounceRayLayer extends RayLineLayer {
 
 	public void clearSegments() {
 		clear();
+	}
+
+	/** Starts the K-key kapture flash (white 3x over 1.5s, see {@link KaptureFlash}) for {@code rayIndex}. */
+	public void startKaptureFlash(int rayIndex) {
+		flashStartMillis = System.currentTimeMillis();
+		flashRayIndex = rayIndex;
 	}
 
 	@Override
@@ -115,6 +126,9 @@ public final class BounceRayLayer extends RayLineLayer {
 		if (activeRay < 0) {
 			return;
 		}
+		if (isKaptureFlashHidingRay(activeRay)) {
+			return;
+		}
 		List<LineSegment> focused = new ArrayList<>();
 		for (LineSegment segment : segmentSnapshot()) {
 			if (segment.rayIndex() == activeRay) {
@@ -140,6 +154,24 @@ public final class BounceRayLayer extends RayLineLayer {
 			return -1;
 		}
 		return octree.selectedRayIndex();
+	}
+
+	/**
+	 * True when an in-progress kapture flash (see {@link #startKaptureFlash}) is on its transparent
+	 * phase for {@code activeRay}, so the white ray should be skipped this frame. Also retires the
+	 * flash (resets {@link #flashStartMillis}) once its 1.5s sequence has fully elapsed.
+	 */
+	private boolean isKaptureFlashHidingRay(int activeRay) {
+		long startMillis = flashStartMillis;
+		if (startMillis < 0) {
+			return false;
+		}
+		long elapsed = System.currentTimeMillis() - startMillis;
+		if (!KaptureFlash.isFlashing(elapsed)) {
+			flashStartMillis = -1L;
+			return false;
+		}
+		return flashRayIndex == activeRay && !KaptureFlash.isVisible(elapsed);
 	}
 
 	/** True when either endpoint lies inside a focused frustum octant (unrelated rays stay out). */

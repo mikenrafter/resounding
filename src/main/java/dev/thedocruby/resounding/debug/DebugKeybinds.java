@@ -1,6 +1,7 @@
 package dev.thedocruby.resounding.debug;
 
 import dev.thedocruby.resounding.Engine;
+import dev.thedocruby.resounding.Utils;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -10,6 +11,8 @@ import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.List;
 
 @Environment(EnvType.CLIENT)
 public final class DebugKeybinds {
@@ -53,6 +56,14 @@ public final class DebugKeybinds {
 					"key.resounding.debug.toggle_capture",
 					InputUtil.Type.KEYSYM,
 					GLFW.GLFW_KEY_C,
+					CATEGORY
+			)
+	);
+	private static final KeyBinding KAPTURE = KeyBindingHelper.registerKeyBinding(
+			new KeyBinding(
+					"key.resounding.debug.kapture",
+					InputUtil.Type.KEYSYM,
+					GLFW.GLFW_KEY_K,
 					CATEGORY
 			)
 	);
@@ -136,6 +147,14 @@ public final class DebugKeybinds {
 					CaptureBuffer.INSTANCE.stopCapture();
 				} else {
 					CaptureBuffer.INSTANCE.startCapture(1);
+				}
+			}
+			while (KAPTURE.wasPressed()) {
+				int rayIndex = BounceRayLayer.activeRayIndex();
+				List<CaptureBuffer.CapturedRay> bounces = CaptureBuffer.INSTANCE.segmentsForRayIndex(rayIndex);
+				boolean flash = KaptureAction.execute(rayIndex, bounces, Utils.LOGGER::info);
+				if (flash) {
+					DebugRenderDispatcher.INSTANCE.bounceRays().startKaptureFlash(rayIndex);
 				}
 			}
 		});

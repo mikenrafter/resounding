@@ -36,7 +36,17 @@ public final class CaptureBuffer {
 			/** Octree node size (in blocks) the boundary was resolved at; >1 means a coarse cached node. */
 			int branchSize,
 			@Nullable String materialLabel,
-			boolean terminated
+			boolean terminated,
+			/** Impedance resolved at this boundary (the medium the ray is entering). */
+			double resolvedImpedance,
+			/** Alignment of the ray direction against the boundary's polar axis, in [-1, 1]. */
+			double polarAlignment,
+			/** Frustum/beam footprint size at this bounce, in blocks. */
+			double frustumSize,
+			/** Reason the bounce was left blank (e.g. "VACUUM"); null means NONE. */
+			@Nullable String blankReason,
+			/** Whether this bounce was resolved against exact block shape (true) or voxel occupancy (false). */
+			boolean shapeMode
 	) {}
 
 	private final int maxSegments;

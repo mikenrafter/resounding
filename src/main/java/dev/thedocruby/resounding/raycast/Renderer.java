@@ -16,36 +16,51 @@ public class Renderer {
 
 	private Renderer() {}
 
+	/**
+	 * @param cast the {@link Cast} this bounce segment was resolved against — its {@code last*}
+	 *     fields are snapshotted here (both for the live overlay and, when capturing, for
+	 *     {@link CaptureBuffer}) rather than exploding this method's parameter list further.
+	 */
 	public static void addSoundBounceRay(
+			Cast cast,
 			Vec3d start,
 			Vec3d end,
-			int color,
 			int bounceIndex,
 			int sourceID,
 			int rayIndex,
-			@Nullable Material material,
-			double reflectivity,
-			double transmission,
 			double power,
-			double priorImpedance,
-			int branchSize,
-			@Nullable String materialLabel,
 			boolean terminated,
 			@Nullable BounceRayLayer.TerminationCause cause
 	) {
 		if (!pConfig.dRays) {
 			return;
 		}
+		int color = cast.lastOctantColor;
+		@Nullable Material material = cast.lastMaterial;
+		double reflectivity = cast.lastBoundaryResolved ? cast.lastReflectivity : 0.0;
+		double transmission = cast.lastBoundaryResolved ? cast.lastTransmission : 0.0;
+		double priorImpedance = cast.lastPriorImpedance;
+		int branchSize = cast.lastBranchSize;
+		@Nullable String materialLabel = cast.lastMaterialLabel;
+
 		DebugRenderDispatcher.INSTANCE.bounceRays().addSoundBounceRay(
 				start, end, color, bounceIndex, sourceID, rayIndex, material, reflectivity, transmission,
 				power, branchSize, terminated, cause
 		);
 		if (CaptureBuffer.INSTANCE.isCapturing()) {
 			int capturedColor = terminated ? (cause != null ? cause.color : BounceRayLayer.TERMINATED_COLOR) : color;
+			double resolvedImpedance = cast.lastResolvedImpedance;
+			double polarAlignment = cast.lastPolarAlignment;
+			double frustumSize = cast.frustumSize;
+			@Nullable String blankReason = cast.lastBlankReason == Cast.BlankReason.NONE
+					? null
+					: cast.lastBlankReason.name();
+			boolean shapeMode = cast.lastShapeMode;
 			CaptureBuffer.INSTANCE.offer(new CaptureBuffer.CapturedRay(
 					start, end, capturedColor,
 					sourceID, rayIndex, bounceIndex, material, reflectivity, transmission, power,
-					priorImpedance, branchSize, materialLabel, terminated
+					priorImpedance, branchSize, materialLabel, terminated,
+					resolvedImpedance, polarAlignment, frustumSize, blankReason, shapeMode
 			));
 		}
 	}
