@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1R02V48QWBGFZGFDQQWVQXB",
+  "strategy": "manual-commit",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "src/main/java/dev/thedocruby/resounding/raycast/Cast.java"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 12,
+    "cache_creation_tokens": 5731,
+    "cache_read_tokens": 417531,
+    "output_tokens": 1837,
+    "api_call_count": 6
+  }
+}
