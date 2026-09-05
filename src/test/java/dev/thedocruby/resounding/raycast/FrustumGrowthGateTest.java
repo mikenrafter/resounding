@@ -90,4 +90,28 @@ class FrustumGrowthGateTest {
         cast.applyFrustumStep(2.0, GROWTH, 1.0, true); // → 1 + 0.5*2 = 2
         assertEquals(2.0, cast.frustumSize, DELTA);
     }
+
+    @Test
+    void deferredGrowthIsExactEarlyReturn() {
+        Cast cast = new Cast(null, null, null);
+        cast.lastPolarAlignment = 0.0;
+        cast.frustumSize = 1.7;
+        cast.lastGrowthDeferred = true;
+
+        cast.applyFrustumStep(5.0, 0.4, 0.3, true);
+        assertEquals(1.7, cast.frustumSize, DELTA,
+                "lastGrowthDeferred must hard-skip growth and shrink blend");
+    }
+
+    @Test
+    void withoutDeferralStillMatchesNextFrustumSize() {
+        Cast cast = new Cast(null, null, null);
+        cast.lastPolarAlignment = 0.25;
+        cast.frustumSize = 1.7;
+        cast.lastGrowthDeferred = false;
+
+        double expected = FrustumLod.nextFrustumSize(1.7, 5.0, 0.4, 0.25, 0.3);
+        cast.applyFrustumStep(5.0, 0.4, 0.3, true);
+        assertEquals(expected, cast.frustumSize, DELTA);
+    }
 }

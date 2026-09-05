@@ -133,6 +133,18 @@ public final class FrustumLod {
     }
 
     /**
+     * Whether growing the frustum to {@code candidateSize} from {@code exitPos} would double-cover
+     * space already swept past the polarity mid-plane (solid half). Used to defer growth and trigger
+     * a free graze-refraction instead. Stub — always {@code false} until Task E lands.
+     */
+    public static boolean wouldDoubleCover(
+            Vec3d cellBase, int cellSize, Vec3d exitPos,
+            @Nullable Vec3d polar, double candidateSize, double currentSize
+    ) {
+        return false;
+    }
+
+    /**
      * LOD step for a footprint width: schedule {@code 1,1,2,2,4,4,8,8,16,16,…} capped at
      * {@link #MAX_STEP}. Derived from footprint slots {@code floor(footprint - BASE)}.
      */

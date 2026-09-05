@@ -112,6 +112,15 @@ public class Physics {
     }
 
     /**
+     * Free graze-refraction bend toward the open half when frustum growth would double-cover past
+     * the polarity plane. Partial flip damped by plain {@link #polarAlignment} (not dual-derived).
+     * Magnitude of {@code ray} is preserved. Stub — returns {@code ray} unchanged until Task E.
+     */
+    public static @NotNull Vec3d grazeBend(@NotNull Vec3d ray, @NotNull Vec3d rayNorm, @NotNull Vec3d polNorm) {
+        return ray;
+    }
+
+    /**
      * Contrast-magnitude threshold a face-hit's polarization contrast must clear to be "notable"
      * (frustums-plan.md "Notable-interaction gate decides whether"). Dynamic, tied to the beam's
      * remaining split budget (generic here so a later beam-tracing subagent can feed it Phase 1's

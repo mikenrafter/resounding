@@ -92,6 +92,17 @@ public class Cast {
     public @Nullable String lastMaterialLabel;
     /** Whether this bounce resolved via sub-voxel VoxelShape geometry rather than full-cube stepping. */
     public boolean lastShapeMode;
+    /**
+     * When true, {@link #applyFrustumStep} hard-returns without growth or shrink — set when
+     * {@link FrustumLod#wouldDoubleCover} triggers a free graze-refraction on the transmit leg.
+     */
+    public boolean lastGrowthDeferred = false;
+    /**
+     * True when the last resolved boundary deferred growth via a free parent-polarity graze
+     * refraction (no extra impedance/reflection loss). Parallel to {@link #lastBlankReason} for
+     * debug/kapture visibility.
+     */
+    public boolean lastFreeRefraction = false;
 
     /**
      * Running frustum footprint width (blocks). Advances only via {@link #applyFrustumStep}
