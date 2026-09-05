@@ -16,6 +16,131 @@ class PhysicsPolarBlendTest {
 
     private static final double DELTA = 1e-9;
 
+    // --- dual-derived polarity alignment: position-aware blend of ray direction with the ------
+    // --- offset from incident point to octant center (frustums-plan.md Task C) ------------------
+
+    // Fixture: cellBase (0,0,0), cellSize 2 -> octant center C = (1,1,1).
+    private static final Vec3d C = new Vec3d(1, 1, 1);
+
+    @Test
+    void dualDerivedAlignmentDeadCenterEntryMatchesPureAngle() {
+        // P = center of -X face; C-P = (1,0,0), exactly parallel to ray, so the blend degenerates
+        // to the raw ray direction and dualDerivedAlignment must match polarAlignment exactly.
+        Vec3d ray = new Vec3d(1, 0, 0);
+        Vec3d p = new Vec3d(0, 1, 1);
+
+        assertEquals(Physics.polarAlignment(ray, new Vec3d(1, 0, 0)),
+                Physics.dualDerivedAlignment(ray, p, C, new Vec3d(1, 0, 0)), DELTA);
+
+        double s = Math.sqrt(2) / 2;
+        Vec3d pol = new Vec3d(s, s, 0);
+        assertEquals(Physics.polarAlignment(ray, pol),
+                Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
+    }
+
+    @Test
+    void tangentEntryWithFullyAlignedRayIsExactlyOneHalf() {
+        // P = center of +Y face; C-P = (0,-1,0), perpendicular to ray. Blended = (1,-1,0)/sqrt(2);
+        // dot with pol (1,0,0) = 1/sqrt(2), squared = 0.5.
+        Vec3d ray = new Vec3d(1, 0, 0);
+        Vec3d pol = new Vec3d(1, 0, 0);
+        Vec3d p = new Vec3d(1, 2, 1);
+
+        assertEquals(0.5, Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
+    }
+
+    @Test
+    void tangentEntryWithPerpendicularPolIsAlsoOneHalf() {
+        // Same geometry as above, pol (0,1,0) instead. Blended = (1,-1,0)/sqrt(2), dot^2 = 0.5.
+        Vec3d ray = new Vec3d(1, 0, 0);
+        Vec3d pol = new Vec3d(0, 1, 0);
+        Vec3d p = new Vec3d(1, 2, 1);
+
+        assertEquals(0.5, Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
+    }
+
+    @Test
+    void sumThenNormalizeFormulaExactValue() {
+        // P = top edge of -X face; C-P = (1,-1,0)/sqrt(2). Blended = normalize(ray + offsetNorm),
+        // dot^2 with pol (1,0,0) works out exactly to (2 + sqrt(2)) / 4.
+        Vec3d ray = new Vec3d(1, 0, 0);
+        Vec3d pol = new Vec3d(1, 0, 0);
+        Vec3d p = new Vec3d(0, 2, 1);
+
+        assertEquals((2 + Math.sqrt(2)) / 4, Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
+    }
+
+    @Test
+    void degenerateOffsetFallsBackToRawRay() {
+        // P == C exactly -> offset is the zero vector, degenerate -> fall back to normalize(ray).
+        Vec3d ray = new Vec3d(1, 1, 0);
+        Vec3d pol = new Vec3d(0, 1, 0);
+        Vec3d rayNorm = ray.normalize();
+
+        assertEquals(Physics.polarAlignment(rayNorm, pol),
+                Physics.dualDerivedAlignment(ray, C, C, pol), DELTA);
+    }
+
+    @Test
+    void antiParallelSumFallsBackToRawRay() {
+        // P = center of +X face; C-P = (-1,0,0), exactly anti-parallel to ray, so ray + offsetNorm
+        // sums to the zero vector - degenerate -> fall back to normalize(ray), never NaN.
+        Vec3d ray = new Vec3d(1, 0, 0);
+        Vec3d pol = new Vec3d(0, 1, 0);
+        Vec3d p = new Vec3d(2, 1, 1);
+
+        double result = Physics.dualDerivedAlignment(ray, p, C, pol);
+        assertEquals(Physics.polarAlignment(ray.normalize(), pol), result, DELTA);
+        assertFalse(Double.isNaN(result), "anti-parallel sum must fall back, never produce NaN");
+    }
+
+    @Test
+    void dualDerivedNormIsUnitLength() {
+        Vec3d[] rays = {
+                new Vec3d(1, 0, 0),
+                new Vec3d(1, 1, 0),
+                new Vec3d(0, 1, 1),
+                new Vec3d(1, 1, 1),
+        };
+        Vec3d[] points = {
+                new Vec3d(0, 1, 1),
+                new Vec3d(0, 1, 1),
+                new Vec3d(2, 1, 1),
+                new Vec3d(2, 0, 1),
+        };
+        for (int i = 0; i < rays.length; i++) {
+            Vec3d result = Physics.dualDerivedNorm(rays[i], points[i], C);
+            assertEquals(1.0, result.length(), DELTA,
+                    "dualDerivedNorm must always return a unit vector (case " + i + ")");
+        }
+    }
+
+    @Test
+    void dualDerivedNormNormalizesRayInput() {
+        // ray magnitude must not leak into the result - only its direction matters.
+        Vec3d p = new Vec3d(0, 2, 1);
+        Vec3d longRay = new Vec3d(2, 0, 0);
+        Vec3d unitRay = new Vec3d(1, 0, 0);
+
+        Vec3d fromLong = Physics.dualDerivedNorm(longRay, p, C);
+        Vec3d fromUnit = Physics.dualDerivedNorm(unitRay, p, C);
+
+        assertEquals(fromUnit.x, fromLong.x, DELTA);
+        assertEquals(fromUnit.y, fromLong.y, DELTA);
+        assertEquals(fromUnit.z, fromLong.z, DELTA);
+    }
+
+    @Test
+    void polSignInvarianceStillHolds() {
+        // Same fixture as sumThenNormalizeFormulaExactValue, but pol flipped to (-1,0,0): the
+        // squared dot product is side-agnostic, so the result must be unchanged.
+        Vec3d ray = new Vec3d(1, 0, 0);
+        Vec3d pol = new Vec3d(-1, 0, 0);
+        Vec3d p = new Vec3d(0, 2, 1);
+
+        assertEquals((2 + Math.sqrt(2)) / 4, Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
+    }
+
     // --- alignment a = (ray_norm . pol_norm)^2 --------------------------------------------------
 
     @Test

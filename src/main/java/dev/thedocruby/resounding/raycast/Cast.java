@@ -282,6 +282,7 @@ public class Cast {
                 }
             }
         }
+        Vec3d octantCenter = cellBase.add(cellSize * 0.5, cellSize * 0.5, cellSize * 0.5);
         //* amplitude and vector {
         Material branchMaterial = resolveMaterial(branch, BlockPos.ofFloored(normalized));
         Material interactionMaterial = interactionMaterialForCast(
@@ -301,7 +302,7 @@ public class Cast {
         if (!emissionCast && branchDescriptor.polar() != null
                 && !Double.isNaN(branchDescriptor.mostCommonImpedance()) && !Double.isNaN(branchDescriptor.leastCommonImpedance())
                 && branchDescriptor.mostCommonImpedance() != branchDescriptor.leastCommonImpedance()) {
-            newImpedance = polarizedImpedance(branchDescriptor, vector);
+            newImpedance = polarizedImpedance(branchDescriptor, vector, pposition, octantCenter);
             // Soft-majority groupAdjust used to bake negative endpoints; refuse vacuum blends.
             if (isVacuumImpedance(newImpedance)) {
                 newImpedance = hostImpedance;
@@ -352,7 +353,7 @@ public class Cast {
         // (Physics.isNotableInteraction is false at splitsLeft==0, so it must not gate this path.)
         if (!emissionCast && branchDescriptor.polar() != null && reflectivity > 0) {
             int splitsLeft = beamBudget.splitsRemaining();
-            double w = polarBlendWeight(branchDescriptor, vector);
+            double w = polarBlendWeight(branchDescriptor, vector, pposition, octantCenter);
             if (splitsLeft > 0) {
                 reflectivity = 0;
                 transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
@@ -442,7 +443,7 @@ public class Cast {
         this.lastTransmission = transmission;
         this.lastBoundaryResolved = true;
         this.lastPolarAlignment = (branchDescriptor.polar() != null && branchDescriptor.polar().lengthSquared() > 1e-12)
-                ? Physics.polarAlignment(vector.normalize(), branchDescriptor.polar().normalize())
+                ? Physics.dualDerivedAlignment(vector.normalize(), pposition, octantCenter, branchDescriptor.polar().normalize())
                 : 1.0;
         this.lastMaterial = interactionMaterial;
         this.lastResolvedImpedance = newImpedance;
@@ -527,19 +528,20 @@ public class Cast {
         return tree == null ? null : tree.getAtLod(pos, lod);
     }
 
-    private static double polarizedImpedance(Branch.NodeDescriptor descriptor, Vec3d vector) {
-        double w = polarBlendWeight(descriptor, vector);
+    private static double polarizedImpedance(Branch.NodeDescriptor descriptor, Vec3d vector, Vec3d incidentPoint, Vec3d octantCenter) {
+        double w = polarBlendWeight(descriptor, vector, incidentPoint, octantCenter);
         return Physics.blendImpedance(descriptor.mostCommonImpedance(), descriptor.leastCommonImpedance(), w);
     }
 
-    private static double polarBlendWeight(Branch.NodeDescriptor descriptor, Vec3d vector) {
+    private static double polarBlendWeight(Branch.NodeDescriptor descriptor, Vec3d vector, Vec3d incidentPoint, Vec3d octantCenter) {
         Vec3d pol = descriptor.polar();
         if (pol == null || pol.lengthSquared() < 1e-12) {
             return 0.5;
         }
         double blend = descriptor.blendCoefficient();
         double s = !Double.isNaN(blend) && blend >= 0.75 ? 2.0 : 1.0;
-        return Physics.polarBlendWeight(Physics.polarAlignment(vector.normalize(), pol.normalize()), s);
+        return Physics.polarBlendWeight(
+                Physics.dualDerivedAlignment(vector.normalize(), incidentPoint, octantCenter, pol.normalize()), s);
     }
 
     private static double polarContrast(Branch.NodeDescriptor descriptor) {

@@ -45,6 +45,32 @@ public class Physics {
     }
 
     /**
+     * Blended "effective ray norm": {@code normalize(rayNorm + normalize(octantCenter -
+     * incidentPoint))}. Falls back to {@code normalize(rayNorm)} when either the offset or the
+     * sum is degenerate.
+     */
+    public static Vec3d dualDerivedNorm(@NotNull Vec3d rayNorm, @NotNull Vec3d incidentPoint, @NotNull Vec3d octantCenter) {
+        Vec3d rn = rayNorm.normalize();
+        Vec3d offset = octantCenter.subtract(incidentPoint);
+        if (offset.lengthSquared() < 1e-12) {
+            return rn;
+        }
+        Vec3d offsetNorm = offset.normalize();
+        Vec3d sum = rn.add(offsetNorm);
+        if (sum.lengthSquared() < 1e-12) {
+            return rn;
+        }
+        return sum.normalize();
+    }
+
+    /**
+     * {@code polarAlignment(dualDerivedNorm(...), polNorm)} &mdash; position-aware alignment.
+     */
+    public static double dualDerivedAlignment(@NotNull Vec3d rayNorm, @NotNull Vec3d incidentPoint, @NotNull Vec3d octantCenter, @NotNull Vec3d polNorm) {
+        return polarAlignment(dualDerivedNorm(rayNorm, incidentPoint, octantCenter), polNorm);
+    }
+
+    /**
      * Blend weight {@code w = clamp(a * s, 0, 1)}. {@code w = 1} &rarr; fully committed to the
      * primary (high-impedance) material; {@code w = 0} &rarr; fully committed to the secondary.
      * Not yet implemented &mdash; always throws.
