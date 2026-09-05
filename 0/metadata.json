@@ -1,0 +1,56 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1R5ASXDFMYAWSEXN76334QB",
+  "session_id": "37e81f22-3d32-4964-80c2-786c019c1e35",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-05T06:50:41.595570722Z",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "src/main/java/dev/thedocruby/resounding/raycast/Branch.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Cast.java"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "c63b5d279db5",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 28,
+    "cache_creation_tokens": 38039,
+    "cache_read_tokens": 641416,
+    "output_tokens": 5420,
+    "api_call_count": 14
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-05T06:50:41.564626257Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 8,
+    "total_committed": 0,
+    "total_lines_changed": 8,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 15,
+      "user_lines_removed": 8,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "src/main/java/dev/thedocruby/resounding/raycast/Branch.java": 13,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 2
+      },
+      "user_removed_per_file": {
+        "src/main/java/dev/thedocruby/resounding/raycast/Branch.java": 1,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 7
+      }
+    }
+  ]
+}

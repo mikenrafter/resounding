@@ -1,0 +1,39 @@
+[BEAM_TRACING_TDD_PLAN.md](BEAM_TRACING_TDD_PLAN.md) 
+Orchestrate B to completion, then we'll see how usage limits are doing and whether you'll have enough for C.
+
+---
+
+<task-notification>
+<task-id>aace75dd36c6d6b2e</task-id>
+<tool-use-id>toolu_0151VnzXKHtUD5oPTvdzN5ii</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/37e81f22-3d32-4964-80c2-786c019c1e35/tasks/aace75dd36c6d6b2e.output</output-file>
+<status>completed</status>
+<summary>Agent "Implement Task B polarized-leaf fix" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Compiles clean. Final sanity check complete. Here's the summary.
+
+## Summary
+
+**Changes made (2 files, matching the brief exactly):**
+
+1. **`src/main/java/dev/thedocruby/resounding/raycast/Branch.java:216-238`** (`virtualLodCell`) — when `lodSize == 1`, bake a genuine single-material `NodeDescriptor` (`(imp, imp, imp, NaN, null)` from `material.impedance()`, or `NodeDescriptor.EMPTY` when `material == null`) instead of copying the coarse `descriptor` verbatim. The `lodSize &gt; 1` path is unchanged (still `virtual.bake(descriptor)`).
+
+2. **`src/main/java/dev/thedocruby/resounding/raycast/Cast.java:865-873`** (`getBlock`) — removed the `if (branch.size &gt; 1) return branch;` early return; the method now always returns `liveLeaf(block, shape, mat, state)`, whose inputs were already computed unconditionally. This also let me drop the now-dead `this.tree.get(block)` branch lookup.
+
+3. **`src/main/java/dev/thedocruby/resounding/raycast/Cast.java:296-298`** — added `assert emissionCast || cellSize &gt; 1 || branchDescriptor.polar() == null : "1³ cell resolved a polarized descriptor";` right after the `branchDescriptor` snapshot read. Confirmed `emissionCast` (line 182) and `cellSize` (line 201) are in scope.
+
+**Test results:**
+
+- `BranchVirtualLodCellPolarPurityTest` — both methods PASS, including the sibling `lodGreaterThanOne_stillCopiesTheCoarseAggregateDescriptorVerbatim` which must stay green.
+- `CastGetBlockCoarseBranchPurityTest` — PASSES.
+- `CastSmallFrustumAirBoundaryPurityTest` — PASSES in isolation (`lastReflectivity == 0.0` exactly, confirmed via temporary debug instrumentation, since removed), but still fails when run in the full suite: `expected: &lt;0.0&gt; but was: &lt;0.9888190955390805&gt;`.
+
+I dug into that residual failure rather than assume it away. It is **not caused by this fix** — I confirmed by stashing my changes and re-running the full suite: pre-fix baseline is 10 failures (the 3 targeted RED tests + 7 genuinely independent pre-existing failures: `ChunkGenerationActivityTest`, `CastBlankBoundaryTest`, `CastImpededTest`×2, `FrustumGrowthGateTest`×3 — note `OctreeLayerLiveRayTest` also failed in both runs, so the true pre-existing count is 8, one more than the brief's estimate of 7). Post-fix, the suite has 9 failures: those same 8 pre-existing ones, plus `CastSmallFrustumAirBoundaryPurityTest` still red for an unrelated reason.
+
+Root cause of that residual: `MaterialRegistry.baked` (`src/main/java/dev/thedocruby/resounding/MaterialRegistry.java:35`) is a `static volatile` field with process-wide lifetime and no reset hook. `OctreeGrowSweepTest`'s `@BeforeEach` (`src/test/java/dev/thedocruby/resounding/OctreeGrowSweepTest.java:46-53`) calls `MaterialRegistry.publish(...)` with a local `AIR = new Material(1.2, 1.0, 0.5)` and never cleans it up. Since Gradle runs the whole suite in one un-forked JVM, once that test class runs, `MaterialRegistry.material(Blocks.AIR...)` permanently returns impedance 1.2 instead of `DEFAULT` (412.0) for the rest of the JVM. `CastSmallFrustumAirBoundaryPurityTest` hardcodes `impeded = 426.9`; against the polluted 1.2 that's `Physics.reflection(426.9, 1.2) = 0.9888190955390805` — matching the observed failure to the decimal. Three other test classes (`OctreeInvalidationTest`, `PatchAggregatorTest`, `OctreeGrowPolarBakeTest`) have the identical unguarded-publish pattern. This is a pre-existing test-isolation bug entirely orthogonal to the polar-leak fix, and outside Task B's scope (only Branch/Cast/guard were authorized) — I did not touch it.
+
+No commits made, per instructions.
+
+result: Task B's polar-leak fix is implemented and verified — `Branch.virtualLodCell` now bakes a genuine unpolarized descriptor for 1³ leaves, `Cast.getBlock` no longer returns coarse polarized branches, and the defensive assert is in place; 2 of 3 targeted tests pass unconditionally and the 3rd passes in isolation but is masked in the full suite by a pre-existing, unrelated `MaterialRegistry` static-state leak from `OctreeGrowSweepTest` (documented above, left untouched as out of scope).</result>
+<usage><subagent_tokens>93824</subagent_tokens><tool_uses>61</tool_uses><duration_ms>872718</duration_ms></usage>
+</task-notification>
