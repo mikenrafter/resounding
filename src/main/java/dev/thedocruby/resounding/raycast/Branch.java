@@ -224,7 +224,19 @@ public class Branch {
         int oz = Math.min(Math.max(origin.getZ(), start.getZ()), Math.max(start.getZ(), maxZ));
         Branch virtual = new Branch(new BlockPos(ox, oy, oz), lodSize, material);
         virtual.materialLabel = materialLabel;
-        virtual.bake(descriptor);
+        if (lodSize == 1) {
+            // A genuine 1x1x1 (finest) leaf must never carry a polarization descriptor — polarity
+            // is a coarse-aggregate-only concept. Bake a single-material descriptor instead of
+            // copying the (possibly polarized) coarse aggregate verbatim.
+            if (material != null) {
+                double impedance = material.impedance();
+                virtual.bake(new NodeDescriptor(impedance, impedance, impedance, Double.NaN, null));
+            } else {
+                virtual.bake(NodeDescriptor.EMPTY);
+            }
+        } else {
+            virtual.bake(descriptor);
+        }
         virtual.shape = shape;
         return virtual;
     }

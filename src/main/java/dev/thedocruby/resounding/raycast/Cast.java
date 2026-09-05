@@ -294,6 +294,8 @@ public class Cast {
         // check below (and the polarizedImpedance/polarContrast/polarBlendWeight calls) agree on
         // one baked generation instead of possibly re-reading mid-rebake.
         Branch.NodeDescriptor branchDescriptor = branch.descriptor;
+        assert emissionCast || cellSize > 1 || branchDescriptor.polar() == null
+                : "1³ cell resolved a polarized descriptor";
         double hostImpedance = interactionMaterial.impedance();
         double newImpedance = hostImpedance;
         if (!emissionCast && branchDescriptor.polar() != null
@@ -869,13 +871,6 @@ public class Cast {
         VoxelShape shape = state.getCollisionShape(world, block);
         Material mat = material(state);
 
-        final Branch branch = this.tree.get(block);
-        if (branch.material == null && branch.size == 1) {
-            return liveLeaf(block, shape, mat, state);
-        }
-        if (branch.size > 1) {
-            return branch;
-        }
         return liveLeaf(block, shape, mat, state);
     }
 
