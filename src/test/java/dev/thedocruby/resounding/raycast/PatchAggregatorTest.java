@@ -12,6 +12,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Vec3i;
 import net.minecraft.world.chunk.WorldChunk;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,8 @@ class PatchAggregatorTest {
     private static BlockState airState;
     private static BlockState glassState;
 
+    private MaterialRegistry.Snapshot priorMaterials;
+
     private static final Vec3i[] AXES = {
             new Vec3i(1, 0, 0), new Vec3i(-1, 0, 0),
             new Vec3i(0, 1, 0), new Vec3i(0, -1, 0),
@@ -60,11 +63,17 @@ class PatchAggregatorTest {
 
     @BeforeEach
     void publishMaterials() {
+        priorMaterials = MaterialRegistry.snapshot();
         MaterialRegistry.publish(Map.ofEntries(
                 Map.entry(Ident.parse("minecraft:stone"), STONE),
                 Map.entry(Ident.parse("minecraft:air"), AIR),
                 Map.entry(Ident.parse("minecraft:glass"), GLASS)
         ));
+    }
+
+    @AfterEach
+    void restoreMaterials() {
+        MaterialRegistry.restore(priorMaterials);
     }
 
     private static void fillUniform(SectionChunks.SectionFixture fixture, BlockState state) {

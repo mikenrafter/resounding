@@ -12,6 +12,7 @@ import net.minecraft.block.Blocks;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.chunk.WorldChunk;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,6 +55,8 @@ class OctreeGrowPolarBakeTest {
     private static BlockState cobblestoneState;
     private static BlockState sandstoneState;
 
+    private MaterialRegistry.Snapshot priorMaterials;
+
     @BeforeAll
     static void bootstrapMinecraft() {
         SharedConstants.createGameVersion();
@@ -71,6 +74,7 @@ class OctreeGrowPolarBakeTest {
 
     @BeforeEach
     void publishMaterials() {
+        priorMaterials = MaterialRegistry.snapshot();
         MaterialRegistry.publish(Map.ofEntries(
                 Map.entry(Ident.parse("minecraft:stone"), STONE),
                 Map.entry(Ident.parse("minecraft:air"), AIR),
@@ -82,6 +86,11 @@ class OctreeGrowPolarBakeTest {
                 Map.entry(Ident.parse("minecraft:cobblestone"), COBBLESTONE),
                 Map.entry(Ident.parse("minecraft:sandstone"), SANDSTONE)
         ));
+    }
+
+    @AfterEach
+    void restoreMaterials() {
+        MaterialRegistry.restore(priorMaterials);
     }
 
     @Test

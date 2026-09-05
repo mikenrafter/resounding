@@ -29,14 +29,18 @@ class OctreeLayerLiveRayTest {
 
 	@Test
 	void bounceOffPlusXSelectsTheCellBeyondTheHitFace() {
+		// Arrange — LOD≥2 so getAtLod keeps the wall's coarse polar (1³ virtual leaves strip it).
+		// Stronger Y so the second DDA face wins over the far +X of the virtual neighbor.
 		Branch root = wallTree();
 		List<OctreeOverlay.VisitedStep> steps = new ArrayList<>();
+		Vec3d hit = new Vec3d(8, 0.5, 0.5);
+		Vec3d incident = new Vec3d(1, 2, 0);
+		int castStepSize = 2;
 
-		// Stronger Y component so second DDA face wins over the far +X of the virtual neighbor.
-		OctreeLayer.appendBounceOff(
-				root, new Vec3d(8, 0.5, 0.5), new Vec3d(1, 2, 0), 1, steps, new HashSet<>()
-		);
+		// Act
+		OctreeLayer.appendBounceOff(root, hit, incident, castStepSize, steps, new HashSet<>());
 
+		// Assert — neighbor beyond the +X face is the polarized wall cell
 		assertFalse(steps.isEmpty());
 		OctreeOverlay.VisitedStep bounce = steps.getFirst();
 		assertEquals("bounce", bounce.label());
@@ -47,18 +51,42 @@ class OctreeLayerLiveRayTest {
 	}
 
 	@Test
-	void bounceOffMinusXSelectsTheCellBeyondTheHitFace() {
+	void bounceOffPlusXAtLod1StripsPolarFromVirtualLeaf() {
+		// Arrange — same geometry as plus-X, but pencil LOD (Task B: 1³ never carries polar)
 		Branch root = wallTree();
 		List<OctreeOverlay.VisitedStep> steps = new ArrayList<>();
 
+		// Act
 		OctreeLayer.appendBounceOff(
-				root, new Vec3d(8, 0.5, 0.5), new Vec3d(-1, 2, 0), 1, steps, new HashSet<>()
-		);
+				root, new Vec3d(8, 0.5, 0.5), new Vec3d(1, 2, 0), 1, steps, new HashSet<>());
 
+		// Assert — still beyond the face, but polar is intentionally null at size 1
 		assertFalse(steps.isEmpty());
-		assertEquals("bounce", steps.getFirst().label());
-		assertTrue(steps.getFirst().box().minX < 8.0);
-		assertTrue(steps.getFirst().box().maxX <= 8.0 + 1e-9);
+		OctreeOverlay.VisitedStep bounce = steps.getFirst();
+		assertEquals("bounce", bounce.label());
+		assertNull(bounce.polar(), "1³ virtual leaves must not leak coarse wall polar");
+		assertTrue(bounce.box().minX >= 8.0 - 1e-9);
+		assertTrue(bounce.box().minX < 16.0);
+	}
+
+	@Test
+	void bounceOffMinusXSelectsTheCellBeyondTheHitFace() {
+		// Arrange
+		Branch root = wallTree();
+		List<OctreeOverlay.VisitedStep> steps = new ArrayList<>();
+		Vec3d hit = new Vec3d(8, 0.5, 0.5);
+		Vec3d incident = new Vec3d(-1, 2, 0);
+		int castStepSize = 2;
+
+		// Act
+		OctreeLayer.appendBounceOff(root, hit, incident, castStepSize, steps, new HashSet<>());
+
+		// Assert — neighbor beyond the −X face sits in the air half-space
+		assertFalse(steps.isEmpty());
+		OctreeOverlay.VisitedStep bounce = steps.getFirst();
+		assertEquals("bounce", bounce.label());
+		assertTrue(bounce.box().minX < 8.0);
+		assertTrue(bounce.box().maxX <= 8.0 + 1e-9);
 	}
 
 	@Test

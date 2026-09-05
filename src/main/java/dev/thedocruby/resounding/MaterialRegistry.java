@@ -35,6 +35,22 @@ public final class MaterialRegistry {
     private static volatile Map<Block, Material> baked = Map.of();
     private static volatile Set<Ident> definitionIds = Set.of();
 
+    /**
+     * Process-wide registry handle for tests that temporarily {@link #publish}: snapshot before
+     * mutating, {@link #restore} in a {@code finally} (or {@code @AfterEach}) so later tests in
+     * the same JVM see the prior table again.
+     */
+    public record Snapshot(Map<Block, Material> baked, Set<Ident> definitionIds) {}
+
+    public static Snapshot snapshot() {
+        return new Snapshot(baked, definitionIds);
+    }
+
+    public static void restore(Snapshot snapshot) {
+        baked = snapshot.baked();
+        definitionIds = snapshot.definitionIds();
+    }
+
     public static @NotNull Material material(@Nullable BlockState state) {
         if (state == null) return DEFAULT;
         Material material = baked.get(state.getBlock());

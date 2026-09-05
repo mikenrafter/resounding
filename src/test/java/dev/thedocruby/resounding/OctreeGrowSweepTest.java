@@ -10,6 +10,7 @@ import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.chunk.WorldChunk;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,8 @@ class OctreeGrowSweepTest {
 	private static BlockState grassState;
 	private static BlockState airState;
 
+	private MaterialRegistry.Snapshot priorMaterials;
+
 	@BeforeAll
 	static void bootstrapMinecraft() {
 		SharedConstants.createGameVersion();
@@ -45,11 +48,17 @@ class OctreeGrowSweepTest {
 
 	@BeforeEach
 	void publishMaterials() {
+		priorMaterials = MaterialRegistry.snapshot();
 		MaterialRegistry.publish(Map.of(
 				Ident.parse("minecraft:stone"), STONE,
 				Ident.parse("minecraft:grass_block"), GRASS,
 				Ident.parse("minecraft:air"), AIR
 		));
+	}
+
+	@AfterEach
+	void restoreMaterials() {
+		MaterialRegistry.restore(priorMaterials);
 	}
 
 	@Test

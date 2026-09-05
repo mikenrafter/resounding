@@ -10,6 +10,7 @@ import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.chunk.WorldChunk;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,8 @@ class OctreeInvalidationTest {
 	private static BlockState stoneState;
 	private static BlockState airState;
 
+	private MaterialRegistry.Snapshot priorMaterials;
+
 	@BeforeAll
 	static void bootstrapMinecraft() {
 		SharedConstants.createGameVersion();
@@ -45,10 +48,16 @@ class OctreeInvalidationTest {
 
 	@BeforeEach
 	void publishMaterials() {
+		priorMaterials = MaterialRegistry.snapshot();
 		MaterialRegistry.publish(Map.ofEntries(
 				Map.entry(Ident.parse("minecraft:stone"), STONE),
 				Map.entry(Ident.parse("minecraft:air"), AIR)
 		));
+	}
+
+	@AfterEach
+	void restoreMaterials() {
+		MaterialRegistry.restore(priorMaterials);
 	}
 
 	private static Branch subdivided2Cube(Material material) {
