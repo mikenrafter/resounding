@@ -2,7 +2,7 @@
 
 Branch: `beam-tracing-frustums`. This doc is a full context restore for a fresh
 orchestrating agent after a session reboot — a prior long session did all the
-design/consultation work; only implementation remains for B–E.
+design/consultation work; only implementation remains for D–E.
 
 **Directive from the user, binding for the rest of this work:**
 - No more consulting fable. All five designs below are final and approved.
@@ -45,6 +45,9 @@ design/consultation work; only implementation remains for B–E.
 ## Status snapshot (commits so far, newest last)
 
 ```
+12a929e Task C: dual-derived polarity alignment from incident point and octant center.  [C — DONE]
+ead7876 Fix seven pre-existing test failures: Chebyshev radius and Cast pConfig harness.
+d072867 Update orchestration plan: mark Task B done, log MaterialRegistry test-pollution flakiness found during verification.
 51ec568 Task B: strip polarity from genuine 1x1x1 leaves in virtualLodCell and getBlock.  [B — DONE]
 6300ac9 Red pass: pin the polarized-1³-leaf leak (task B) with 3 failing tests.
 6c7e2eb Start frustumSize at the growth rate instead of the base footprint.   [A — DONE]
@@ -75,9 +78,20 @@ design/consultation work; only implementation remains for B–E.
   (`OctreeInvalidationTest`, `PatchAggregatorTest`, `OctreeGrowPolarBakeTest`)
   have the same unguarded-publish pattern. Flag for a future cleanup pass;
   not touched here.
-- **C, D, E** — not started. Fully designed below; go in order C → D → E
-  (or D → E, order between them doesn't matter — just don't run C and E
-  concurrently since both touch `Physics.java`).
+- **C** — done, committed (`12a929e`). `Physics.dualDerivedNorm` /
+  `dualDerivedAlignment` implement sum-then-normalize of ray + inward
+  `(octantCenter − incidentPoint)` with degenerate fallbacks;
+  `polarAlignment` signature unchanged. All three `Cast.raycast` polarity
+  sites (impedance blend, reflect/permeate gate, frustum telemetry) now go
+  through dual-derived via `polarBlendWeight`/`polarizedImpedance` extras
+  and a direct call at `lastPolarAlignment`. 9 formula tests added to
+  `PhysicsPolarBlendTest` (25/25 green). Full suite: 381 tests; only the
+  known pre-existing `OctreeLayerLiveRayTest` failure (plus intermittent
+  MaterialRegistry-pollution flakiness on
+  `CastSmallFrustumAirBoundaryPurityTest` — unchanged).
+- **D, E** — not started. Fully designed below; go in order D → E (do not
+  run E concurrently with leftover C work — both touch `Physics.java`, but
+  C is done so only E remains on that file).
 
 ---
 
@@ -318,15 +332,9 @@ Cast-level wiring correctness (that 302/353/442 all switched over) doesn't
 need its own new test harness — the Physics tests pin the formula exactly,
 and the wiring is a mechanical 3-line change per call site.
 
-### Next action
-Red-pass agent (sonnet, medium): add the two stub methods to `Physics.java`
-(can throw `UnsupportedOperationException` initially, matching this
-codebase's existing convention for not-yet-implemented methods — see
-`Physics.polarBlendWeight`'s original doc comment style) + the 9 tests above.
-Confirm they fail (stub throws) or fail on assertion once stubbed with a
-placeholder return. Then implementation agent: real `dualDerivedNorm`/
-`dualDerivedAlignment` logic + wire into the 3 `Cast.java` call sites exactly
-as described. Verify full suite, commit, move to Task D.
+### Done
+Committed in `12a929e`. Stubs → real `dualDerivedNorm`/`dualDerivedAlignment`
++ Cast wiring at all three sites. Move to Task D.
 
 ---
 
@@ -673,13 +681,12 @@ commit. **This is the last task — after it lands, the full A–E arc is done.*
 ## Order of operations for the new session
 
 1. Confirm clean tree (`git status --short` should be empty; last commit is
-   `6300ac9`).
-2. Task B implementation pass (red pass already committed) → verify → commit.
-3. Task C: red pass → verify fails correctly → implementation pass → verify
+   `12a929e` — Task C done).
+2. ~~Task B~~ / ~~Task C~~ — done.
+3. Task D: red pass → verify fails correctly → implementation pass → verify
    → commit.
-4. Task D: red pass → verify → implementation pass → verify → commit.
-5. Task E: red pass → verify → implementation pass → verify → commit.
-6. Each implementation/red-pass agent: **sonnet model, medium thinking
+4. Task E: red pass → verify → implementation pass → verify → commit.
+5. Each implementation/red-pass agent: **sonnet model, medium thinking
    effort**, given the relevant section of this doc verbatim as its brief
    (file:line references, exact formulas, exact test lists) — they should not
    need to re-derive anything, only verify against current source (line
