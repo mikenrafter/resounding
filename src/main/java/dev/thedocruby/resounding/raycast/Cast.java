@@ -98,7 +98,7 @@ public class Cast {
      * (which calls {@link FrustumLod#nextFrustumSize}) — never reassigned wholesale like a distance
      * would be.
      */
-    public double frustumSize = FrustumLod.BASE_FOOTPRINT;
+    public double frustumSize = pConfig.frustumGrowthPerBlock;
     /** Remaining beam split budget for notable-interaction / commit decisions. */
     public @NotNull BeamBudget beamBudget = BeamBudget.full();
 
