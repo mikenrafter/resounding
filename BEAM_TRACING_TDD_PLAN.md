@@ -2,7 +2,7 @@
 
 Branch: `beam-tracing-frustums`. This doc is a full context restore for a fresh
 orchestrating agent after a session reboot — a prior long session did all the
-design/consultation work; only implementation remains for D–E.
+design/consultation work; only implementation remains for E.
 
 **Directive from the user, binding for the rest of this work:**
 - No more consulting fable. All five designs below are final and approved.
@@ -45,6 +45,8 @@ design/consultation work; only implementation remains for D–E.
 ## Status snapshot (commits so far, newest last)
 
 ```
+5158710 Task D: K-key kapture dump and flash for the focused captured ray.  [D — DONE]
+b8d29b2 Update orchestration plan: mark Task C done, point next work at D–E.
 12a929e Task C: dual-derived polarity alignment from incident point and octant center.  [C — DONE]
 ead7876 Fix seven pre-existing test failures: Chebyshev radius and Cast pConfig harness.
 d072867 Update orchestration plan: mark Task B done, log MaterialRegistry test-pollution flakiness found during verification.
@@ -89,9 +91,16 @@ d072867 Update orchestration plan: mark Task B done, log MaterialRegistry test-p
   known pre-existing `OctreeLayerLiveRayTest` failure (plus intermittent
   MaterialRegistry-pollution flakiness on
   `CastSmallFrustumAirBoundaryPurityTest` — unchanged).
-- **D, E** — not started. Fully designed below; go in order D → E (do not
-  run E concurrently with leftover C work — both touch `Physics.java`, but
-  C is done so only E remains on that file).
+- **D** — done, committed (see newest commit above). K is a dead key when
+  nothing is focused/captured; otherwise dumps the focused ray's
+  `CaptureBuffer` bounces via `KaptureLogger` and flashes the white overlay
+  3× over 1.5s (`KaptureFlash` / `BounceRayLayer.startKaptureFlash`).
+  `CapturedRay` gained resolvedImpedance/polarAlignment/frustumSize/
+  blankReason/shapeMode; `Renderer.addSoundBounceRay` now takes `Cast` and
+  snapshots those fields. Tests: `KaptureFlashTest`, `KaptureActionTest`,
+  `CapturedRayKaptureFieldsTest` (17 targeted green). Full suite: 393 tests;
+  same 2 known failures only. In-game smoke (B→J→C→K) left to manual verify.
+- **E** — not started. Fully designed below; go next.
 
 ---
 
@@ -474,17 +483,10 @@ above is the testable core; the render wiring itself is glue, verified by
 manual in-game testing (see `run` skill) after implementation, not by a unit
 test.
 
-### Next action
-Red-pass agent (sonnet, medium): create `KaptureFlash` + `KaptureAction`
-skeletons (stub bodies) and the 4 test classes above; confirm they fail
-correctly. Implementation agent: real `KaptureFlash`/`KaptureAction` logic,
-`CapturedRay` field extension + `Renderer`/`Engine` plumbing, `KaptureLogger`,
-`BounceRayLayer` flash-state fields + `renderFocusedWhiteRay()` gate, and the
-new `K` `KeyBinding` + tick-loop wiring in `DebugKeybinds.java`. Verify suite
-green, then manually smoke-test in-game (B → J to focus a ray → C to capture
-→ let it finish → K → confirm log lines appear and the ray visibly flashes 3x
-then stays solid; also confirm K before any capture is a true no-op). Commit,
-move to Task E.
+### Done
+Committed with `KaptureFlash`/`KaptureAction`/`KaptureLogger`, CapturedRay field
+extension + Cast snapshot via Renderer, BounceRayLayer flash gate, and K
+keybind. Move to Task E. In-game smoke (B → J → C → K) still recommended.
 
 ---
 
@@ -680,13 +682,13 @@ commit. **This is the last task — after it lands, the full A–E arc is done.*
 
 ## Order of operations for the new session
 
-1. Confirm clean tree (`git status --short` should be empty; last commit is
-   `12a929e` — Task C done).
-2. ~~Task B~~ / ~~Task C~~ — done.
-3. Task D: red pass → verify fails correctly → implementation pass → verify
-   → commit.
-4. Task E: red pass → verify → implementation pass → verify → commit.
-5. Each implementation/red-pass agent: **sonnet model, medium thinking
+1. Confirm clean tree (`git status --short` should be empty; last feature
+   commit is Task D — see status snapshot).
+2. ~~Task B~~ / ~~Task C~~ / ~~Task D~~ — done.
+3. Task E: red pass → verify fails correctly → implementation pass → verify
+   → commit. **This is the last task — after it lands, the full A–E arc is
+   done.**
+4. Each implementation/red-pass agent: **sonnet model, medium thinking
    effort**, given the relevant section of this doc verbatim as its brief
    (file:line references, exact formulas, exact test lists) — they should not
    need to re-derive anything, only verify against current source (line
