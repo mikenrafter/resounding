@@ -124,8 +124,16 @@ public class Cast {
      * would be.
      */
     public double frustumSize = pConfig.frustumGrowthPerBlock;
-    /** Remaining beam split budget for notable-interaction / commit decisions. */
-    public @NotNull BeamBudget beamBudget = BeamBudget.full();
+    /**
+     * Remaining beam split budget for notable-interaction / commit decisions.
+     *
+     * TODO: beam splitting (Beam#withBudget / Beam#footprintRadiusAt) isn't implemented yet, so
+     * nothing ever calls consumeAt(...) to spend a tier — starting from BeamBudget.full() left
+     * splitsRemaining() permanently > 0, which permanently forces the "splits remain, permeate"
+     * branch and made polarized cells (e.g. coarse LOD air/stone blends) never reflect, no matter
+     * the impedance contrast. Reinstate BeamBudget.full() once splitting is actually implemented.
+     */
+    public @NotNull BeamBudget beamBudget = BeamBudget.empty();
 
     /** Block cell the sound was born in; emission always exits this 1³ cell as a cube. */
     public @Nullable BlockPos originBlock;

@@ -38,6 +38,15 @@ public final class BeamBudget {
     }
 
     /**
+     * Budget with all {@value #TIER_COUNT} tiers already consumed — zero splits remaining.
+     * Symmetric with {@link #full()}; used where callers need to force every notable-interaction
+     * gate straight to its no-splits-left ({@code splitsRemaining() == 0}) behavior.
+     */
+    public static @NotNull BeamBudget empty() {
+        return new BeamBudget((1 << TIER_COUNT) - 1);
+    }
+
+    /**
      * Maps a beam footprint size to its tier index (0..3 for the size-1/2/4/8 tiers), or {@code -1}
      * when the footprint falls outside every tier (below size 1, or at/beyond size 16 — see class
      * doc).
