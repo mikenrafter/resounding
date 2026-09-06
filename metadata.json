@@ -3,7 +3,7 @@
   "checkpoint_id": "01M1T1E1YA8V50YYCBYF43QAWN",
   "strategy": "manual-commit",
   "branch": "beam-tracing-frustums",
-  "checkpoints_count": 6,
+  "checkpoints_count": 7,
   "files_touched": [
     "BEAM_TRACING_BUG_REPORT.md",
     "BEAM_TRACING_TDD_PLAN.md",
@@ -33,14 +33,21 @@
       "compact_transcript": "/1/transcript.jsonl",
       "content_hash": "/1/content_hash.txt",
       "prompt": "/1/prompt.txt"
+    },
+    {
+      "metadata": "/2/metadata.json",
+      "transcript": "/2/full.jsonl",
+      "compact_transcript": "/2/transcript.jsonl",
+      "content_hash": "/2/content_hash.txt",
+      "prompt": "/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 194,
-    "cache_creation_tokens": 314618,
-    "cache_read_tokens": 20807371,
-    "output_tokens": 141815,
-    "api_call_count": 97,
+    "input_tokens": 196,
+    "cache_creation_tokens": 322713,
+    "cache_read_tokens": 20824150,
+    "output_tokens": 141914,
+    "api_call_count": 98,
     "subagent_tokens": {
       "input_tokens": 94,
       "cache_creation_tokens": 223489,

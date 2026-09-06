@@ -1,0 +1,88 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1T1E1YA8V50YYCBYF43QAWN",
+  "session_id": "849d176e-f5d3-47c2-8217-84c41e9b7f0b",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-06T00:21:03.567869788Z",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "BEAM_TRACING_BUG_REPORT.md",
+    "BEAM_TRACING_TDD_PLAN.md",
+    "src/main/java/dev/thedocruby/resounding/debug/CaptureBuffer.java",
+    "src/main/java/dev/thedocruby/resounding/debug/DebugKeybinds.java",
+    "src/main/java/dev/thedocruby/resounding/debug/DebugPicker.java",
+    "src/main/java/dev/thedocruby/resounding/debug/KaptureLogger.java",
+    "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java",
+    "src/main/java/dev/thedocruby/resounding/debug/OctreeOverlay.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Cast.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Renderer.java",
+    "src/test/java/dev/thedocruby/resounding/debug/CaptureBufferTest.java",
+    "src/test/java/dev/thedocruby/resounding/debug/CapturedRayKaptureFieldsTest.java",
+    "src/test/java/dev/thedocruby/resounding/debug/KaptureActionTest.java"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "19bea958179b",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 2,
+    "cache_creation_tokens": 8095,
+    "cache_read_tokens": 16779,
+    "output_tokens": 99,
+    "api_call_count": 1
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-06T00:21:03.558373713Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 74,
+    "total_committed": 0,
+    "total_lines_changed": 74,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1173,
+      "user_lines_removed": 74,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "BEAM_TRACING_BUG_REPORT.md": 473,
+        "BEAM_TRACING_TDD_PLAN.md": 277,
+        "src/main/java/dev/thedocruby/resounding/debug/CaptureBuffer.java": 59,
+        "src/main/java/dev/thedocruby/resounding/debug/DebugKeybinds.java": 45,
+        "src/main/java/dev/thedocruby/resounding/debug/DebugPicker.java": 33,
+        "src/main/java/dev/thedocruby/resounding/debug/KaptureLogger.java": 22,
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java": 146,
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeOverlay.java": 25,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 64,
+        "src/main/java/dev/thedocruby/resounding/raycast/Renderer.java": 2,
+        "src/test/java/dev/thedocruby/resounding/debug/CaptureBufferTest.java": 4,
+        "src/test/java/dev/thedocruby/resounding/debug/CapturedRayKaptureFieldsTest.java": 18,
+        "src/test/java/dev/thedocruby/resounding/debug/KaptureActionTest.java": 5
+      },
+      "user_removed_per_file": {
+        "BEAM_TRACING_TDD_PLAN.md": 1,
+        "src/main/java/dev/thedocruby/resounding/debug/CaptureBuffer.java": 16,
+        "src/main/java/dev/thedocruby/resounding/debug/DebugKeybinds.java": 1,
+        "src/main/java/dev/thedocruby/resounding/debug/DebugPicker.java": 1,
+        "src/main/java/dev/thedocruby/resounding/debug/KaptureLogger.java": 1,
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java": 42,
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeOverlay.java": 3,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 6,
+        "src/main/java/dev/thedocruby/resounding/raycast/Renderer.java": 1,
+        "src/test/java/dev/thedocruby/resounding/debug/CapturedRayKaptureFieldsTest.java": 1,
+        "src/test/java/dev/thedocruby/resounding/debug/KaptureActionTest.java": 1
+      }
+    }
+  ]
+}
