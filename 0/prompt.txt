@@ -1,0 +1,110 @@
+I captured a few rays. Each showing something wrong with the cast process. One ray shows red markers between air:air boundaries, two rays show growth when it should reflect on that next same-size segment (need to check both same size and grown size when about to grow), two show *many* cases where a larger octant envelops a smaller one (trivially verifiable with arithmetic). All of these, according to the implemented plan should not be happening. Investigate each of these individually. I would like this log saved and referred back to later on, and I would like for you to leverage subagents to dig into each of these problems.
+
+---
+
+<task-notification>
+<task-id>a0d55cafdba046899</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/03f25f00-6f75-4b5b-a880-d4d3c92ada12/tasks/a0d55cafdba046899.output</output-file>
+<status>completed</status>
+<summary>Agent "Investigate air:air red-marker bug" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Findings
+
+**(a) Root-cause chain for the red air:air markers**
+
+The overlay classifier (`OctreeLayer.collectCastVisitedOverlay`, `src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java:342-387`) never consults the real physics `R` value at all. It infers "was this a reflect?" purely from a geometric direction-change test between consecutive logged path segments:
+
+- `OctreeLayer.java:363-376` — `isDirectionChange(prevDir, dir)` (line 397: `dot &lt; 1.0 - 1e-4`, i.e. almost any bend trips it). If `prevBranchSize &lt;= 1`, it hardcodes `NedMarkerState.REFLECTION` unconditionally (line 375-376) with **no impedance check at all**.
+- For `prevBranchSize &gt; 1` it calls `recordBounceOff` (`OctreeLayer.java:480-545`), which re-derives N/E/D neighbors via `Branch.effectiveImpedance()`/`FrustumLod.blocksPermeation`/`FrustumLod.classify`. But if `FrustumLod.forwardMap(...)` returns `null` (no clean single/dual-axis grid-face pairing at that point), it **falls back to `NedMarkerState.REFLECTION`** unconditionally (`OctreeLayer.java:507-511`, comment: *"No forward survey possible on this axis pairing, but a direction change did happen"*).
+
+Both branches encode a design assumption from before Task E existed: the only way a ray's direction changes mid-path is a real reflect (see commit `0844d51`, "Color-code ray death causes...", which introduced this exact logic on Sep 4 with the comment *"A real direction change is a reflect"*).
+
+Task E (`cd184c4`) broke that assumption: `Cast.java:392-402` (`FrustumLod.wouldDoubleCover` patient-growth graze-bend) and `Cast.java:367-387` (polarized notable-gate permeation-bend) both call `Physics.grazeBend`/`Physics.permeationBend` **on the transmit path** (`reflectivity` stays 0, correctly logged as `R=0.000`) whenever `branchDescriptor.polar() != null`. These legitimately rotate `vector` with no reflection. The overlay sees the resulting direction discontinuity and — via one of the two fallbacks above — paints it red, a false positive. This explains why `R=0.000` is logged on every line of every ray yet reds appear: the classifier and the physics are simply reading different signals, and the bend is gated on the same `polar()!=null` condition that also drives the Z-blend anomaly, which is why the two symptoms co-locate in the same log lines despite being mechanistically unrelated.
+
+**(b) Confidence:** High/confirmed via source reading and commit history (mechanism exists and matches Task E's new behavior exactly). Not runtime-verified which of the two fallback lines (375-376 vs 507-511) fires for these specific captured segments — that would need a live repro.
+
+**(c) Independent vs. shared root cause:** The red-marker bug is **independent** of the Z-blend/aggregation defect — the classifier's impedance-based path uses `Branch.effectiveImpedance()` (`Branch.java:91-101`), which prefers `avgImpedance` (a genuine arithmetic mean, safe) before ever touching `mostCommonImpedance`, and never touches `Cast.polarizedImpedance`/`Physics.blendImpedance` (`Cast.java:559-561`) at all.
+
+That said, worth flagging for the other investigation: `Physics.blendImpedance` (`Physics.java:86-88`) is a true convex combination — `w` is pre-clamped to `[0,1]` by `Physics.polarBlendWeight` (`Physics.java:78-79`) — so it cannot mathematically overshoot `[min,max]` of its inputs. But `Polarization.groupAdjust` (`Polarization.java:80-92`), which *bakes* `mostCommonImpedance`/`leastCommonImpedance` in the first place (called from `OctreeManager.growOctree` → `bakeOctant`, `OctreeManager.java:222-237`), uses coefficients `otherMean*(1-r²) + mostlyMean*√r` that do **not** sum to 1 for `r∈(0,1)` (peak sum ≈1.47 at r≈0.397) — this is structurally capable of producing a baked value exceeding both real inputs when they're comparable in magnitude, confirming the report's suspicion that the runaway Z values are a bake/aggregation defect (`Polarization.groupAdjust`), not a blend-formula defect. `OctreeManager.bakeAggregateDescriptor` (`OctreeManager.java:269-316`) then propagates that inflated value upward via plain unclamped arithmetic mean across levels. This is the same file/method the Investigation-C agent should converge on for the octree-aggregation root cause.</result>
+<usage><subagent_tokens>87037</subagent_tokens><tool_uses>18</tool_uses><duration_ms>246182</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a8d79fdadd258797b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/03f25f00-6f75-4b5b-a880-d4d3c92ada12/tasks/a8d79fdadd258797b.output</output-file>
+<status>completed</status>
+<summary>Agent "Investigate frustum growth-not-deferring bug" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Findings
+
+**Confirmed structural facts** (not speculation):
+
+- `FrustumLod.wouldDoubleCover` (`src/main/java/dev/thedocruby/resounding/raycast/FrustumLod.java:140-165`): guards `polar==null` → false (144), then `candidateSize&lt;=currentSize` → false (147-149), then computes `clearance` from `exitPos` to the mid-plane of `[cellBase, cellBase+cellSize]` on the dominant polar axis, returns `candidateSize/2 &gt; clearance`.
+- Live call site (`Cast.java:392-402`): `candidate = frustumSize + pConfig.frustumGrowthPerBlock * pdistance`, gated by `!emissionCast &amp;&amp; reflectivity==0`.
+- `FrustumLod.growthPerBlock(int)` (`FrustumLod.java:58-63`) is strictly `&gt;0` for any finite `nRays` (asin/tan of a positive angle), and `pdistance` is a genuine segment length (`Cast.java:259/270`, always `&gt;0` in practice). So **`candidate &gt; frustumSize` holds on essentially every real call** — the `candidateSize&lt;=currentSize` early-return (147) is dead in this wiring; it only matters for hypothetical reflect-leg callers (documented by `FrustumLodDoubleCoverTest.noGrowthGuardReturnsFalseEvenAtZeroClearance`, line 44-49), which don't exist in `Cast.java` today.
+
+**Root cause ranking:**
+
+1. **High confidence — the owner's literal fix ("also check current size") is a no-op given this wiring, not the real bug.** Since `candidate` is always strictly `&gt; currentSize`, testing `candidate/2 &gt; clearance` is mathematically a *superset* of testing `current/2 &gt; clearance` (larger numerator, same clearance) — any case where the current size alone would double-cover is already caught by the candidate check. Adding an explicit same-size check would change nothing observable here.
+2. **Medium-high confidence — the real gap is `branchDescriptor.polar()` being null/unset at exactly the coarse LOD nodes where deferral should fire.** Hand-checked ray #42's frustum jump 12.56→20.69 (`BEAM_TRACING_BUG_REPORT.md:184-185`, node=16³, exit y=-61.44 into `material=bedrock`): if this segment's cell had a real polar vector pointing toward bedrock, the exit position is already past the mid-plane, so `wouldDoubleCover`'s "past-plane clamp" (any positive candidate triggers) should have fired unconditionally. It didn't — the frustum grew fully. The likeliest explanation is the same octree-aggregation defect already visible elsewhere in this log as wildly corrupted impedances (e.g. `Z=28161722.7`, `Z=32676640.0` in the same ray) — if the aggregation that computes `mostCommonImpedance`/`leastCommonImpedance`/`polar` is broken at these coarse nodes, `polar` can come back null or zero-length, tripping guard line 144 regardless of geometry. This can't be proven from the current log (see #3) — it needs new instrumentation or a debugger breakpoint on `branchDescriptor.polar()` at that node.
+3. **Confirmed logging gap.** `Cast.lastGrowthDeferred`/`lastFreeRefraction` (`Cast.java:99,105`) are **not** fields on `CaptureBuffer.CapturedRay` (`CaptureBuffer.java:22-50`) and are not referenced in `KaptureLogger.formatBounceLine` (`KaptureLogger.java:38-57`) — no way to see if the flag ever fires. Worse, the logged `polar=` field is `bounce.polarAlignment()`, sourced from `Cast.lastPolarAlignment`, which **defaults to exactly `1.0`** (`Cast.java:60`) whenever `branchDescriptor.polar()==null` (`Cast.java:473-475`) — indistinguishable from a genuine full-alignment polarity hit. Every plain-air row in the log reads `polar=1.000` for this reason (e.g. `BEAM_TRACING_BUG_REPORT.md:155-164`), which is why this looked like "polar is present but growth still happens."
+
+**Recommended fix direction:** don't touch the `wouldDoubleCover` formula. First add `lastGrowthDeferred`/`lastFreeRefraction` and the raw `branchDescriptor.polar()` (or its null-ness) to `CapturedRay`/`KaptureLogger` to get ground truth on whether the predicate is even being invoked with non-null polar at boundary nodes. If it's confirmed null there, the fix belongs in the octree LOD aggregation path that computes `NodeDescriptor.polar()`/`mostCommonImpedance`/`leastCommonImpedance` for coarse nodes, not in `FrustumLod`/`Cast.raycast`'s Task E wiring.</result>
+<usage><subagent_tokens>68019</subagent_tokens><tool_uses>22</tool_uses><duration_ms>270819</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a30e8f502e8b34ce1</task-id>
+<tool-use-id>toolu_017g6oPMwixHu8RXqGsuXHXP</tool-use-id>
+<output-file>/tmp/claude-1000/-home-v0id-Documents-repos-resounding/03f25f00-6f75-4b5b-a880-d4d3c92ada12/tasks/a30e8f502e8b34ce1.output</output-file>
+<status>completed</status>
+<summary>Agent "Investigate octant-envelopment arithmetic bug" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Investigation findings: "larger octant envelops smaller one" (Investigation C)
+
+### Verdict: NOT a geometric bounds-overlap bug. The arithmetic in `Branch.getAtLod`/`virtualLodCell`/`neighbor` checks out. The real defects are (1) a debug-label mismatch that makes aggregate nodes masquerade as pure `air`, and (2) a real but bounded non-convex blend formula in `Polarization.groupAdjust`. Neither, on its own, proves the reported 11–32M values are "corrupted" — the engine's own impedance ceiling is 100M.
+
+### 1. Bounds arithmetic in Branch.java — verified correct (high confidence)
+
+`virtualLodCell` (`Branch.java:216-242`) is only ever reached when `lodSize &lt; size` — both earlier branches of `getAtLod` (`Branch.java:196-201`) already return `this` when `size &lt;= lod`. Given that precondition, `maxX = start.getX() + size - lodSize` is strictly `&gt; start.getX()`, so `Math.max(start.getX(), maxX)` always resolves to `maxX`. The "double clamp" at `Branch.java:222-224` therefore collapses to an ordinary single clamp `[start, maxX]` — it is redundant, not buggy.
+
+`FrustumLod.alignOrigin` (`FrustumLod.java:205-211`) computes `leafStart + floorDiv(pos-leafStart, step)*step`. Since octree nodes are self-aligned (`start % size == 0`, enforced by `growOctree`'s recursive `start.add(block.multiply(scale))` construction, `OctreeManager.java:202`) and `lodSize` divides `size` (both powers of two), `leafStart` is already a multiple of `lodSize`. So for any `pos` inside `[start, start+size)`, the aligned origin naturally lands in `[start, start+size-lodSize]` — the clamp never actually fires for legitimately-routed calls. Hand-checked against ray #50's `node=4³` cell (`start≈(-290,-32,-30) region`, `lodSize=4`): origin arithmetic stays inside the parent's own 4-block box. No overlap into a neighboring node's space.
+
+`neighbor()` (`Branch.java:320-356`) walks to a shifted position and only replicates the coarser ancestor's *single scalar* material/impedance trivially (`impedance,impedance,impedance,NaN,null`) — no aggregation, no compounding.
+
+### 2. The real "envelopment" is a labeling bug, not a bounds bug (medium-high confidence)
+
+`Branch.getAtLod` deliberately returns a coarse node directly whenever `size==lod` (`Branch.java:199-201`), *even if that node still has live, heterogeneous `children`* — its javadoc says so explicitly (`Branch.java:190-192`: "that node's baked polar/avg is the LOD aggregate"). Such a node has `material == null` (set at `OctreeManager.java:246` for any heterogeneous branch) — but the debug label comes from `ensureMaterialLabel` (`Branch.java:291-301`), which reads only `world.getBlockState(start)` — the octant's **corner block**, not the aggregate. So a 2³/4³ node that is genuinely heterogeneous (e.g. one wool/ore corner embedded in otherwise-air) gets tagged `material=air` in the KAPTURE log purely because its corner voxel is air, while its baked `mostCommonImpedance`/`leastCommonImpedance` legitimately reflects the denser corner elsewhere in that same small cube. That is exactly the observed pattern: "air" segments with huge, rapidly-swinging `Z` as the polar-alignment weight (`Cast.java:559-573`) sweeps between the two endpoints. Ray #63 line 126 (`run/logs/latest.log` excerpt in the bug report) shows an actual `material=wool` leaf immediately adjacent to the anomalous air segments — strong circumstantial confirmation this is a hand-placed heterogeneous test region, not corruption.
+
+### 3. `groupAdjust` is a real, bounded arithmetic defect (medium confidence)
+
+`Polarization.groupAdjust` (`Polarization.java:80-92`): `g = otherMean*(1-r²) + mostlyMean*√r`. For `r∈(0,1)` these coefficients do **not** sum to ≤1 — `f(r)=1-r²+√r` peaks at `f(0.397)≈1.472`. Since `mostCount ≥ leastCount` always (primary is defined as most-frequent), `gMost` (`Polarization.java:171`) always hits the `r≥1` clamp and equals `meanMost` exactly (no overshoot). Only `gLeast` (`Polarization.java:172`, `r=leastCount/mostCount`) runs the formula, with reachable integer ratios `{1/7, 2/6, 3/5}` giving `f≈{1.357, 1.466, 1.415}`. So `leastCommonImpedance` can be baked up to **~1.47×** either group's real mean — a genuine non-convex-combination bug, confirmed by hand arithmetic. However, `OctreeManager.bakeAggregateDescriptor` (`OctreeManager.java:269-316`) only takes a plain unweighted mean of 8 children (`sumHigh/children.length` etc., line 309-315) — an average can't exceed its max input, so this ~1.47× overshoot doesn't compound through higher LOD levels. It caps around `1.47 × (max real material impedance)`, not enough alone to explain a jump from bedrock's 4.8M to 32.6M.
+
+### 4. The premise itself is unverified (lowers overall confidence in "corruption")
+
+`MaterialResolver.java:26-27`: `MIN_IMPEDANCE=1e2`, `MAX_IMPEDANCE=1e8` (100 million) — the comment even cites "dense stone ~1e7" as a normal physical value. Bedrock's 4,821,547.5 is not documented anywhere as the registry's ceiling; it's just the highest value that happens to appear later in these 4 rays. Values of 11–32M are well inside the engine's designed range. Before treating them as corrupted, the actual baked impedances of whatever blocks occupy these specific coordinates (various wool colors, ores, stone variants) should be checked against the real `MaterialRegistry`, not against bedrock.
+
+### Recommended fix direction (no code written)
+- Fix the label pipeline first: when `branch.material == null` (heterogeneous aggregate), report that explicitly in the KAPTURE dump / overlay instead of falling back to `ensureMaterialLabel`'s single-corner block. This alone would likely eliminate the "material=air, Z=millions" illusion and probably the correlated red-marker false positives (Investigation A) too, since they likely key off the same mislabeled data.
+- Separately evaluate `groupAdjust`: either make it a true convex blend (coefficients summing to 1) or explicitly document/test the intentional non-convex "adjuster" behavior — it's a real, boundable overshoot worth closing regardless.
+- Add real cell-origin bounds and the heterogeneous/`material==null` flag to the KAPTURE log before further debugging — the current log format can't distinguish "true aggregate of a small heterogeneous cell" from "mislabeled coarse cell" without this, which is why this had to be reasoned from code rather than observed directly.
+
+**Files/lines cited:** `Branch.java:190-242,320-356`; `FrustumLod.java:205-211`; `OctreeManager.java:181-252,269-316`; `Polarization.java:80-92,171-172`; `Cast.java:194-222,298-318,559-573`; `MaterialResolver.java:25-33`; `Acoustics.java:41-43`.</result>
+<usage><subagent_tokens>92722</subagent_tokens><tool_uses>28</tool_uses><duration_ms>332826</duration_ms></usage>
+</task-notification>
+
+---
+
+#1-good diagnosis, fix.
+#2-new instrumentation is fine. That said, no. The behavior is in fact wrong. When at LOD size 1 with frustum size 1.99, growing would make LOD size 2. When about to grow, first check the next octant of size 1 to make sure no reflection would happen. If reflection would happen, don't apply the growth step and instead reflect off that 1³ octant. This is not happening currently. Fix both issues - the broken polarity instrumentation and the behavioral gap.
+#3-Large impedence is one thing. The bounding boxes of octants of different sizes ARE OVERLAPPING. You will not convince me otherwise. Before growing, if the current octant is within the set of children for the proposed growth octant, then defer until that is no longer the case.
+
+An additional instrumentation detail I would like to use to make things easier: currently each octant within a quartet is rendered independently. Keep the white walls for the incident octant, adjust the bounding boxes to instead draw one large rectangle for the rest of the area. One large rectangle with a white incident sub-face and additionally, draw the second incident direction face (the "it would step here unimpeded" check) as a white face in the same manner. Again, both sub-faces should be internal to the rectangular prism's geometry, positioned in the location of the walls of the incident octant.
+
+Implement these 5 things. First add them to the doc, then implement.
