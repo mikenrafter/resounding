@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1TBP692ZZ5EGZF2ZEDBENC7",
+  "session_id": "b37e1e91-0325-4e9c-acbe-38ce256f133c",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-06T03:20:16.154886502Z",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "src/main/java/dev/thedocruby/resounding/raycast/BeamBudget.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Cast.java"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "64c46e87d8d2",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 90,
+    "cache_creation_tokens": 70311,
+    "cache_read_tokens": 2611547,
+    "output_tokens": 21362,
+    "api_call_count": 45
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-06T03:20:16.109314588Z",
+    "agent_lines": 19,
+    "agent_removed": 2,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 19,
+    "total_lines_changed": 21,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

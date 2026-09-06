@@ -1,0 +1,5 @@
+commit, look at the latest kapture (last 30m). There's a problem with not reflecting when the ray should have. Let's examine why mechanistically
+
+---
+
+Ah. I'm still deferring split beams until the rest of the newer frustum-based engine is solid. For now, merely set the budget to 0, with a #TODO comment above it stating that it should be reinstated to 4 when splitting is properly implemented.
