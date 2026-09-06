@@ -117,6 +117,11 @@ public class Cast {
      * the two cases print identically as {@code polar=1.000} without this flag.
      */
     public boolean lastHasPolarity = false;
+    /** Raw baked polar vector at the last resolved boundary; {@code null} when {@link #lastHasPolarity} is false. */
+    public @Nullable Vec3d lastPolarVector = null;
+    /** {@code w} fed to {@link Physics#commitReflect} at the last resolved boundary; {@code NaN} when
+     *  the polar commit/split gate never ran (no polarity, or reflectivity was already 0). */
+    public double lastCommitWeight = Double.NaN;
 
     /**
      * Running frustum footprint width (blocks). Advances only via {@link #applyFrustumStep}
@@ -206,6 +211,8 @@ public class Cast {
         this.lastGrowthDeferred = false;
         this.lastFreeRefraction = false;
         this.lastPeekReflect = false;
+        this.lastPolarVector = null;
+        this.lastCommitWeight = Double.NaN;
         //* access branch {
         final Vec3d normalized = normalize(position, vector);
         chunk = chunk.access((int) normalized.x >> 4, (int) normalized.z >> 4);
@@ -390,21 +397,24 @@ public class Cast {
         if (!emissionCast && branchDescriptor.polar() != null && reflectivity > 0) {
             int splitsLeft = beamBudget.splitsRemaining();
             double w = polarBlendWeight(branchDescriptor, vector, pposition, octantCenter);
+            this.lastCommitWeight = w;
             if (splitsLeft > 0) {
                 reflectivity = 0;
                 transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
                 double contrast = polarContrast(branchDescriptor);
                 if (Physics.isNotableInteraction(contrast, splitsLeft)
                         && branchDescriptor.polar().lengthSquared() > 1e-12) {
-                    vector = Physics.permeationBend(
-                            vector, vector.normalize(), branchDescriptor.polar().normalize());
+                    Vec3d rayNorm = vector.normalize();
+                    Vec3d incidentNormal = Physics.polarityIncidentNormal(branchDescriptor.polar().normalize(), rayNorm);
+                    vector = Physics.permeationBend(vector, rayNorm, incidentNormal);
                 }
             } else if (!Physics.commitReflect(w)) {
                 reflectivity = 0;
                 transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
                 if (branchDescriptor.polar().lengthSquared() > 1e-12) {
-                    vector = Physics.permeationBend(
-                            vector, vector.normalize(), branchDescriptor.polar().normalize());
+                    Vec3d rayNorm = vector.normalize();
+                    Vec3d incidentNormal = Physics.polarityIncidentNormal(branchDescriptor.polar().normalize(), rayNorm);
+                    vector = Physics.permeationBend(vector, rayNorm, incidentNormal);
                 }
             }
         }
@@ -460,7 +470,9 @@ public class Cast {
                     this.lastGrowthDeferred = true;
                     this.lastFreeRefraction = true;
                     if (polar != null && polar.lengthSquared() > 1e-12) {
-                        vector = Physics.grazeBend(vector, vector.normalize(), polar.normalize());
+                        Vec3d rayNorm = vector.normalize();
+                        Vec3d incidentNormal = Physics.polarityIncidentNormal(polar.normalize(), rayNorm);
+                        vector = Physics.grazeBend(vector, rayNorm, incidentNormal);
                     }
                 }
             }
@@ -536,6 +548,7 @@ public class Cast {
         this.lastTransmission = transmission;
         this.lastBoundaryResolved = true;
         this.lastHasPolarity = branchDescriptor.polar() != null && branchDescriptor.polar().lengthSquared() > 1e-12;
+        this.lastPolarVector = this.lastHasPolarity ? branchDescriptor.polar() : null;
         this.lastPolarAlignment = this.lastHasPolarity
                 ? Physics.dualDerivedAlignment(vector.normalize(), pposition, octantCenter, branchDescriptor.polar().normalize())
                 : 1.0;

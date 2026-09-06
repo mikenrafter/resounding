@@ -61,7 +61,8 @@ public class Renderer {
 					sourceID, rayIndex, bounceIndex, material, reflectivity, transmission, power,
 					priorImpedance, branchSize, materialLabel, terminated,
 					resolvedImpedance, polarAlignment, frustumSize, blankReason, shapeMode,
-					cast.lastHasPolarity, cast.lastGrowthDeferred, cast.lastFreeRefraction, cast.lastPeekReflect
+					cast.lastHasPolarity, cast.lastGrowthDeferred, cast.lastFreeRefraction, cast.lastPeekReflect,
+					cast.lastPolarVector, cast.lastCommitWeight
 			));
 		}
 	}

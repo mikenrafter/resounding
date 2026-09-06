@@ -62,6 +62,12 @@ final class KaptureLogger {
 		if (growth != null) {
 			sb.append(" growth=").append(growth);
 		}
+		if (bounce.polarVector() != null) {
+			sb.append(String.format(Locale.ROOT, " polarVec=%s", formatPos(bounce.polarVector())));
+		}
+		if (!Double.isNaN(bounce.commitWeight())) {
+			sb.append(String.format(Locale.ROOT, " w=%.3f", bounce.commitWeight()));
+		}
 		if (bounce.blankReason() != null) {
 			sb.append(" blank=").append(bounce.blankReason());
 		}

@@ -34,7 +34,9 @@ class CaptureBufferTest {
 				false,
 				false,
 				false,
-				false
+				false,
+				null,
+				Double.NaN
 		);
 	}
 

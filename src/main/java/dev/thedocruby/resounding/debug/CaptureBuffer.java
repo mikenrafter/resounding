@@ -56,7 +56,12 @@ public final class CaptureBuffer {
 			boolean freeRefraction,
 			/** Growth was withheld and this step reflected instead, because a look-ahead peek at
 			 *  the next same-size octant found a real boundary growth would have skipped over. */
-			boolean peekReflect
+			boolean peekReflect,
+			/** Raw baked polar vector at this boundary; {@code null} when {@code hasPolarity} is false. */
+			@Nullable Vec3d polarVector,
+			/** Blend weight {@code w} fed to the commit-reflect-vs-permeate gate; {@code NaN} when
+			 *  that gate never ran (no polarity, or reflectivity was already 0 beforehand). */
+			double commitWeight
 	) {}
 
 	private final int maxSegments;

@@ -90,7 +90,9 @@ class KaptureActionTest {
 				false,
 				false,
 				false,
-				false
+				false,
+				null,
+				Double.NaN
 		);
 	}
 }

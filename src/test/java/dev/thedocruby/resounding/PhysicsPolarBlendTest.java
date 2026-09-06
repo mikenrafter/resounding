@@ -50,13 +50,16 @@ class PhysicsPolarBlendTest {
     }
 
     @Test
-    void tangentEntryWithPerpendicularPolIsAlsoOneHalf() {
-        // Same geometry as above, pol (0,1,0) instead. Blended = (1,-1,0)/sqrt(2), dot^2 = 0.5.
+    void tangentEntryWithPerpendicularPolRestrictsRayToPolsDominantAxis() {
+        // Same geometry as above, pol (0,1,0) instead. Pol's dominant axis is Y, so the incident
+        // angle (ray) is restricted to its own Y component before blending -- ray=(1,0,0) has none,
+        // so restrictedRay=(0,0,0) and the blend collapses to plain offsetNorm=(0,-1,0). dot with
+        // pol (0,1,0) is -1, squared = 1.0: a full commit, not the pre-restriction 0.5.
         Vec3d ray = new Vec3d(1, 0, 0);
         Vec3d pol = new Vec3d(0, 1, 0);
         Vec3d p = new Vec3d(1, 2, 1);
 
-        assertEquals(0.5, Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
+        assertEquals(1.0, Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
     }
 
     @Test
@@ -72,8 +75,22 @@ class PhysicsPolarBlendTest {
 
     @Test
     void degenerateOffsetFallsBackToRawRay() {
-        // P == C exactly -> offset is the zero vector, degenerate -> fall back to normalize(ray).
+        // P == C exactly -> offset is the zero vector, degenerate. Pol's dominant axis is Y and
+        // ray=(1,1,0) has a Y component, so the degenerate-offset fallback returns
+        // normalize(restrictedRay) = (0,1,0), not plain normalize(ray).
         Vec3d ray = new Vec3d(1, 1, 0);
+        Vec3d pol = new Vec3d(0, 1, 0);
+
+        assertEquals(Physics.polarAlignment(new Vec3d(0, 1, 0), pol),
+                Physics.dualDerivedAlignment(ray, C, C, pol), DELTA);
+    }
+
+    @Test
+    void degenerateOffsetWithNoDominantAxisComponentFallsBackToRawRay() {
+        // Same as above, but pol's dominant axis (Y) has zero component in ray=(1,0,0), so the
+        // restricted ray is itself the zero vector -- the double-degenerate case falls all the way
+        // back to plain normalize(ray).
+        Vec3d ray = new Vec3d(1, 0, 0);
         Vec3d pol = new Vec3d(0, 1, 0);
         Vec3d rayNorm = ray.normalize();
 
@@ -83,10 +100,11 @@ class PhysicsPolarBlendTest {
 
     @Test
     void antiParallelSumFallsBackToRawRay() {
-        // P = center of +X face; C-P = (-1,0,0), exactly anti-parallel to ray, so ray + offsetNorm
-        // sums to the zero vector - degenerate -> fall back to normalize(ray), never NaN.
+        // P = center of +X face; C-P = (-1,0,0), exactly anti-parallel to ray. Pol (1,0,0) is
+        // dominant on X (same axis as ray), so restrictedRay=ray=(1,0,0) and ray + offsetNorm sums
+        // to the zero vector - degenerate -> fall back to normalize(ray), never NaN.
         Vec3d ray = new Vec3d(1, 0, 0);
-        Vec3d pol = new Vec3d(0, 1, 0);
+        Vec3d pol = new Vec3d(1, 0, 0);
         Vec3d p = new Vec3d(2, 1, 1);
 
         double result = Physics.dualDerivedAlignment(ray, p, C, pol);
@@ -108,8 +126,14 @@ class PhysicsPolarBlendTest {
                 new Vec3d(2, 1, 1),
                 new Vec3d(2, 0, 1),
         };
+        Vec3d[] pols = {
+                new Vec3d(1, 0, 0),
+                new Vec3d(0, 1, 0),
+                new Vec3d(0, 0, 1),
+                new Vec3d(1, 1, 1),
+        };
         for (int i = 0; i < rays.length; i++) {
-            Vec3d result = Physics.dualDerivedNorm(rays[i], points[i], C);
+            Vec3d result = Physics.dualDerivedNorm(rays[i], points[i], C, pols[i]);
             assertEquals(1.0, result.length(), DELTA,
                     "dualDerivedNorm must always return a unit vector (case " + i + ")");
         }
@@ -119,11 +143,12 @@ class PhysicsPolarBlendTest {
     void dualDerivedNormNormalizesRayInput() {
         // ray magnitude must not leak into the result - only its direction matters.
         Vec3d p = new Vec3d(0, 2, 1);
+        Vec3d pol = new Vec3d(1, 1, 0);
         Vec3d longRay = new Vec3d(2, 0, 0);
         Vec3d unitRay = new Vec3d(1, 0, 0);
 
-        Vec3d fromLong = Physics.dualDerivedNorm(longRay, p, C);
-        Vec3d fromUnit = Physics.dualDerivedNorm(unitRay, p, C);
+        Vec3d fromLong = Physics.dualDerivedNorm(longRay, p, C, pol);
+        Vec3d fromUnit = Physics.dualDerivedNorm(unitRay, p, C, pol);
 
         assertEquals(fromUnit.x, fromLong.x, DELTA);
         assertEquals(fromUnit.y, fromLong.y, DELTA);
