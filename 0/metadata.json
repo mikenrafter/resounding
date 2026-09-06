@@ -1,0 +1,63 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1TPF967WBE4R9XHEM55WEWK",
+  "session_id": "75948065-10e0-466d-a6e1-2a1558818844",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-06T06:28:45.244335752Z",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "src/main/java/dev/thedocruby/resounding/OctreeManager.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Cast.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Renderer.java",
+    "src/main/java/dev/thedocruby/resounding/debug/CaptureBuffer.java",
+    "src/main/java/dev/thedocruby/resounding/debug/KaptureLogger.java",
+    "src/test/java/dev/thedocruby/resounding/debug/KaptureActionTest.java",
+    "src/test/java/dev/thedocruby/resounding/debug/CaptureBufferTest.java",
+    "src/test/java/dev/thedocruby/resounding/debug/CapturedRayKaptureFieldsTest.java"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "f09a5c603d5c",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 150,
+    "cache_creation_tokens": 375719,
+    "cache_read_tokens": 10378493,
+    "output_tokens": 83996,
+    "api_call_count": 76
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-06T06:28:45.055388196Z",
+    "agent_lines": 22,
+    "agent_removed": 6,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 12,
+    "total_committed": 22,
+    "total_lines_changed": 40,
+    "agent_percentage": 70,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 44,
+      "user_lines_removed": 12,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "src/main/java/dev/thedocruby/resounding/OctreeManager.java": 24,
+        "src/main/java/dev/thedocruby/resounding/debug/CaptureBuffer.java": 6,
+        "src/main/java/dev/thedocruby/resounding/debug/KaptureLogger.java": 1,
+        "src/main/java/dev/thedocruby/resounding/raycast/Cast.java": 12,
+        "src/main/java/dev/thedocruby/resounding/raycast/Renderer.java": 1
+      },
+      "user_removed_per_file": {
+        "src/main/java/dev/thedocruby/resounding/OctreeManager.java": 10,
+        "src/main/java/dev/thedocruby/resounding/debug/CaptureBuffer.java": 1,
+        "src/main/java/dev/thedocruby/resounding/raycast/Renderer.java": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+Commit, then examine the latest log for a kapture ray. There are octants with polarities, but they're homogeneous octants. Therefore they should have no polarity. I am also considering making more phases for a frustum. Currently it goes size < 2 = standard ray physics, size < 4 frustum size 2 with quartet physics... But I think it makes more sense to do size < 3 polarized octants, size < 4 polarized octants with quartets, size < 6 polarized octants, size < 8 polarized octants with quartets, size < 12 polarized octants, size < 16 polarized octants with quartets, and of course size 16 frustums are candidates for splits, but that's not implemented at this point just yet.
+
+Get your bearings with `agentgrep`, `rtk` and use `nix develop` for build tasks.
+
+Get your bearings, commit, look at the kapture, think through your change, double check w/ me, implement and adjust tests.
+
+---
+
+continue
