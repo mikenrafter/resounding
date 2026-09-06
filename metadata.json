@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1TENJKR6HYBQXK30KJVHDFK",
+  "strategy": "manual-commit",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "src/main/java/dev/thedocruby/resounding/Physics.java",
+    "src/main/java/dev/thedocruby/resounding/debug/CaptureBuffer.java",
+    "src/main/java/dev/thedocruby/resounding/debug/KaptureLogger.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Cast.java",
+    "src/main/java/dev/thedocruby/resounding/raycast/Renderer.java",
+    "src/test/java/dev/thedocruby/resounding/PhysicsPolarBlendTest.java",
+    "src/test/java/dev/thedocruby/resounding/debug/CaptureBufferTest.java",
+    "src/test/java/dev/thedocruby/resounding/debug/CapturedRayKaptureFieldsTest.java",
+    "src/test/java/dev/thedocruby/resounding/debug/KaptureActionTest.java"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 130,
+    "cache_creation_tokens": 212481,
+    "cache_read_tokens": 13707390,
+    "output_tokens": 142244,
+    "api_call_count": 65
+  }
+}

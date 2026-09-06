@@ -1,0 +1,7 @@
+OK, now examine the latest kapture (new since last). This one has 2 rays that both phase through 2 walls. How are we handling reflecting w/ polarity? Does the reflection algorithm take into account that these polarity vectors are supposed to be bidirectional? If not, tell me which interactions behaved incorrectly and run the arithmetic for the fix to see if it would actually have made those instances behave differently. For quartet checks, perhaps it makes sense to 0 out the axis not involved in the quartet polarity check... That way polarities are a bit more solid.
+
+For beams that would split in that future implementation, do they still choose to permeate/reflect based on the 0.5 reflect vs transmit rule?
+
+---
+
+Add the instrumentation, and adjusting the dual derived alignment is what I meant. Take the incident angle and zero whichever axis wasn't used in the quartet selection. Do not do this for the incident position, leave that vector in the blend unadjusted. Also, the polarity needs to be treated as fully bidirectional. The reflection direction is inverted in 50% of cases when it is treated as facing the same general direction as the incident ray. For that reflection logic, make sure the polarity is always facing toward the ray, like a normal vector. This may involve inverting some or all of the signs from the polarity vector's real direction. We'll call this value the PolarityIncidentNormal, that is what will be used to determine the reflected direction.
