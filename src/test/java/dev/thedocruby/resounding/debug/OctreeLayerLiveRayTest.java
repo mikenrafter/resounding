@@ -116,7 +116,7 @@ class OctreeLayerLiveRayTest {
 	}
 
 	@Test
-	void collectCastVisitedViewsEmitsBounceOffAtATurnAndKeepsPolar() {
+	void collectCastVisitedViewsEmitsQuartetShapeAtATurnAndKeepsPolar() {
 		Branch root = wallTree();
 		// LOD > 1 with oblique approach so first/second DDA axes differ (NED applies).
 		List<RayLineLayer.LineSegment> path = List.of(
@@ -127,17 +127,25 @@ class OctreeLayerLiveRayTest {
 		List<OctreeOverlay.OctantView> views = OctreeLayer.collectCastVisitedViews(path, pos -> root);
 
 		assertFalse(views.isEmpty(), "cast path must produce LOD boxes without a C capture");
-		List<OctreeOverlay.OctantView> bounces = views.stream()
-				.filter(v -> v.label() != null && v.label().contains("bounce"))
-				.toList();
-		assertFalse(bounces.isEmpty(), "direction change at LOD>1 must emit a bounced-off octant");
 		assertTrue(
-				bounces.stream().noneMatch(v -> v.label() != null && v.label().toLowerCase().contains("virtual")),
-				"bounce-off boxes must not be tagged virtual-cyan"
+				views.stream().anyMatch(OctreeOverlay.OctantView::incidentHost),
+				"direction change at LOD>1 must emit a bordered incident octant"
+		);
+		List<OctreeOverlay.OctantView> quartets = views.stream()
+				.filter(OctreeOverlay.OctantView::insetFill)
+				.toList();
+		assertFalse(quartets.isEmpty(), "NED survey must emit an inset quartet shape");
+		assertTrue(
+				quartets.stream().allMatch(OctreeOverlay.OctantView::drawBorder),
+				"quartet shapes keep a white border (distance-faded when unfocused; forced when focused)"
 		);
 		assertTrue(
-				bounces.stream().anyMatch(v -> WALL_POLAR.equals(v.polar())),
-				"bounce-off polar must come from the LOD branch"
+				quartets.stream().noneMatch(v -> v.label() != null && v.label().toLowerCase().contains("virtual")),
+				"quartet shapes must not be tagged virtual-cyan"
+		);
+		assertTrue(
+				views.stream().anyMatch(v -> WALL_POLAR.equals(v.polar())),
+				"quartet/incident polar must come from the LOD branch"
 		);
 	}
 
@@ -199,14 +207,33 @@ class OctreeLayerLiveRayTest {
 	}
 
 	@Test
-	void splitBoxHalvesShareAFace() {
+	void insetBoxShrinksEachSide() {
 		Box box = new Box(0, 0, 0, 4, 4, 4);
-		Box[] halves = OctreeLayer.splitBox(box, 0);
-		assertEquals(0.0, halves[0].minX, 1e-9);
-		assertEquals(2.0, halves[0].maxX, 1e-9);
-		assertEquals(2.0, halves[1].minX, 1e-9);
-		assertEquals(4.0, halves[1].maxX, 1e-9);
-		assertEquals(halves[0].maxX, halves[1].minX, 1e-9);
+		Box inset = OctreeLayer.insetBox(box, 0.15 * 4);
+		assertEquals(0.6, inset.minX, 1e-9);
+		assertEquals(3.4, inset.maxX, 1e-9);
+		assertEquals(0.6, inset.minY, 1e-9);
+		assertEquals(3.4, inset.maxY, 1e-9);
+	}
+
+	@Test
+	void insetBoxRefusesToInvert() {
+		Box box = new Box(0, 0, 0, 1, 1, 1);
+		assertEquals(box, OctreeLayer.insetBox(box, 1.0));
+	}
+
+	@Test
+	void size1TurnEmitsIncidentOnlyNoQuartetShape() {
+		Branch root = wallTree();
+		List<RayLineLayer.LineSegment> path = List.of(
+				seg(0.5, 0.5, 0.5, 8.0, 0.5, 0.5, 3, 1),
+				seg(8.0, 0.5, 0.5, 8.0, 0.5, 4.0, 3, 1)
+		);
+		List<OctreeOverlay.OctantView> views = OctreeLayer.collectCastVisitedViews(path, pos -> root);
+		assertTrue(
+				views.stream().noneMatch(v -> v.insetFill() || !v.drawBorder()),
+				"1³ interactions must not emit a quartet shape"
+		);
 	}
 
 	@Test

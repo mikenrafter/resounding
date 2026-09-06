@@ -31,14 +31,17 @@ public final class OctreeOverlay {
 			boolean incidentHost,
 			/** Exit / hit face of H ({@code ±X/±Y/±Z} unit); null when not the host. */
 			@Nullable Vec3i incidentFace,
-			/** Task F4: the incident (host) cell's own (small) box, when {@link #box} has been
-			 *  merged into one big rectangle spanning a whole quartet; null for a non-merged view
-			 *  (in which case any incident face is drawn on {@link #box} directly, as before). */
-			@Nullable Box hostBox,
-			/** Task F4: the host's second ("E"/tangent-direction) incident face, drawn the same way
-			 *  as {@link #incidentFace} — the "it would step here unimpeded" check; null when not
-			 *  applicable. */
-			@Nullable Vec3i incidentFaceSecond
+			/** Host's second ("E"/tangent-direction) incident face — the "it would step here
+			 *  unimpeded" check; null when not applicable. */
+			@Nullable Vec3i incidentFaceSecond,
+			/** Wireframe border. Quartet shapes get a white one (distance-faded when unfocused;
+			 *  forced on when the cluster is focused). Incident/path cubes use their set/virtual
+			 *  color, whitening only when the incident host is focused. */
+			boolean drawBorder,
+			/** When true, fill + border are inset by {@code 0.15 * size} on each side (quartet shape).
+			 *  {@link #box} stays the full (non-inset) union so focus/hit tests still cover the
+			 *  whole cluster. */
+			boolean insetFill
 	) {
 		public OctantView(
 				Box box,
@@ -51,7 +54,23 @@ public final class OctreeOverlay {
 				boolean incidentHost,
 				@Nullable Vec3i incidentFace
 		) {
-			this(box, material, label, size, color, polar, setId, incidentHost, incidentFace, null, null);
+			this(box, material, label, size, color, polar, setId, incidentHost, incidentFace, null, true, false);
+		}
+
+		public OctantView(
+				Box box,
+				Material material,
+				String label,
+				int size,
+				int color,
+				@Nullable Vec3d polar,
+				@Nullable Integer setId,
+				boolean incidentHost,
+				@Nullable Vec3i incidentFace,
+				@Nullable Vec3i incidentFaceSecond
+		) {
+			this(box, material, label, size, color, polar, setId, incidentHost, incidentFace,
+					incidentFaceSecond, true, false);
 		}
 
 		public OctantView(
@@ -63,11 +82,11 @@ public final class OctreeOverlay {
 				@Nullable Vec3d polar,
 				@Nullable Integer setId
 		) {
-			this(box, material, label, size, color, polar, setId, false, null, null, null);
+			this(box, material, label, size, color, polar, setId, false, null, null, true, false);
 		}
 
 		public OctantView(Box box, Material material, String label, int size, int color, @Nullable Vec3d polar) {
-			this(box, material, label, size, color, polar, null, false, null, null, null);
+			this(box, material, label, size, color, polar, null, false, null, null, true, false);
 		}
 	}
 
