@@ -3,7 +3,7 @@
   "checkpoint_id": "01M1TN1K66G9YMCV6ZYQ31DHJ9",
   "strategy": "manual-commit",
   "branch": "beam-tracing-frustums",
-  "checkpoints_count": 3,
+  "checkpoints_count": 4,
   "files_touched": [
     "src/main/java/dev/thedocruby/resounding/Physics.java",
     "src/main/java/dev/thedocruby/resounding/raycast/Cast.java",
@@ -16,13 +16,20 @@
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
       "prompt": "/0/prompt.txt"
+    },
+    {
+      "metadata": "/1/metadata.json",
+      "transcript": "/1/full.jsonl",
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "prompt": "/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 128,
-    "cache_creation_tokens": 209985,
-    "cache_read_tokens": 10030649,
-    "output_tokens": 107744,
-    "api_call_count": 64
+    "input_tokens": 130,
+    "cache_creation_tokens": 217810,
+    "cache_read_tokens": 10047428,
+    "output_tokens": 108039,
+    "api_call_count": 65
   }
 }
