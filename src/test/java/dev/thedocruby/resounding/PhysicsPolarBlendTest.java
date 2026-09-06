@@ -1,6 +1,7 @@
 package dev.thedocruby.resounding;
 
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.Vec3i;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -26,88 +27,95 @@ class PhysicsPolarBlendTest {
     void dualDerivedAlignmentDeadCenterEntryMatchesPureAngle() {
         // P = center of -X face; C-P = (1,0,0), exactly parallel to ray, so the blend degenerates
         // to the raw ray direction and dualDerivedAlignment must match polarAlignment exactly.
+        // axisToZero=-1 ("zero nothing") isolates this from the axis-restriction feature entirely.
         Vec3d ray = new Vec3d(1, 0, 0);
         Vec3d p = new Vec3d(0, 1, 1);
 
         assertEquals(Physics.polarAlignment(ray, new Vec3d(1, 0, 0)),
-                Physics.dualDerivedAlignment(ray, p, C, new Vec3d(1, 0, 0)), DELTA);
+                Physics.dualDerivedAlignment(ray, p, C, new Vec3d(1, 0, 0), -1), DELTA);
 
         double s = Math.sqrt(2) / 2;
         Vec3d pol = new Vec3d(s, s, 0);
         assertEquals(Physics.polarAlignment(ray, pol),
-                Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
+                Physics.dualDerivedAlignment(ray, p, C, pol, -1), DELTA);
     }
 
     @Test
     void tangentEntryWithFullyAlignedRayIsExactlyOneHalf() {
         // P = center of +Y face; C-P = (0,-1,0), perpendicular to ray. Blended = (1,-1,0)/sqrt(2);
-        // dot with pol (1,0,0) = 1/sqrt(2), squared = 0.5.
+        // dot with pol (1,0,0) = 1/sqrt(2), squared = 0.5. axisToZero=-1: no restriction.
         Vec3d ray = new Vec3d(1, 0, 0);
         Vec3d pol = new Vec3d(1, 0, 0);
         Vec3d p = new Vec3d(1, 2, 1);
 
-        assertEquals(0.5, Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
+        assertEquals(0.5, Physics.dualDerivedAlignment(ray, p, C, pol, -1), DELTA);
     }
 
     @Test
-    void tangentEntryWithPerpendicularPolRestrictsRayToPolsDominantAxis() {
-        // Same geometry as above, pol (0,1,0) instead. Pol's dominant axis is Y, so the incident
-        // angle (ray) is restricted to its own Y component before blending -- ray=(1,0,0) has none,
-        // so restrictedRay=(0,0,0) and the blend collapses to plain offsetNorm=(0,-1,0). dot with
-        // pol (0,1,0) is -1, squared = 1.0: a full commit, not the pre-restriction 0.5.
-        Vec3d ray = new Vec3d(1, 0, 0);
-        Vec3d pol = new Vec3d(0, 1, 0);
-        Vec3d p = new Vec3d(1, 2, 1);
+    void axisToZeroDropsThatRayComponentBeforeBlending() {
+        // ray=(1,1,0); P chosen so C-P=(0,0,1), perpendicular to the ray's XY plane. axisToZero
+        // picks which ray component is dropped before summing with the (unrestricted) offset term.
+        Vec3d ray = new Vec3d(1, 1, 0);
+        Vec3d p = new Vec3d(1, 1, 0);
+        Vec3d pol = new Vec3d(0, 0, 1);
 
-        assertEquals(1.0, Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
+        // No restriction: sum = (1,1,0)/sqrt(2) + (0,0,1) = (s,s,1), dot^2 with (0,0,1) = 1/2 exactly.
+        assertEquals(0.5, Physics.dualDerivedAlignment(ray, p, C, pol, -1), DELTA);
+
+        // Zero X: restricted ray=(0,s,0); sum=(0,s,1), |sum|^2 = 1.5, dot^2/|sum|^2 = 1/1.5 = 2/3.
+        assertEquals(2.0 / 3.0, Physics.dualDerivedAlignment(ray, p, C, pol, 0), DELTA);
+
+        // Zero Y: symmetric to zeroing X for this fixture, also exactly 2/3.
+        assertEquals(2.0 / 3.0, Physics.dualDerivedAlignment(ray, p, C, pol, 1), DELTA);
+
+        // Zero Z: the ray already has no Z component, so this is a no-op -> matches axisToZero=-1.
+        assertEquals(0.5, Physics.dualDerivedAlignment(ray, p, C, pol, 2), DELTA);
     }
 
     @Test
     void sumThenNormalizeFormulaExactValue() {
         // P = top edge of -X face; C-P = (1,-1,0)/sqrt(2). Blended = normalize(ray + offsetNorm),
-        // dot^2 with pol (1,0,0) works out exactly to (2 + sqrt(2)) / 4.
+        // dot^2 with pol (1,0,0) works out exactly to (2 + sqrt(2)) / 4. axisToZero=-1: no restriction.
         Vec3d ray = new Vec3d(1, 0, 0);
         Vec3d pol = new Vec3d(1, 0, 0);
         Vec3d p = new Vec3d(0, 2, 1);
 
-        assertEquals((2 + Math.sqrt(2)) / 4, Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
+        assertEquals((2 + Math.sqrt(2)) / 4, Physics.dualDerivedAlignment(ray, p, C, pol, -1), DELTA);
     }
 
     @Test
     void degenerateOffsetFallsBackToRawRay() {
-        // P == C exactly -> offset is the zero vector, degenerate. Pol's dominant axis is Y and
-        // ray=(1,1,0) has a Y component, so the degenerate-offset fallback returns
-        // normalize(restrictedRay) = (0,1,0), not plain normalize(ray).
+        // P == C exactly -> offset is the zero vector, degenerate. With no axis zeroed, the
+        // restricted ray is just the ray itself (nonzero), so the fallback returns normalize(ray).
         Vec3d ray = new Vec3d(1, 1, 0);
         Vec3d pol = new Vec3d(0, 1, 0);
 
-        assertEquals(Physics.polarAlignment(new Vec3d(0, 1, 0), pol),
-                Physics.dualDerivedAlignment(ray, C, C, pol), DELTA);
+        assertEquals(Physics.polarAlignment(ray.normalize(), pol),
+                Physics.dualDerivedAlignment(ray, C, C, pol, -1), DELTA);
     }
 
     @Test
-    void degenerateOffsetWithNoDominantAxisComponentFallsBackToRawRay() {
-        // Same as above, but pol's dominant axis (Y) has zero component in ray=(1,0,0), so the
-        // restricted ray is itself the zero vector -- the double-degenerate case falls all the way
-        // back to plain normalize(ray).
+    void degenerateOffsetWithZeroedAxisAlsoFallsBackToRawRay() {
+        // Same degenerate offset, but axisToZero now zeroes the ray's only nonzero component, so
+        // the restricted ray is itself the zero vector -- the double-degenerate case still falls
+        // all the way back to plain normalize(ray), never NaN.
         Vec3d ray = new Vec3d(1, 0, 0);
         Vec3d pol = new Vec3d(0, 1, 0);
         Vec3d rayNorm = ray.normalize();
 
         assertEquals(Physics.polarAlignment(rayNorm, pol),
-                Physics.dualDerivedAlignment(ray, C, C, pol), DELTA);
+                Physics.dualDerivedAlignment(ray, C, C, pol, 0), DELTA);
     }
 
     @Test
     void antiParallelSumFallsBackToRawRay() {
-        // P = center of +X face; C-P = (-1,0,0), exactly anti-parallel to ray. Pol (1,0,0) is
-        // dominant on X (same axis as ray), so restrictedRay=ray=(1,0,0) and ray + offsetNorm sums
-        // to the zero vector - degenerate -> fall back to normalize(ray), never NaN.
+        // P = center of +X face; C-P = (-1,0,0), exactly anti-parallel to ray. With no axis zeroed,
+        // ray + offsetNorm sums to the zero vector - degenerate -> fall back to normalize(ray), never NaN.
         Vec3d ray = new Vec3d(1, 0, 0);
         Vec3d pol = new Vec3d(1, 0, 0);
         Vec3d p = new Vec3d(2, 1, 1);
 
-        double result = Physics.dualDerivedAlignment(ray, p, C, pol);
+        double result = Physics.dualDerivedAlignment(ray, p, C, pol, -1);
         assertEquals(Physics.polarAlignment(ray.normalize(), pol), result, DELTA);
         assertFalse(Double.isNaN(result), "anti-parallel sum must fall back, never produce NaN");
     }
@@ -126,14 +134,9 @@ class PhysicsPolarBlendTest {
                 new Vec3d(2, 1, 1),
                 new Vec3d(2, 0, 1),
         };
-        Vec3d[] pols = {
-                new Vec3d(1, 0, 0),
-                new Vec3d(0, 1, 0),
-                new Vec3d(0, 0, 1),
-                new Vec3d(1, 1, 1),
-        };
+        int[] axesToZero = {0, 1, 2, -1};
         for (int i = 0; i < rays.length; i++) {
-            Vec3d result = Physics.dualDerivedNorm(rays[i], points[i], C, pols[i]);
+            Vec3d result = Physics.dualDerivedNorm(rays[i], points[i], C, axesToZero[i]);
             assertEquals(1.0, result.length(), DELTA,
                     "dualDerivedNorm must always return a unit vector (case " + i + ")");
         }
@@ -143,12 +146,11 @@ class PhysicsPolarBlendTest {
     void dualDerivedNormNormalizesRayInput() {
         // ray magnitude must not leak into the result - only its direction matters.
         Vec3d p = new Vec3d(0, 2, 1);
-        Vec3d pol = new Vec3d(1, 1, 0);
         Vec3d longRay = new Vec3d(2, 0, 0);
         Vec3d unitRay = new Vec3d(1, 0, 0);
 
-        Vec3d fromLong = Physics.dualDerivedNorm(longRay, p, C, pol);
-        Vec3d fromUnit = Physics.dualDerivedNorm(unitRay, p, C, pol);
+        Vec3d fromLong = Physics.dualDerivedNorm(longRay, p, C, -1);
+        Vec3d fromUnit = Physics.dualDerivedNorm(unitRay, p, C, -1);
 
         assertEquals(fromUnit.x, fromLong.x, DELTA);
         assertEquals(fromUnit.y, fromLong.y, DELTA);
@@ -163,7 +165,7 @@ class PhysicsPolarBlendTest {
         Vec3d pol = new Vec3d(-1, 0, 0);
         Vec3d p = new Vec3d(0, 2, 1);
 
-        assertEquals((2 + Math.sqrt(2)) / 4, Physics.dualDerivedAlignment(ray, p, C, pol), DELTA);
+        assertEquals((2 + Math.sqrt(2)) / 4, Physics.dualDerivedAlignment(ray, p, C, pol, -1), DELTA);
     }
 
     // --- alignment a = (ray_norm . pol_norm)^2 --------------------------------------------------
@@ -275,6 +277,64 @@ class PhysicsPolarBlendTest {
         assertEquals(1.0, result.y, DELTA);
         assertEquals(1.0, result.z, DELTA, "z must flip from -1 to +1: anti-aligned clamp pushes target.z to +0");
         assertEquals(Math.sqrt(3), result.length(), DELTA);
+    }
+
+    // --- opposing polar normal (whole-vector flip) + vector-normal mirror reflect ----------------
+
+    @Test
+    void opposingPolarNormalPassesThroughWhenAlreadyOpposing() {
+        // dot(pol, ray) < 0 already -> no flip needed, same instance-equivalent value back.
+        Vec3d pol = new Vec3d(0, 1, 0);
+        Vec3d rayNorm = new Vec3d(1, -1, 0).normalize();
+        assertEquals(pol, Physics.opposingPolarNormal(pol, rayNorm));
+    }
+
+    @Test
+    void opposingPolarNormalFlipsWholeVectorWhenAlignedWithRay() {
+        // dot(pol, ray) > 0 -> whole-vector negate (never per-axis), preserving pol as one fixed
+        // spatial direction. A per-axis sign-copy would instead produce (0,-1,0) here too by
+        // coincidence on this single-axis fixture, so also check a diagonal pol below.
+        Vec3d pol = new Vec3d(0, 1, 0);
+        Vec3d rayNorm = new Vec3d(1, 1, 0).normalize();
+        Vec3d result = Physics.opposingPolarNormal(pol, rayNorm);
+        assertEquals(0.0, result.x, DELTA);
+        assertEquals(-1.0, result.y, DELTA);
+        assertEquals(0.0, result.z, DELTA);
+        assertTrue(result.dotProduct(rayNorm) <= 0, "flipped normal must oppose the ray");
+    }
+
+    @Test
+    void opposingPolarNormalFlipsDiagonalPolAsOneUnit() {
+        // Whole-vector flip must negate every component together, not per-axis: a per-axis
+        // sign-copy would rebuild (1,1,1) here (matching ray's signs on every axis) instead of
+        // correctly negating to (-1,-1,-1).
+        Vec3d pol = new Vec3d(1, 1, 1).normalize();
+        Vec3d rayNorm = new Vec3d(1, 1, 1).normalize();
+        Vec3d result = Physics.opposingPolarNormal(pol, rayNorm);
+        assertEquals(pol.multiply(-1), result);
+        assertTrue(result.dotProduct(rayNorm) <= 0, "flipped normal must oppose the ray");
+    }
+
+    @Test
+    void pseudoReflectVectorNormalMatchesAxisPlaneOverloadOnAxisAlignedNormals() {
+        // The general vector-normal formula must reduce to exactly the same arithmetic as the
+        // existing axis-plane overload when normal is one of the six axis-unit directions.
+        Vec3d ray = new Vec3d(1, 2, -3);
+        assertEquals(Physics.pseudoReflect(ray, new Vec3i(1, 0, 0)), Physics.pseudoReflect(ray, new Vec3d(1, 0, 0)));
+        assertEquals(Physics.pseudoReflect(ray, new Vec3i(0, -1, 0)), Physics.pseudoReflect(ray, new Vec3d(0, 1, 0)));
+    }
+
+    @Test
+    void pseudoReflectVectorNormalMirrorsAboutObliqueNormal() {
+        // ray=(0,-1,0) hitting a 45-degree normal (1,1,0)/sqrt(2) turns a clean 90 degrees to (1,0,0)
+        // -- classic diagonal-mirror behavior an axis-aligned normal could never produce.
+        Vec3d ray = new Vec3d(0, -1, 0);
+        Vec3d normal = new Vec3d(1, 1, 0).normalize();
+        Vec3d result = Physics.pseudoReflect(ray, normal);
+        assertEquals(1.0, result.x, DELTA);
+        assertEquals(0.0, result.y, DELTA);
+        assertEquals(0.0, result.z, DELTA);
+        assertEquals(ray.length(), result.length(), DELTA);
     }
 
     // --- notable-interaction gate: budget-dependent threshold -------------------------------------

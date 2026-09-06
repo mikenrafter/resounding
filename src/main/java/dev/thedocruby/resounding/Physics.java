@@ -27,6 +27,20 @@ public class Physics {
         );
     }
 
+    @Contract("_, _ -> new")
+    public static @NotNull Vec3d pseudoReflect(Vec3d ray, @NotNull Vec3d normal) { return pseudoReflect(ray, normal, 2); }
+
+    /**
+     * General vector-normal mirror: {@code ray - fresnel*dot(ray,normal)*normal}. {@code normal}
+     * must be unit length. Reduces to exactly the same arithmetic as the axis-plane overload above
+     * when {@code normal} is one of the six axis-unit directions, so this is a strict
+     * generalization for oblique (non-axis-aligned) surfaces such as a polarized octant's gradient.
+     */
+    @Contract("_, _, _ -> new")
+    public static @NotNull Vec3d pseudoReflect(Vec3d ray, @NotNull Vec3d normal, double fresnel) {
+        return ray.subtract(normal.multiply(fresnel * ray.dotProduct(normal)));
+    }
+
     /** @see Acoustics#reflection - delegated so the formula has exactly one definition */
     public static @NotNull Double reflection(@NotNull Double impedanceA, @NotNull Double impedanceB) {
         return Acoustics.reflection(impedanceA, impedanceB);
@@ -46,19 +60,21 @@ public class Physics {
 
     /**
      * Blended "effective ray norm": {@code normalize(restrict(rayNorm) + normalize(octantCenter -
-     * incidentPoint))}. The incident-angle term ({@code rayNorm}) is first restricted to whichever
-     * single axis {@code polNorm} is dominant on (the same axis {@link
-     * dev.thedocruby.resounding.raycast.FrustumLod#wouldDoubleCover} isolates for its own polarity
-     * check) — zeroing the other two so off-axis ray motion can't dilute the alignment. The
-     * position term (the offset from {@code incidentPoint} to {@code octantCenter}) is deliberately
-     * left unrestricted. Falls back to {@code normalize(rayNorm)} when the offset is degenerate and
-     * the restricted ray is also zero, or when the final sum is degenerate.
+     * incidentPoint))}. The incident-angle term ({@code rayNorm}) has whichever single axis
+     * {@code axisToZero} names (0=X, 1=Y, 2=Z; any other value, e.g. {@code -1}, means "zero
+     * nothing") dropped to zero before blending — the two surviving axes are the DDA-crossing pair
+     * (the hit face's axis and the axis of the next face the ray's path projects onto; see {@link
+     * dev.thedocruby.resounding.raycast.FrustumLod#forwardMap}), so a genuinely off-plane component
+     * can't dilute the alignment. The position term (the offset from {@code incidentPoint} to
+     * {@code octantCenter}) is deliberately left unrestricted. Falls back to {@code
+     * normalize(rayNorm)} when the offset is degenerate and the restricted ray is also zero, or
+     * when the final sum is degenerate.
      */
     public static Vec3d dualDerivedNorm(
-            @NotNull Vec3d rayNorm, @NotNull Vec3d incidentPoint, @NotNull Vec3d octantCenter, @NotNull Vec3d polNorm
+            @NotNull Vec3d rayNorm, @NotNull Vec3d incidentPoint, @NotNull Vec3d octantCenter, int axisToZero
     ) {
         Vec3d rn = rayNorm.normalize();
-        Vec3d restrictedRn = restrictToDominantAxis(rn, polNorm);
+        Vec3d restrictedRn = zeroAxis(rn, axisToZero);
         Vec3d offset = octantCenter.subtract(incidentPoint);
         if (offset.lengthSquared() < 1e-12) {
             return restrictedRn.lengthSquared() < 1e-12 ? rn : restrictedRn.normalize();
@@ -71,60 +87,41 @@ public class Physics {
         return sum.normalize();
     }
 
-    /**
-     * Zeroes every component of {@code v} except the one on {@code axisSource}'s dominant axis
-     * (largest absolute component; ties favor X then Y).
-     */
-    private static Vec3d restrictToDominantAxis(@NotNull Vec3d v, @NotNull Vec3d axisSource) {
-        return switch (dominantAxis(axisSource)) {
-            case 0 -> new Vec3d(v.x, 0, 0);
-            case 1 -> new Vec3d(0, v.y, 0);
-            default -> new Vec3d(0, 0, v.z);
+    /** Zeroes {@code v}'s component on {@code axis} (0=X, 1=Y, 2=Z); any other value is a no-op. */
+    private static Vec3d zeroAxis(@NotNull Vec3d v, int axis) {
+        return switch (axis) {
+            case 0 -> new Vec3d(0, v.y, v.z);
+            case 1 -> new Vec3d(v.x, 0, v.z);
+            case 2 -> new Vec3d(v.x, v.y, 0);
+            default -> v;
         };
-    }
-
-    /** Index (0=X, 1=Y, 2=Z) of {@code v}'s largest-magnitude component; ties favor X then Y. */
-    private static int dominantAxis(@NotNull Vec3d v) {
-        int axis = 0;
-        double best = Math.abs(v.x);
-        if (Math.abs(v.y) > best) {
-            axis = 1;
-            best = Math.abs(v.y);
-        }
-        if (Math.abs(v.z) > best) {
-            axis = 2;
-        }
-        return axis;
     }
 
     /**
      * {@code polarAlignment(dualDerivedNorm(...), polNorm)} &mdash; position-aware alignment.
+     * {@code axisToZero} is forwarded to {@link #dualDerivedNorm} unchanged.
      */
-    public static double dualDerivedAlignment(@NotNull Vec3d rayNorm, @NotNull Vec3d incidentPoint, @NotNull Vec3d octantCenter, @NotNull Vec3d polNorm) {
-        return polarAlignment(dualDerivedNorm(rayNorm, incidentPoint, octantCenter, polNorm), polNorm);
+    public static double dualDerivedAlignment(
+            @NotNull Vec3d rayNorm, @NotNull Vec3d incidentPoint, @NotNull Vec3d octantCenter,
+            @NotNull Vec3d polNorm, int axisToZero
+    ) {
+        return polarAlignment(dualDerivedNorm(rayNorm, incidentPoint, octantCenter, axisToZero), polNorm);
     }
 
     /**
-     * Orients {@code polNorm} to always face the ray it's interacting with: each axis's sign is
-     * copied from {@code rayNorm} onto {@code polNorm}'s magnitude on that axis (same per-component
-     * sign-copy idiom as {@link #permeationBend}), guaranteeing {@code dot(result, rayNorm) >= 0}.
-     *
-     * <p>{@code polar} is baked ({@code Polarization#bakeOctant}) as "points toward the
-     * higher-impedance corner cluster" — a fixed property of the octant's own corner layout,
-     * independent of which side of the gradient any particular ray approaches from. Feeding that
-     * raw direction straight into {@link #grazeBend}/{@link #permeationBend} (which both assume
-     * {@code polNorm} already faces the incoming ray) is only correct for approaches where the
-     * baked sign happens to agree — roughly half of them; the other half see it pointing away and
-     * get bent/permeated backwards. The result of this method (call it {@code
-     * PolarityIncidentNormal}) is what should be passed to those two functions instead of the raw
-     * baked direction.
+     * Orients {@code polNorm} as a proper surface normal opposing {@code rayNorm}: a whole-vector
+     * flip (negate every component together, never per-axis) when the two point the same general
+     * way, guaranteeing {@code dot(result, rayNorm) <= 0} while preserving {@code polNorm} as the
+     * single fixed spatial direction it was baked as ({@code Polarization#bakeOctant}: "points
+     * toward the higher-impedance corner cluster"). A per-axis sign-copy (as a prior attempt at
+     * this did) corrupts that direction into an arbitrary hybrid and is wrong here — it's only
+     * appropriate where {@link #grazeBend}/{@link #permeationBend} need the raw signed {@code
+     * dot(polNorm, rayNorm)} to tell entering from exiting, which is not this case: reflecting off
+     * the boundary needs a normal that opposes the incoming ray outright, like any ordinary mirror
+     * normal.
      */
-    public static @NotNull Vec3d polarityIncidentNormal(@NotNull Vec3d polNorm, @NotNull Vec3d rayNorm) {
-        return new Vec3d(
-                Math.copySign(polNorm.x, rayNorm.x),
-                Math.copySign(polNorm.y, rayNorm.y),
-                Math.copySign(polNorm.z, rayNorm.z)
-        );
+    public static @NotNull Vec3d opposingPolarNormal(@NotNull Vec3d polNorm, @NotNull Vec3d rayNorm) {
+        return polNorm.dotProduct(rayNorm) > 0 ? polNorm.multiply(-1) : polNorm;
     }
 
     /**

@@ -326,6 +326,7 @@ public class Cast {
             }
         }
         Vec3d octantCenter = cellBase.add(cellSize * 0.5, cellSize * 0.5, cellSize * 0.5);
+        int polarAxisToZero = axisToZeroFor(cellBase, cellSize, pposition, vector, step.plane());
         //* amplitude and vector {
         Material branchMaterial = resolveMaterial(branch, BlockPos.ofFloored(normalized));
         Material interactionMaterial = interactionMaterialForCast(
@@ -345,7 +346,7 @@ public class Cast {
         if (!emissionCast && branchDescriptor.polar() != null
                 && !Double.isNaN(branchDescriptor.mostCommonImpedance()) && !Double.isNaN(branchDescriptor.leastCommonImpedance())
                 && branchDescriptor.mostCommonImpedance() != branchDescriptor.leastCommonImpedance()) {
-            newImpedance = polarizedImpedance(branchDescriptor, vector, pposition, octantCenter);
+            newImpedance = polarizedImpedance(branchDescriptor, vector, pposition, octantCenter, polarAxisToZero);
             // Soft-majority groupAdjust used to bake negative endpoints; refuse vacuum blends.
             if (isVacuumImpedance(newImpedance)) {
                 newImpedance = hostImpedance;
@@ -396,7 +397,7 @@ public class Cast {
         // (Physics.isNotableInteraction is false at splitsLeft==0, so it must not gate this path.)
         if (!emissionCast && branchDescriptor.polar() != null && reflectivity > 0) {
             int splitsLeft = beamBudget.splitsRemaining();
-            double w = polarBlendWeight(branchDescriptor, vector, pposition, octantCenter);
+            double w = polarBlendWeight(branchDescriptor, vector, pposition, octantCenter, polarAxisToZero);
             this.lastCommitWeight = w;
             if (splitsLeft > 0) {
                 reflectivity = 0;
@@ -404,17 +405,13 @@ public class Cast {
                 double contrast = polarContrast(branchDescriptor);
                 if (Physics.isNotableInteraction(contrast, splitsLeft)
                         && branchDescriptor.polar().lengthSquared() > 1e-12) {
-                    Vec3d rayNorm = vector.normalize();
-                    Vec3d incidentNormal = Physics.polarityIncidentNormal(branchDescriptor.polar().normalize(), rayNorm);
-                    vector = Physics.permeationBend(vector, rayNorm, incidentNormal);
+                    vector = Physics.permeationBend(vector, vector.normalize(), branchDescriptor.polar().normalize());
                 }
             } else if (!Physics.commitReflect(w)) {
                 reflectivity = 0;
                 transmission = transmissionForBoundary(0, interactionMaterial.permeation(), pdistance);
                 if (branchDescriptor.polar().lengthSquared() > 1e-12) {
-                    Vec3d rayNorm = vector.normalize();
-                    Vec3d incidentNormal = Physics.polarityIncidentNormal(branchDescriptor.polar().normalize(), rayNorm);
-                    vector = Physics.permeationBend(vector, rayNorm, incidentNormal);
+                    vector = Physics.permeationBend(vector, vector.normalize(), branchDescriptor.polar().normalize());
                 }
             }
         }
@@ -470,9 +467,7 @@ public class Cast {
                     this.lastGrowthDeferred = true;
                     this.lastFreeRefraction = true;
                     if (polar != null && polar.lengthSquared() > 1e-12) {
-                        Vec3d rayNorm = vector.normalize();
-                        Vec3d incidentNormal = Physics.polarityIncidentNormal(polar.normalize(), rayNorm);
-                        vector = Physics.grazeBend(vector, rayNorm, incidentNormal);
+                        vector = Physics.grazeBend(vector, vector.normalize(), polar.normalize());
                     }
                 }
             }
@@ -528,7 +523,9 @@ public class Cast {
             }
         }
 
-        @Nullable Vec3d reflectedDir = reflectivity > 0 ? Physics.pseudoReflect(vector, reflectPlane) : null;
+        @Nullable Vec3d reflectedDir = reflectivity > 0
+                ? reflectedDirection(vector, reflectPlane, branchDescriptor.polar())
+                : null;
         @Nullable Vec3d transmitted = emissionCast
                 ? vector
                 : Physics.pseudoReflect(vector, transmitPlane, transmission / 5);
@@ -550,7 +547,8 @@ public class Cast {
         this.lastHasPolarity = branchDescriptor.polar() != null && branchDescriptor.polar().lengthSquared() > 1e-12;
         this.lastPolarVector = this.lastHasPolarity ? branchDescriptor.polar() : null;
         this.lastPolarAlignment = this.lastHasPolarity
-                ? Physics.dualDerivedAlignment(vector.normalize(), pposition, octantCenter, branchDescriptor.polar().normalize())
+                ? Physics.dualDerivedAlignment(vector.normalize(), pposition, octantCenter, branchDescriptor.polar().normalize(),
+                        axisToZeroFor(cellBase, cellSize, pposition, vector, step.plane()))
                 : 1.0;
         this.lastMaterial = interactionMaterial;
         this.lastResolvedImpedance = newImpedance;
@@ -635,12 +633,12 @@ public class Cast {
         return tree == null ? null : tree.getAtLod(pos, lod);
     }
 
-    private static double polarizedImpedance(Branch.NodeDescriptor descriptor, Vec3d vector, Vec3d incidentPoint, Vec3d octantCenter) {
-        double w = polarBlendWeight(descriptor, vector, incidentPoint, octantCenter);
+    private static double polarizedImpedance(Branch.NodeDescriptor descriptor, Vec3d vector, Vec3d incidentPoint, Vec3d octantCenter, int axisToZero) {
+        double w = polarBlendWeight(descriptor, vector, incidentPoint, octantCenter, axisToZero);
         return Physics.blendImpedance(descriptor.mostCommonImpedance(), descriptor.leastCommonImpedance(), w);
     }
 
-    private static double polarBlendWeight(Branch.NodeDescriptor descriptor, Vec3d vector, Vec3d incidentPoint, Vec3d octantCenter) {
+    private static double polarBlendWeight(Branch.NodeDescriptor descriptor, Vec3d vector, Vec3d incidentPoint, Vec3d octantCenter, int axisToZero) {
         Vec3d pol = descriptor.polar();
         if (pol == null || pol.lengthSquared() < 1e-12) {
             return 0.5;
@@ -648,7 +646,37 @@ public class Cast {
         double blend = descriptor.blendCoefficient();
         double s = !Double.isNaN(blend) && blend >= 0.75 ? 2.0 : 1.0;
         return Physics.polarBlendWeight(
-                Physics.dualDerivedAlignment(vector.normalize(), incidentPoint, octantCenter, pol.normalize()), s);
+                Physics.dualDerivedAlignment(vector.normalize(), incidentPoint, octantCenter, pol.normalize(), axisToZero), s);
+    }
+
+    /**
+     * Axis (0=X, 1=Y, 2=Z; {@code -1} means "zero nothing") to drop from the ray term before
+     * {@link Physics#dualDerivedNorm} blends it with the position term: whichever axis is neither
+     * the crossed face's own axis nor the axis of the next face the ray's path projects onto (the
+     * same DDA pair {@link FrustumLod#forwardMap} computes for quartet/N-E-D neighbor selection).
+     * Falls back to "zero nothing" when the boundary isn't a genuine two-axis (NED) crossing —
+     * {@code forwardMap} returns {@code null} for an ordinary single-axis DDA step, and there's no
+     * well-defined off-plane axis to drop in that case.
+     */
+    private static int axisToZeroFor(Vec3d cellBase, int cellSize, Vec3d hitPos, Vec3d rayDir, Vec3i firstPlane) {
+        FrustumLod.ForwardMap map = FrustumLod.forwardMap(cellBase, cellSize, hitPos, rayDir, firstPlane);
+        return map == null ? -1 : 3 - map.faceAxis() - map.tangentAxis();
+    }
+
+    /**
+     * Reflected ray direction. Polarized octants (a coarse LOD blend, never a genuine 1³ leaf — see
+     * the assert in {@link #raycast}) use a proper vector-normal mirror off {@code polar} oriented
+     * to oppose the incoming ray ({@link Physics#opposingPolarNormal}), since the density gradient
+     * the polarization vector encodes is generally oblique to the cell's own axis-aligned faces.
+     * Unpolarized boundaries keep the coarse per-axis mirror off the grid face actually crossed.
+     */
+    private static Vec3d reflectedDirection(Vec3d vector, Vec3i reflectPlane, @Nullable Vec3d polar) {
+        if (polar != null && polar.lengthSquared() > 1e-12) {
+            Vec3d rayNorm = vector.normalize();
+            Vec3d normal = Physics.opposingPolarNormal(polar.normalize(), rayNorm);
+            return Physics.pseudoReflect(vector, normal);
+        }
+        return Physics.pseudoReflect(vector, reflectPlane);
     }
 
     private static double polarContrast(Branch.NodeDescriptor descriptor) {
