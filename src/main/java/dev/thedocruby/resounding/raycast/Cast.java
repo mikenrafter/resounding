@@ -122,6 +122,15 @@ public class Cast {
     /** {@code w} fed to {@link Physics#commitReflect} at the last resolved boundary; {@code NaN} when
      *  the polar commit/split gate never ran (no polarity, or reflectivity was already 0). */
     public double lastCommitWeight = Double.NaN;
+    /**
+     * Ground-truth impedance check on the last resolved boundary's branch descriptor, independent
+     * of {@link #lastHasPolarity}/{@link #lastPolarVector}: {@code true} when {@code
+     * mostCommonImpedance() == leastCommonImpedance()} (or either is NaN, i.e. no baked data at
+     * all). {@link Polarization#bakeOctant}/{@code OctreeManager.bakeAggregateDescriptor} should
+     * never produce a nonzero {@code polar} alongside {@code true} here — if a capture ever shows
+     * both, the descriptor itself is stale or wrong, not just a subtle/lopsided real blend.
+     */
+    public boolean lastImpedanceHomogeneous = true;
 
     /**
      * Running frustum footprint width (blocks). Advances only via {@link #applyFrustumStep}
@@ -546,6 +555,9 @@ public class Cast {
         this.lastBoundaryResolved = true;
         this.lastHasPolarity = branchDescriptor.polar() != null && branchDescriptor.polar().lengthSquared() > 1e-12;
         this.lastPolarVector = this.lastHasPolarity ? branchDescriptor.polar() : null;
+        this.lastImpedanceHomogeneous = Double.isNaN(branchDescriptor.mostCommonImpedance())
+                || Double.isNaN(branchDescriptor.leastCommonImpedance())
+                || branchDescriptor.mostCommonImpedance() == branchDescriptor.leastCommonImpedance();
         this.lastPolarAlignment = this.lastHasPolarity
                 ? Physics.dualDerivedAlignment(vector.normalize(), pposition, octantCenter, branchDescriptor.polar().normalize(),
                         axisToZeroFor(cellBase, cellSize, pposition, vector, step.plane()))

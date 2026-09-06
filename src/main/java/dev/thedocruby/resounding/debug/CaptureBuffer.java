@@ -61,7 +61,12 @@ public final class CaptureBuffer {
 			@Nullable Vec3d polarVector,
 			/** Blend weight {@code w} fed to the commit-reflect-vs-permeate gate; {@code NaN} when
 			 *  that gate never ran (no polarity, or reflectivity was already 0 beforehand). */
-			double commitWeight
+			double commitWeight,
+			/** Ground-truth ({@code mostCommonImpedance() == leastCommonImpedance()}, or either NaN)
+			 *  ignoring {@code hasPolarity}/{@code polarVector} entirely — a capture showing
+			 *  {@code hasPolarity} true alongside this true means the descriptor itself is stale or
+			 *  wrong, not just a subtle/lopsided real blend. */
+			boolean impedanceHomogeneous
 	) {}
 
 	private final int maxSegments;

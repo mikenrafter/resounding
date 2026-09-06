@@ -217,9 +217,17 @@ public class OctreeManager {
                 root.put(i, leaf);
             }
             if (!heterogeneous) {
+                // Pruned to one homogeneous material: bake a plain leaf descriptor, not the
+                // aggregate. sameAcousticCell's block-identity shortcut (this loop's own
+                // heterogeneity check) can call two corners "the same" without ever comparing
+                // their actual impedance, so bakeAggregateDescriptor's weighted-average polar
+                // could otherwise carry a stale nonzero gradient onto a node the tree itself just
+                // decided has no gradient at all.
                 root.empty();
+                bakeLeafDescriptor(root);
+            } else {
+                bakeAggregateDescriptor(root, children);
             }
-            bakeAggregateDescriptor(root, children);
         } else {
             Material[] cornerMaterials = new Material[blockSequence.length];
             for (int i = 0; i < blockSequence.length; i++) {
@@ -227,15 +235,21 @@ public class OctreeManager {
                 cornerMaterials[i] = MaterialRegistry.material(chunk.getBlockState(position));
             }
             valid = regionHomogeneous(chunk, start, 2, corner);
-            Polarization.Descriptor descriptor = Polarization.bakeOctant(cornerMaterials);
-            root.bake(new Branch.NodeDescriptor(
-                    descriptor.mostCommonImpedance(),
-                    descriptor.leastCommonImpedance(),
-                    descriptor.avgImpedance(),
-                    descriptor.blendCoefficient(),
-                    descriptor.polar()
-            ));
-            if (!valid) {
+            if (valid) {
+                // Same reasoning as the scale>1 branch above: regionHomogeneous's sameAcousticCell
+                // shortcut can prune this node to one material without its corners' actual
+                // impedances agreeing, so Polarization.bakeOctant's descriptor (and its polar)
+                // must not be used here -- bake the plain single-material descriptor instead.
+                bakeLeafDescriptor(root);
+            } else {
+                Polarization.Descriptor descriptor = Polarization.bakeOctant(cornerMaterials);
+                root.bake(new Branch.NodeDescriptor(
+                        descriptor.mostCommonImpedance(),
+                        descriptor.leastCommonImpedance(),
+                        descriptor.avgImpedance(),
+                        descriptor.blendCoefficient(),
+                        descriptor.polar()
+                ));
                 root.empty();
                 for (int i = 0; i < blockSequence.length; i++) {
                     final BlockPos position = start.add(blockSequence[i]);

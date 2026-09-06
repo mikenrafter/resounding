@@ -68,6 +68,7 @@ final class KaptureLogger {
 		if (!Double.isNaN(bounce.commitWeight())) {
 			sb.append(String.format(Locale.ROOT, " w=%.3f", bounce.commitWeight()));
 		}
+		sb.append(bounce.impedanceHomogeneous() ? " homogeneous" : " heterogeneous");
 		if (bounce.blankReason() != null) {
 			sb.append(" blank=").append(bounce.blankReason());
 		}

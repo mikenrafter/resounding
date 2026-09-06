@@ -66,7 +66,29 @@ class KaptureActionTest {
 				"bounce line must include polar= and frustum= with the approved precision: " + bounceLine);
 	}
 
+	@Test
+	void bounceLine_printsHomogeneousWhenImpedanceHomogeneous() {
+		List<String> lines = new ArrayList<>();
+		KaptureAction.execute(5, List.of(bounce(5, 0, true)), lines::add);
+
+		assertTrue(lines.get(1).endsWith(" homogeneous"),
+				"a boundary with mostCommonImpedance == leastCommonImpedance must print 'homogeneous': " + lines.get(1));
+	}
+
+	@Test
+	void bounceLine_printsHeterogeneousWhenNotImpedanceHomogeneous() {
+		List<String> lines = new ArrayList<>();
+		KaptureAction.execute(5, List.of(bounce(5, 0, false)), lines::add);
+
+		assertTrue(lines.get(1).endsWith(" heterogeneous"),
+				"a boundary with a real mostCommon/leastCommon split must print 'heterogeneous': " + lines.get(1));
+	}
+
 	private static CaptureBuffer.CapturedRay bounce(int rayIndex, int bounceIndex) {
+		return bounce(rayIndex, bounceIndex, true);
+	}
+
+	private static CaptureBuffer.CapturedRay bounce(int rayIndex, int bounceIndex, boolean impedanceHomogeneous) {
 		return new CaptureBuffer.CapturedRay(
 				new Vec3d(bounceIndex, 0, 0),
 				new Vec3d(bounceIndex + 1, 0, 0),
@@ -92,7 +114,8 @@ class KaptureActionTest {
 				false,
 				false,
 				null,
-				Double.NaN
+				Double.NaN,
+				impedanceHomogeneous
 		);
 	}
 }

@@ -12,8 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Contract for the 5 trailing kapture fields added to {@link CaptureBuffer.CapturedRay}:
  * resolvedImpedance, polarAlignment, frustumSize, blankReason, shapeMode; plus the 4 Task F2a
- * fields: hasPolarity, growthDeferred, freeRefraction, peekReflect; plus the 2 instrumentation
- * fields added for the polarity-bug investigation: polarVector, commitWeight.
+ * fields: hasPolarity, growthDeferred, freeRefraction, peekReflect; plus the 3 instrumentation
+ * fields added for the polarity-bug investigation: polarVector, commitWeight, impedanceHomogeneous.
  *
  * <p>blankReason contract: {@code null} means NONE (the bounce was not blank); a non-null string
  * is a reason name (e.g. "VACUUM") that the Renderer maps to a human label when formatting. This
@@ -48,7 +48,8 @@ class CapturedRayKaptureFieldsTest {
 				true,
 				true,
 				new Vec3d(0, 1, 0),
-				0.62
+				0.62,
+				false
 		);
 
 		assertEquals(415.0, ray.resolvedImpedance(), 1e-9);
@@ -62,6 +63,7 @@ class CapturedRayKaptureFieldsTest {
 		assertTrue(ray.peekReflect());
 		assertEquals(new Vec3d(0, 1, 0), ray.polarVector());
 		assertEquals(0.62, ray.commitWeight(), 1e-9);
+		assertFalse(ray.impedanceHomogeneous());
 	}
 
 	@Test
@@ -91,7 +93,8 @@ class CapturedRayKaptureFieldsTest {
 				false,
 				false,
 				null,
-				Double.NaN
+				Double.NaN,
+				true
 		);
 
 		assertNull(ray.blankReason());
@@ -102,5 +105,6 @@ class CapturedRayKaptureFieldsTest {
 		assertFalse(ray.peekReflect());
 		assertNull(ray.polarVector());
 		assertTrue(Double.isNaN(ray.commitWeight()));
+		assertTrue(ray.impedanceHomogeneous());
 	}
 }

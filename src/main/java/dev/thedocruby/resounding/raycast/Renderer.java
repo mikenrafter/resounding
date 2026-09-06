@@ -62,7 +62,7 @@ public class Renderer {
 					priorImpedance, branchSize, materialLabel, terminated,
 					resolvedImpedance, polarAlignment, frustumSize, blankReason, shapeMode,
 					cast.lastHasPolarity, cast.lastGrowthDeferred, cast.lastFreeRefraction, cast.lastPeekReflect,
-					cast.lastPolarVector, cast.lastCommitWeight
+					cast.lastPolarVector, cast.lastCommitWeight, cast.lastImpedanceHomogeneous
 			));
 		}
 	}
