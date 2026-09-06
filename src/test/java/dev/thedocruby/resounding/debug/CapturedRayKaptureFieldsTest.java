@@ -11,7 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Contract for the 5 trailing kapture fields added to {@link CaptureBuffer.CapturedRay}:
- * resolvedImpedance, polarAlignment, frustumSize, blankReason, shapeMode.
+ * resolvedImpedance, polarAlignment, frustumSize, blankReason, shapeMode; plus the 4 Task F2a
+ * fields: hasPolarity, growthDeferred, freeRefraction, peekReflect.
  *
  * <p>blankReason contract: {@code null} means NONE (the bounce was not blank); a non-null string
  * is a reason name (e.g. "VACUUM") that the Renderer maps to a human label when formatting. This
@@ -40,6 +41,10 @@ class CapturedRayKaptureFieldsTest {
 				0.87,
 				2.5,
 				"VACUUM",
+				true,
+				true,
+				true,
+				true,
 				true
 		);
 
@@ -48,6 +53,10 @@ class CapturedRayKaptureFieldsTest {
 		assertEquals(2.5, ray.frustumSize(), 1e-9);
 		assertEquals("VACUUM", ray.blankReason());
 		assertTrue(ray.shapeMode());
+		assertTrue(ray.hasPolarity());
+		assertTrue(ray.growthDeferred());
+		assertTrue(ray.freeRefraction());
+		assertTrue(ray.peekReflect());
 	}
 
 	@Test
@@ -71,10 +80,18 @@ class CapturedRayKaptureFieldsTest {
 				0.0,
 				0.0,
 				null,
+				false,
+				false,
+				false,
+				false,
 				false
 		);
 
 		assertNull(ray.blankReason());
 		assertFalse(ray.shapeMode());
+		assertFalse(ray.hasPolarity());
+		assertFalse(ray.growthDeferred());
+		assertFalse(ray.freeRefraction());
+		assertFalse(ray.peekReflect());
 	}
 }

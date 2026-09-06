@@ -46,12 +46,24 @@ public final class CaptureBuffer {
 			/** Reason the bounce was left blank (e.g. "VACUUM"); null means NONE. */
 			@Nullable String blankReason,
 			/** Whether this bounce was resolved against exact block shape (true) or voxel occupancy (false). */
-			boolean shapeMode
+			boolean shapeMode,
+			/** Whether the boundary's descriptor actually had a polarity vector — disambiguates
+			 *  {@code polarAlignment == 1.0} meaning "fully aligned" from "no polarity at all". */
+			boolean hasPolarity,
+			/** Growth was withheld this step (Task E double-cover / Task F envelopment guard). */
+			boolean growthDeferred,
+			/** Growth deferral resolved via a free/lossless parent-polarity graze (no bounce, no reverb hit). */
+			boolean freeRefraction,
+			/** Growth was withheld and this step reflected instead, because a look-ahead peek at
+			 *  the next same-size octant found a real boundary growth would have skipped over. */
+			boolean peekReflect
 	) {}
 
 	private final int maxSegments;
 	private RingBuffer<CapturedRay> segments;
 	private int remaining;
+	/** When true, the next {@link #onSoundEvalStart} / {@link #offer} wipes prior segments. */
+	private boolean clearBeforeNextRecord;
 	private boolean truncationWarningPending;
 	private boolean truncationWarningFired;
 	private int version;
@@ -61,37 +73,52 @@ public final class CaptureBuffer {
 		this.segments = new RingBuffer<>(maxSegments);
 	}
 
-	public void startCapture(int events) {
+	/**
+	 * Arm capture for the next {@code events} sound evals. Does <em>not</em> clear existing
+	 * segments immediately — the wipe is deferred to the next record
+	 * ({@link #onSoundEvalStart} / first {@link #offer}) so re-arming cannot erase an unread
+	 * capture before Kapture runs.
+	 */
+	public synchronized void startCapture(int events) {
 		remaining = events;
-		segments = new RingBuffer<>(maxSegments);
+		clearBeforeNextRecord = true;
 		truncationWarningPending = false;
 		truncationWarningFired = false;
 		version++;
 	}
 
-	public void stopCapture() {
+	public synchronized void stopCapture() {
 		remaining = 0;
 		version++;
 	}
 
-	public boolean isCapturing() {
+	public synchronized boolean isCapturing() {
 		return remaining != 0;
 	}
 
-	public void onSoundEvalStart() {
+	/** Clears prior segments once when an armed capture begins a sound eval (not on later evals). */
+	public synchronized void onSoundEvalStart() {
+		if (remaining != 0) {
+			clearSegmentsIfNeeded();
+		}
 	}
 
-	public void onSoundEvalEnd() {
+	public synchronized void onSoundEvalEnd() {
 		if (remaining > 0) {
 			remaining--;
 			version++;
 		}
 	}
 
-	public void offer(CapturedRay ray) {
-		if (!isCapturing()) {
+	/**
+	 * Must be synchronized: {@code Engine.evalEnv} raycasts in parallel, and every debug segment
+	 * offer races into the same {@link RingBuffer}.
+	 */
+	public synchronized void offer(CapturedRay ray) {
+		if (remaining == 0) {
 			return;
 		}
+		clearSegmentsIfNeeded();
 		if (segments.size() == maxSegments) {
 			if (!truncationWarningFired) {
 				truncationWarningPending = true;
@@ -102,7 +129,18 @@ public final class CaptureBuffer {
 		version++;
 	}
 
-	public boolean consumeTruncationWarning() {
+	private void clearSegmentsIfNeeded() {
+		if (!clearBeforeNextRecord) {
+			return;
+		}
+		segments = new RingBuffer<>(maxSegments);
+		clearBeforeNextRecord = false;
+		truncationWarningPending = false;
+		truncationWarningFired = false;
+		version++;
+	}
+
+	public synchronized boolean consumeTruncationWarning() {
 		if (truncationWarningPending) {
 			truncationWarningPending = false;
 			return true;
@@ -110,22 +148,22 @@ public final class CaptureBuffer {
 		return false;
 	}
 
-	public List<CapturedRay> asCapturedList() {
+	public synchronized List<CapturedRay> asCapturedList() {
 		return segments.asList();
 	}
 
 	/** Distinct env-eval ray indexes present in the capture, in first-seen order. */
-	public List<Integer> capturedRayIndexes() {
+	public synchronized List<Integer> capturedRayIndexes() {
 		Set<Integer> ordered = new LinkedHashSet<>();
-		for (CapturedRay ray : asCapturedList()) {
+		for (CapturedRay ray : segments.asList()) {
 			ordered.add(ray.rayIndex());
 		}
 		return new ArrayList<>(ordered);
 	}
 
-	public List<CapturedRay> segmentsForRayIndex(int rayIndex) {
+	public synchronized List<CapturedRay> segmentsForRayIndex(int rayIndex) {
 		List<CapturedRay> out = new ArrayList<>();
-		for (CapturedRay ray : asCapturedList()) {
+		for (CapturedRay ray : segments.asList()) {
 			if (ray.rayIndex() == rayIndex) {
 				out.add(ray);
 			}
@@ -133,7 +171,12 @@ public final class CaptureBuffer {
 		return out;
 	}
 
-	public int version() {
+	public synchronized int version() {
 		return version;
+	}
+
+	/** Total segments currently held (for debug HUD / dead-key diagnostics). */
+	public synchronized int size() {
+		return segments.size();
 	}
 }

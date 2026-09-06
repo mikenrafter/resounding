@@ -676,7 +676,283 @@ Red-pass agent (sonnet, medium): add `FrustumLod.wouldDoubleCover` and
 Implementation agent: real predicate + bend logic, `Cast.lastGrowthDeferred`/
 `lastFreeRefraction` fields, wiring into `Cast.raycast` (right after
 `Cast.java:351-371`) and `Cast.applyFrustumStep`. Verify full suite green,
-commit. **This is the last task — after it lands, the full A–E arc is done.**
+commit.
+
+### Done
+Committed in `cd184c4`. Superseded in one respect by Task F below: the
+project owner found (via `BEAM_TRACING_BUG_REPORT.md`'s capture session) that
+the wiring here, while internally consistent, has a real gap Task E didn't
+anticipate — see Task F items 2–3.
+
+---
+
+## Task F — post-capture bug fixes (owner-directed, follows the
+`BEAM_TRACING_BUG_REPORT.md` investigation)
+
+Five fixes, owner-approved, final (not open for re-litigation — two of them
+explicitly overrule conclusions the read-only investigation subagents reached
+in `BEAM_TRACING_BUG_REPORT.md`; the owner's direction below is authoritative
+over that doc's "Synthesis" section where they conflict).
+
+### F1 — Overlay red-marker false positives (confirms Investigation A)
+
+**Root cause** (already confirmed, see `BEAM_TRACING_BUG_REPORT.md`
+Investigation A): `OctreeLayer.collectCastVisitedOverlay`
+(`OctreeLayer.java:342-387`) infers "reflect" from a pure geometric
+direction-change test (`isDirectionChange`, `OctreeLayer.java:397`), with two
+hardcoded `NedMarkerState.REFLECTION` fallbacks:
+- `prevBranchSize <= 1` (line ~375-376): always REFLECTION, no impedance
+  check.
+- Inside `recordBounceOff` (`OctreeLayer.java:480-545`), when
+  `FrustumLod.forwardMap(...)` returns `null` (line ~507-511): always
+  REFLECTION, comment says "no forward survey possible... but a direction
+  change did happen."
+
+Both predate Task E's legitimate transmit-path bends (`grazeBend`/
+`permeationBend`), which now cause direction changes with `R=0` that the
+overlay still paints red.
+
+**Fix**: replace both hardcoded fallbacks with real impedance-based
+classification, reusing the same `Branch.effectiveImpedance()`/
+`FrustumLod.blocksPermeation` technique `recordBounceOff` already uses for its
+main N/E/D path:
+1. In `recordBounceOff`, move the `hostImpedance` computation (currently
+   after the `map == null` check) to *before* it. When `map == null`,
+   instead of returning `REFLECTION` unconditionally, resolve the neighbor
+   branch at the exit face (`exitFace`, already computed a few lines above)
+   via `root.getAtLod(hostOrigin.add(exitFace...), step)` and classify with
+   `FrustumLod.blocksPermeation(hostImpedance, neighborBranch
+   .effectiveImpedance(), neighborBranch.effectivePermeation())` →
+   `REFLECTION` if it blocks, else `TRANSMISSION`.
+2. In `collectCastVisitedOverlay`, delete the `prevBranchSize > 1` branch —
+   always call `recordBounceOff` when a direction change is detected and
+   `rootFor.apply(prevEnd)` resolves a root (keep `REFLECTION` only as the
+   true fail-safe when no root resolves at all). `recordBounceOff` already
+   handles `step = Math.max(1, castStepSize)` generically, so this works
+   correctly for `prevBranchSize == 1` too, now via the fixed `map == null`
+   path from (1) instead of the old hardcoded assumption.
+
+Self-contained inside `OctreeLayer.java` — no changes to `RayLineLayer`,
+`BounceRayLayer`, `Renderer`, or `Cast` needed for this one.
+
+### F2a — Kapture instrumentation gaps (owner: "new instrumentation is fine")
+
+Add to `CaptureBuffer.CapturedRay` (`CaptureBuffer.java:22-50`) and thread
+through `Renderer.addSoundBounceRay`/`KaptureLogger.formatBounceLine`:
+- `boolean growthDeferred` ← `cast.lastGrowthDeferred`
+- `boolean freeRefraction` ← `cast.lastFreeRefraction`
+- `boolean peekReflect` ← `cast.lastPeekReflect` (new field, see F2b)
+- `boolean hasPolarity` ← a new `cast.lastHasPolarity` field set alongside
+  `lastPolarAlignment` (`Cast.java:471-475`) from
+  `branchDescriptor.polar() != null`, so the log can finally distinguish
+  "genuinely full alignment" from "no polarity at all" — both currently
+  print `polar=1.000` and are indistinguishable (this was the specific
+  logging blind spot Investigation B flagged).
+
+`KaptureLogger.formatBounceLine` appends `growth={deferred|free|peek|-}` and
+`polar={value}[/none]` (or equivalent terse tags matching the file's existing
+`blank=`/`TERMINATED` suffix style).
+
+### F2b — Frustum growth must reflect off the next same-size cell when it hides a boundary (owner overrules Investigation B)
+
+**The owner's correction, verbatim intent**: "at LOD size 1 with frustum size
+1.99, growing would make LOD size 2. When about to grow, first check the
+next octant of size [the current cell size] to make sure no reflection would
+happen. If reflection would happen, don't apply the growth step and instead
+reflect off that [same-size] octant." Investigation B's finding that the
+`wouldDoubleCover` arithmetic itself has no exploitable gap stands — this is
+a *different*, additional check: a look-ahead so LOD growth cannot silently
+skip over ("hide") a real reflective boundary that finer resolution would
+have caught.
+
+**Fix**, in `Cast.raycast()` inside the existing patient-growth block
+(`Cast.java:389-402`, gated `!emissionCast && reflectivity == 0`):
+1. Compute `nextLod = FrustumLod.stepForSize(candidate)` before the existing
+   `wouldDoubleCover` call. Only proceed with the peek when
+   `nextLod > cellSize` (growth would actually escalate LOD — no risk
+   otherwise).
+2. Peek the immediate next same-size (`cellSize`) octant at the exit
+   position: `Vec3d peekVec = normalize(pposition, vector)`; resolve it the
+   same way the top of the method resolves the *current* cell (`tree
+   .getAtLod(BlockPos.ofFloored(peekVec), cellSize)`, preferring
+   `getBlock(peekVec)` when that resolves to `size == 1`, mirroring
+   `Cast.java:198-207`'s existing live-leaf-preference pattern).
+3. Resolve that peeked branch's material via `resolveMaterial(...)` (same
+   helper used at `Cast.java:300`) and compare its impedance against
+   `newImpedance` (the medium already resolved for *this* step) via the same
+   `impedancesClose(...)` test used at `Cast.java:352`.
+4. If they're not close (a real reflection would occur one cell ahead):
+   override `reflectivity = Physics.reflection(newImpedance, peekImpedance);
+   transmission = transmissionForBoundary(reflectivity, interactionMaterial
+   .permeation(), pdistance);` and set a new debug-only flag
+   `this.lastPeekReflect = true;` (reset alongside `lastGrowthDeferred`/
+   `lastFreeRefraction` at the top of `raycast()`). Do **not** touch
+   `lastGrowthDeferred`/`lastFreeRefraction` — this is a real reflect (real
+   R/T, consumes a bounce, can produce a reverb hit), not a free/lossless
+   graze — so no special no-growth accounting is needed: setting
+   `reflectivity` nonzero here, before `shapeMode`/`reflectPlane`
+   (`Cast.java:404+`) are computed, is sufficient for the rest of the method
+   and `Engine.raycast`'s existing `cast.lastReflectivity > 0.0` branching
+   (`Engine.java:295-304` vs `325`) to treat this as an ordinary reflect leg
+   automatically — no other `Engine.java` changes needed.
+5. Only when the peek does *not* find a reflection does the existing
+   `wouldDoubleCover` check (and F3's containment check, below) run, exactly
+   as today.
+
+Known simplification (note in a code comment): the peek does a plain
+impedance comparison, not a full polarized-blend resolve — acceptable for a
+look-ahead heuristic; it mirrors the level of rigor the existing plain
+size-1 reflectivity test already uses elsewhere in this method.
+
+### F3 — Growth must defer when it would collapse a still-subdivided child into its coarse parent (owner overrules Investigation C)
+
+**The owner's correction, verbatim**: "The bounding boxes of octants of
+different sizes ARE OVERLAPPING... Before growing, if the current octant is
+within the set of children for the proposed growth octant, then defer until
+that is no longer the case." Investigation C's bounds-arithmetic read
+(`virtualLodCell`/`alignOrigin` clamps are geometrically correct) stands as
+far as it goes, but per the owner this is not the whole story — the real
+requirement is a plain tree-containment guard, independent of polarity: if
+the octree still has the exact node we're currently in as a live
+(unpruned) child of the node growth would collapse to, growing there
+discards real structure the tree hasn't given up yet.
+
+**Fix**, in the same `Cast.raycast()` growth block, using the existing
+`nextLod`/`lodBranch` already in scope and `Branch.containsChild` (already
+implemented, identity-based, direct children only — `Branch.java`, search
+`containsChild`):
+```java
+boolean wouldEnvelop = nextLod > cellSize
+        && tree.getAtLod(BlockPos.ofFloored(pposition), nextLod).containsChild(lodBranch);
+if (wouldEnvelop || FrustumLod.wouldDoubleCover(cellBase, cellSize, pposition, polar, candidate, frustumSize)) {
+    this.lastGrowthDeferred = true;
+    this.lastFreeRefraction = true;
+    if (polar != null && polar.lengthSquared() > 1e-12) {
+        vector = Physics.grazeBend(vector, vector.normalize(), polar.normalize());
+    }
+}
+```
+Use `lodBranch` (the real tree-resolved node from `Cast.java:198`, *before*
+any live-leaf override at `Cast.java:202-207`), not the possibly-substituted
+`branch` variable — a synthesized live-leaf or virtual cell is never `==` to
+a real `children[]` entry, which is exactly the correct behavior: virtual
+cells only arise from already-homogeneous pruned regions, where collapsing
+to the coarse parent loses nothing, so `containsChild` naturally returns
+`false` there and only fires when the tree genuinely still has this exact
+node subdivided. No bend forced when `polar == null` (same guard as
+`wouldDoubleCover` already uses) — pure defer in that case.
+
+This check is orthogonal to, and runs alongside, the existing
+`wouldDoubleCover` polarity check (an `||`, not a replacement) — both can
+independently justify a defer.
+
+### F4 — Quartet debug rendering: one merged box + two internal incident sub-faces
+
+**Requirement (verbatim)**: "currently each octant within a quartet is
+rendered independently. Keep the white walls for the incident octant, adjust
+the bounding boxes to instead draw one large rectangle for the rest of the
+area. One large rectangle with a white incident sub-face and additionally,
+draw the second incident direction face (the "it would step here unimpeded"
+check) as a white face in the same manner. Again, both sub-faces should be
+internal to the rectangular prism's geometry, positioned in the location of
+the walls of the incident octant."
+
+**Current state**: `OctreeLayer.recordBounceOff` builds an H (host) +
+N (+ E, D when `map.hasTangent()`) quartet, each becoming its own
+independent `Occupancy` → `OctreeOverlay.OctantView` (own box, own border).
+Only the host gets one white incident face today (`Occupancy
+.markIncidentHost`/`incidentFaceA`, drawn in `OctreeLayer.populateFills`
+line ~944-951 via `octant.incidentFace()` on the host's *own* (small) box).
+The "second incident direction" is the **E** axis of the same N/E/D map
+(`FrustumLod.forwardMap`'s tangent offset, `map.eOffset()`) — the "it would
+step here unimpeded" check is exactly what the E-axis blocks-check already
+computes in `recordBounceOff` (`eBlocks`), just not currently visualized.
+
+**Fix** — scoped to the common case (a cube claimed by exactly one quartet
+set; cubes claimed by two sets, i.e. `Occupancy.colorB != null`, keep
+rendering individually as today — merging two overlapping quartets'
+geometry correctly is out of scope here and not what was asked):
+1. `Occupancy` gains `@Nullable Vec3i incidentFaceEA`/`incidentFaceEB` and a
+   `markIncidentTangent(int setId, Vec3i face)` method (mirrors
+   `markIncidentHost`). `recordBounceOff` calls it with `map.eOffset()` right
+   after the existing `nBlocks`/`eBlocks` tangent block, when
+   `map.hasTangent()` and `setId != null`.
+2. `OctreeOverlay.OctantView` gains two new optional trailing fields:
+   `@Nullable Box hostBox`, `@Nullable Vec3i incidentFaceSecond` (existing
+   shorter constructors keep delegating with `null` for both, matching the
+   file's existing compact-constructor pattern — no other call site needs to
+   change).
+3. `OctreeLayer.occupanciesToViews`: cubes with `setIdA != null && colorB ==
+   null` are pulled into a `LinkedHashMap<Integer, List<Occupancy>>` grouped
+   by `setIdA` instead of becoming individual views. Everything else
+   (`setIdA == null`, or the dual-set-split case) renders exactly as today
+   via the existing per-cube path (unchanged, just extracted into its own
+   `singleOccupancyView` helper for clarity).
+4. New `mergeQuartetView(List<Occupancy> members)`: union all members'
+   boxes into one `Box` (min/max merge helper); pick the host member (the
+   one with `hostA == true`); emit one `OctantView` using the merged box as
+   `box()`, the host's own (small) box as `hostBox()`, `host.incidentFaceA`
+   as `incidentFace()`, and `host.incidentFaceEA` as the new
+   `incidentFaceSecond()`. Polar-axis line: pick the first non-null `polar`
+   among members (best-effort — the merge inherently can't show every
+   member's individual polar vector on separate boxes anymore; note this as
+   a known simplification, not a regression the owner asked to preserve).
+5. `OctreeLayer.populateFills`: when drawing the incident face(s)
+   (`isFocusedIncidentHost(octant, focus) && octant.incidentFace() != null`),
+   use `octant.hostBox() != null ? octant.hostBox() : octant.box()` as the
+   face-drawing box (so the white sub-face sits at the *host's own* wall
+   position, internal to the merged box, per the requirement), and draw a
+   second `GpuFillBuffer.boxFace(...)` for `octant.incidentFaceSecond()`
+   when non-null, same box, same `INCIDENT_FACE_COLOR`.
+
+No changes needed to `populateBorders` beyond what already falls out of
+`box()` now being the merged rectangle (border highlight applies to the
+whole merged box when focused — not explicitly asked to change, and a
+reasonable reading of "one large rectangle").
+
+### Verification
+`nix develop -c ./gradlew compileJava` after each fix (F1/F3/F4 touch
+render-adjacent code with no existing GL-context unit tests — manual in-game
+check via the `run` skill recommended before calling F4 done); `nix develop
+-c ./gradlew test` after F2/F3 (touch `Cast.raycast`, covered by the existing
+`Cast*`/`FrustumLod*` suites) to confirm no regressions in the Task A–E test
+suites.
+
+### Done
+All 5 implemented directly (no red-pass/implementation subagent split this
+time — the fixes were precisely specified enough, and the codebase's own
+context was already loaded, to do in one pass). `nix develop -c ./gradlew
+compileJava` clean after each; full suite green after all five landed: 403
+tests, 0 failures, 0 errors (up from 403 tests pre-F, i.e. no regressions —
+`CapturedRayKaptureFieldsTest`/`CaptureBufferTest`/`KaptureActionTest` updated
+for the 4 new `CapturedRay` fields, `CapturedRayKaptureFieldsTest` extended
+with explicit assertions on all 4). Not committed — awaiting owner review.
+
+**Caveat, stated plainly**: F1 and F4 touch `OctreeLayer`'s debug-overlay
+rendering, which has no GL-context unit tests (matches the project's existing
+convention — Task D's doc says the same about `BounceRayLayer`'s render
+wiring). The existing `OctreeLayerLiveRayTest` suite still passes unchanged,
+including the one test that actually exercises the quartet-merge code path
+(`collectCastVisitedViewsEmitsBounceOffAtATurnAndKeepsPolar`), but that test
+only asserts on labels/polar, not the merged-box geometry or the two-white-
+sub-face positioning that is the actual point of F4. **In-game visual
+confirmation via the `run` skill is recommended before treating F4 as fully
+verified** — the code compiles and existing assertions hold, but the visual
+result (one big rectangle + two internal white sub-faces at the host's wall
+position) has not been eyeballed.
+
+One implementation note worth flagging: `mergeQuartetView`'s host lookup
+(`members.stream` search for `hostA == true`, falling back to
+`members.get(0)`) can fall back to a non-host member (e.g. the "bounce"-
+labeled N-neighbor) when `recordBounceOff`'s "recolor H only if already
+recorded" guard doesn't find the host in `byKey` under the alignment it
+computes (a pre-existing condition, not new — see the comment at
+`OctreeLayer.java` "do not invent a host cube here"). In that fallback case
+the merged view won't have `hostBox`/`incidentFace` data to draw the white
+sub-faces from (they'll just be absent for that quartet, not wrong) — this
+is the same "recorded H doesn't exist yet" case the pre-existing code already
+tolerated by silently skipping the recolor; F4 doesn't make it worse, just
+inherits it.
 
 ---
 

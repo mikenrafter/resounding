@@ -86,7 +86,11 @@ class KaptureActionTest {
 				0.87,
 				2.5,
 				null,
-				true
+				true,
+				false,
+				false,
+				false,
+				false
 		);
 	}
 }

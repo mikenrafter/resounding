@@ -358,20 +358,18 @@ public final class OctreeLayer implements DebugLayer {
 			Vec3d dir = delta.multiply(1.0 / length);
 			int stepSize = Math.max(1, segment.branchSize());
 			// No prior segment / no direction change from it -> this entry is a plain transmit.
-			// A real direction change is a reflect; the quartet survey (LOD > 1 only) can upgrade
-			// that to SPLIT when the forward map classifies it that way.
+			// A direction change is classified by recordBounceOff's real impedance comparison
+			// (Task F1) -- not assumed to be a reflect just because the direction changed, since
+			// Task E's transmit-path graze/permeation bends also change direction with R=0.
 			NedMarkerState transition = NedMarkerState.TRANSMISSION;
 			if (prevDir != null && prevEnd != null && isDirectionChange(prevDir, dir)) {
-				if (prevBranchSize > 1) {
-					Branch bounceRoot = rootFor.apply(prevEnd);
-					if (bounceRoot != null) {
-						int id = setId++;
-						transition = recordBounceOff(bounceRoot, prevEnd, prevDir, prevBranchSize, byKey,
-								OctantColor.forSet(id), id);
-					} else {
-						transition = NedMarkerState.REFLECTION;
-					}
+				Branch bounceRoot = rootFor.apply(prevEnd);
+				if (bounceRoot != null) {
+					int id = setId++;
+					transition = recordBounceOff(bounceRoot, prevEnd, prevDir, prevBranchSize, byKey,
+							OctantColor.forSet(id), id);
 				} else {
+					// No root at all to classify against -- true fail-safe, not a design assumption.
 					transition = NedMarkerState.REFLECTION;
 				}
 			}
@@ -504,16 +502,24 @@ public final class OctreeLayer implements DebugLayer {
 			}
 		}
 
-		FrustumLod.ForwardMap map = FrustumLod.forwardMap(cellBase, step, hit, dir, firstPlane);
-		if (map == null) {
-			// No forward survey possible on this axis pairing, but a direction change did happen.
-			return NedMarkerState.REFLECTION;
-		}
-
 		// Re-derive the same host->neighbor classification Cast.surveyForward computed live, from
 		// current octree state, so the marker shows what actually governs this boundary.
 		Branch hostLod = root.getAtLod(hostQuery, step);
 		double hostImpedance = hostLod.effectiveImpedance();
+
+		FrustumLod.ForwardMap map = FrustumLod.forwardMap(cellBase, step, hit, dir, firstPlane);
+		if (map == null) {
+			// No forward N/E/D survey possible on this axis pairing (ordinary single-axis exit,
+			// or a size-1 cell with no dual-axis geometry) -- classify directly from the exit-face
+			// neighbor's impedance instead of assuming every direction change is a reflect (Task
+			// F1: this hardcoded REFLECTION fallback painted false-positive red markers on
+			// Task E's legitimate transmit-path graze/permeation bends).
+			Branch exitBranch = root.getAtLod(
+					hostOrigin.add(exitFace.getX(), exitFace.getY(), exitFace.getZ()), step);
+			boolean exitBlocks = FrustumLod.blocksPermeation(
+					hostImpedance, exitBranch.effectiveImpedance(), exitBranch.effectivePermeation());
+			return exitBlocks ? NedMarkerState.REFLECTION : NedMarkerState.TRANSMISSION;
+		}
 
 		Branch nBranch = root.getAtLod(
 				hostOrigin.add(map.nOffset().getX(), map.nOffset().getY(), map.nOffset().getZ()), step);
@@ -529,6 +535,15 @@ public final class OctreeLayer implements DebugLayer {
 			eBlocks = FrustumLod.blocksPermeation(
 					hostImpedance, eBranch.effectiveImpedance(), eBranch.effectivePermeation());
 			recordBounceNeighbor(root, hostOrigin, map.eOffset(), step, byKey, setColor, setId, dir);
+			if (setId != null) {
+				// Task F4: the "second incident direction" -- the E/tangent-axis check ("it would
+				// step here unimpeded") -- drawn as a second internal white sub-face alongside the
+				// host's own N-direction incidentFaceA.
+				Occupancy host = byKey.get(occupancyKey(hostOrigin, step, false));
+				if (host != null) {
+					host.markIncidentTangent(setId, map.eOffset());
+				}
+			}
 
 			Branch dBranch = root.getAtLod(
 					hostOrigin.add(map.dOffset().getX(), map.dOffset().getY(), map.dOffset().getZ()), step);
@@ -609,34 +624,97 @@ public final class OctreeLayer implements DebugLayer {
 
 	private static List<OctreeOverlay.OctantView> occupanciesToViews(LinkedHashMap<Long, Occupancy> byKey) {
 		List<OctreeOverlay.OctantView> views = new ArrayList<>();
+		// Task F4: cubes claimed by exactly one quartet set (the common case) fold into one merged
+		// bounding box per set instead of rendering H/N/E/D independently. Cubes with no set, or
+		// claimed by two sets at once (colorB != null -- the pre-existing side-by-side-split case),
+		// keep rendering individually exactly as before; merging two overlapping quartets' geometry
+		// correctly is a different, harder problem this fix doesn't attempt.
+		LinkedHashMap<Integer, List<Occupancy>> mergeGroups = new LinkedHashMap<>();
 		for (Occupancy occ : byKey.values()) {
-			String label = occ.label;
-			if (occ.virtual) {
-				label = label == null || label.isEmpty() ? "virtual" : label + " virtual";
-			}
-			int size = (int) Math.round(occ.box.maxX - occ.box.minX);
-			if (occ.colorA != null && occ.colorB != null) {
-				Box[] halves = splitBox(occ.box, occ.splitAxis);
-				views.add(new OctreeOverlay.OctantView(
-						halves[0], null, label, size, occ.colorA, occ.polar, occ.setIdA,
-						occ.hostA, occ.incidentFaceA));
-				views.add(new OctreeOverlay.OctantView(
-						halves[1], null, label, size, occ.colorB, occ.polar, occ.setIdB,
-						occ.hostB, occ.incidentFaceB));
+			if (occ.setIdA != null && occ.colorB == null) {
+				mergeGroups.computeIfAbsent(occ.setIdA, k -> new ArrayList<>()).add(occ);
 			} else {
-				int color = occ.colorA != null
-						? occ.colorA
-						: OctantColor.forNode(
-								(int) Math.round(occ.box.minX),
-								(int) Math.round(occ.box.minY),
-								(int) Math.round(occ.box.minZ),
-								size);
-				views.add(new OctreeOverlay.OctantView(
-						occ.box, null, label, size, color, occ.polar, occ.setIdA,
-						occ.hostA, occ.incidentFaceA));
+				views.addAll(singleOccupancyViews(occ));
 			}
 		}
+		for (List<Occupancy> members : mergeGroups.values()) {
+			views.add(mergeQuartetView(members));
+		}
 		return views;
+	}
+
+	/** Pre-Task-F4 per-cube rendering: one box (or two side-by-side split halves). */
+	private static List<OctreeOverlay.OctantView> singleOccupancyViews(Occupancy occ) {
+		String label = occ.label;
+		if (occ.virtual) {
+			label = label == null || label.isEmpty() ? "virtual" : label + " virtual";
+		}
+		int size = (int) Math.round(occ.box.maxX - occ.box.minX);
+		if (occ.colorA != null && occ.colorB != null) {
+			Box[] halves = splitBox(occ.box, occ.splitAxis);
+			return List.of(
+					new OctreeOverlay.OctantView(
+							halves[0], null, label, size, occ.colorA, occ.polar, occ.setIdA,
+							occ.hostA, occ.incidentFaceA),
+					new OctreeOverlay.OctantView(
+							halves[1], null, label, size, occ.colorB, occ.polar, occ.setIdB,
+							occ.hostB, occ.incidentFaceB));
+		}
+		int color = occ.colorA != null
+				? occ.colorA
+				: OctantColor.forNode(
+						(int) Math.round(occ.box.minX),
+						(int) Math.round(occ.box.minY),
+						(int) Math.round(occ.box.minZ),
+						size);
+		return List.of(new OctreeOverlay.OctantView(
+				occ.box, null, label, size, color, occ.polar, occ.setIdA,
+				occ.hostA, occ.incidentFaceA));
+	}
+
+	/**
+	 * Task F4: unions every member of a quartet set into one bounding box. The host's own (small)
+	 * box is preserved as {@code hostBox} so the two incident sub-faces (N and E/tangent) can be
+	 * drawn at the host's true wall position, internal to the merged rectangle, instead of on the
+	 * merged box's own outer boundary.
+	 */
+	private static OctreeOverlay.OctantView mergeQuartetView(List<Occupancy> members) {
+		Occupancy host = members.get(0);
+		for (Occupancy m : members) {
+			if (m.hostA) {
+				host = m;
+				break;
+			}
+		}
+		Box merged = host.box;
+		Vec3d polar = null;
+		for (Occupancy m : members) {
+			merged = union(merged, m.box);
+			if (polar == null) {
+				polar = m.polar;
+			}
+		}
+		String label = host.label;
+		if (host.virtual) {
+			label = label == null || label.isEmpty() ? "virtual" : label + " virtual";
+		}
+		int size = (int) Math.round(host.box.maxX - host.box.minX);
+		int color = host.colorA != null
+				? host.colorA
+				: OctantColor.forNode(
+						(int) Math.round(host.box.minX),
+						(int) Math.round(host.box.minY),
+						(int) Math.round(host.box.minZ),
+						size);
+		return new OctreeOverlay.OctantView(
+				merged, null, label, size, color, polar, host.setIdA,
+				host.hostA, host.incidentFaceA, host.box, host.incidentFaceEA);
+	}
+
+	private static Box union(Box a, Box b) {
+		return new Box(
+				Math.min(a.minX, b.minX), Math.min(a.minY, b.minY), Math.min(a.minZ, b.minZ),
+				Math.max(a.maxX, b.maxX), Math.max(a.maxY, b.maxY), Math.max(a.maxZ, b.maxZ));
 	}
 
 	static Box[] splitBox(Box box, int axis) {
@@ -942,14 +1020,28 @@ public final class OctreeLayer implements DebugLayer {
 					fill
 			);
 			if (isFocusedIncidentHost(octant, focus) && octant.incidentFace() != null) {
+				// Task F4: when this view is a merged quartet box, draw the incident sub-face(s)
+				// at the host's own (small) wall position -- internal to the merged rectangle --
+				// instead of on the merged box's own outer boundary.
+				Box faceBox = octant.hostBox() != null ? octant.hostBox() : octant.box();
 				Vec3i face = octant.incidentFace();
 				GpuFillBuffer.boxFace(
 						builder,
-						octant.box().minX, octant.box().minY, octant.box().minZ,
-						octant.box().maxX, octant.box().maxY, octant.box().maxZ,
+						faceBox.minX, faceBox.minY, faceBox.minZ,
+						faceBox.maxX, faceBox.maxY, faceBox.maxZ,
 						face.getX(), face.getY(), face.getZ(),
 						INCIDENT_FACE_COLOR
 				);
+				Vec3i faceSecond = octant.incidentFaceSecond();
+				if (faceSecond != null) {
+					GpuFillBuffer.boxFace(
+							builder,
+							faceBox.minX, faceBox.minY, faceBox.minZ,
+							faceBox.maxX, faceBox.maxY, faceBox.maxZ,
+							faceSecond.getX(), faceSecond.getY(), faceSecond.getZ(),
+							INCIDENT_FACE_COLOR
+					);
+				}
 			}
 		}
 	}
@@ -1083,6 +1175,10 @@ public final class OctreeLayer implements DebugLayer {
 		boolean hostB;
 		@Nullable Vec3i incidentFaceA;
 		@Nullable Vec3i incidentFaceB;
+		/** Task F4: host's second ("E"/tangent-direction) incident face — the "it would step here
+		 *  unimpeded" check, drawn alongside {@link #incidentFaceA}/{@link #incidentFaceB}. */
+		@Nullable Vec3i incidentFaceEA;
+		@Nullable Vec3i incidentFaceEB;
 		int splitAxis;
 
 		Occupancy(
@@ -1114,6 +1210,14 @@ public final class OctreeLayer implements DebugLayer {
 			} else if (setIdB != null && setIdB.equals(setId)) {
 				hostB = true;
 				incidentFaceB = face;
+			}
+		}
+
+		void markIncidentTangent(int setId, Vec3i face) {
+			if (setIdA != null && setIdA.equals(setId)) {
+				incidentFaceEA = face;
+			} else if (setIdB != null && setIdB.equals(setId)) {
+				incidentFaceEB = face;
 			}
 		}
 	}

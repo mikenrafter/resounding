@@ -12,6 +12,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.profiler.Profiler;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
 
@@ -40,7 +41,9 @@ public final class DebugPicker {
 		boolean capturePeekable = CaptureBuffer.INSTANCE.isCapturing()
 				&& DebugRenderDispatcher.INSTANCE.capture().isEnabled();
 		boolean octreePeekable = DebugRenderDispatcher.INSTANCE.octree().isEnabled();
-		if (!showReadout && !capturePeekable && !octreePeekable) {
+		boolean captureStatusVisible = CaptureBuffer.INSTANCE.isCapturing()
+				|| CaptureBuffer.INSTANCE.size() > 0;
+		if (!showReadout && !capturePeekable && !octreePeekable && !captureStatusVisible) {
 			return;
 		}
 
@@ -53,6 +56,13 @@ public final class DebugPicker {
 				if (snapshot != null) {
 					message = SoundEffectReadout.format(snapshot);
 				}
+			}
+
+			String captureStatus = formatCaptureStatus();
+			if (captureStatus != null) {
+				message = message == null || message.isBlank()
+						? captureStatus
+						: captureStatus + " | " + message;
 			}
 
 			Vec3d eye = client.player.getEyePos();
@@ -106,6 +116,28 @@ public final class DebugPicker {
 		} finally {
 			profiler.pop();
 		}
+	}
+
+	/** Persistent action-bar capture/kapture readiness (armed vs frozen buffer + focus). */
+	private static @Nullable String formatCaptureStatus() {
+		boolean armed = CaptureBuffer.INSTANCE.isCapturing();
+		int segs = CaptureBuffer.INSTANCE.size();
+		if (!armed && segs == 0) {
+			return null;
+		}
+		int focus = BounceRayLayer.activeRayIndex();
+		String focusLabel = focus < 0 ? "focus=-" : "focus=#" + focus;
+		if (armed) {
+			return String.format(Locale.ROOT, "CAP ARMED segs=%d %s", segs, focusLabel);
+		}
+		int focusSegs = focus < 0 ? 0 : CaptureBuffer.INSTANCE.segmentsForRayIndex(focus).size();
+		return String.format(
+				Locale.ROOT,
+				"CAP READY segs=%d focusSegs=%d %s",
+				segs,
+				focusSegs,
+				focusLabel
+		);
 	}
 
 	private static final class PickState {

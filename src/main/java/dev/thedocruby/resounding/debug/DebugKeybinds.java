@@ -6,6 +6,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
@@ -145,18 +146,61 @@ public final class DebugKeybinds {
 			while (TOGGLE_CAPTURE.wasPressed()) {
 				if (CaptureBuffer.INSTANCE.isCapturing()) {
 					CaptureBuffer.INSTANCE.stopCapture();
+					tell(client, String.format(
+							"Capture stopped (%d segments kept)",
+							CaptureBuffer.INSTANCE.size()), Formatting.AQUA);
 				} else {
+					int kept = CaptureBuffer.INSTANCE.size();
 					CaptureBuffer.INSTANCE.startCapture(1);
+					tell(client, kept > 0
+							? String.format(
+									"Capture armed for next sound (%d segments kept until then)",
+									kept)
+							: "Capture armed: next sound event will be recorded",
+							Formatting.AQUA);
 				}
 			}
 			while (KAPTURE.wasPressed()) {
 				int rayIndex = BounceRayLayer.activeRayIndex();
 				List<CaptureBuffer.CapturedRay> bounces = CaptureBuffer.INSTANCE.segmentsForRayIndex(rayIndex);
-				boolean flash = KaptureAction.execute(rayIndex, bounces, Utils.LOGGER::info);
+				boolean flash = KaptureAction.execute(rayIndex, bounces, line -> {
+					Utils.LOGGER.info("{}", line);
+					// Full dump in chat so it is usable without digging through latest.log.
+					if (client.player != null) {
+						client.player.sendMessage(Text.literal(line).formatted(Formatting.GRAY), false);
+					}
+				});
 				if (flash) {
 					DebugRenderDispatcher.INSTANCE.bounceRays().startKaptureFlash(rayIndex);
+					tell(client, String.format(
+							"Kapture ray #%d (%d bounces) — dumped to chat + latest.log",
+							rayIndex, bounces.size()), Formatting.AQUA);
+				} else {
+					String why;
+					if (rayIndex < 0) {
+						why = "Kapture dead: no focused ray (B on, then J to focus)";
+					} else if (CaptureBuffer.INSTANCE.size() == 0) {
+						why = String.format(
+								"Kapture dead: capture empty for ray #%d (press C, play a sound, then K)",
+								rayIndex);
+					} else {
+						why = String.format(
+								"Kapture dead: capture has %d segments but none for focused ray #%d (rays: %s)",
+								CaptureBuffer.INSTANCE.size(),
+								rayIndex,
+								CaptureBuffer.INSTANCE.capturedRayIndexes());
+					}
+					tell(client, why, Formatting.YELLOW);
 				}
 			}
 		});
+	}
+
+	/** Chat + log — overlay action-bar is too easy to miss for capture/kapture diagnostics. */
+	private static void tell(MinecraftClient client, String msg, Formatting color) {
+		Utils.LOGGER.info("{}", msg);
+		if (client.player != null) {
+			client.player.sendMessage(Text.literal(msg).formatted(color), false);
+		}
 	}
 }

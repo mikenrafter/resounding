@@ -103,6 +103,20 @@ public class Cast {
      * debug/kapture visibility.
      */
     public boolean lastFreeRefraction = false;
+    /**
+     * True when the last resolved boundary reflected because a growth-triggered LOD peek
+     * (Task F2b) found the immediate next same-size octant would reflect — growth was withheld
+     * and this step reflects off that octant instead of silently coarsening past it. A real
+     * reflect (consumes a bounce, can produce a reverb hit) — unlike {@link #lastFreeRefraction},
+     * which is always free/lossless.
+     */
+    public boolean lastPeekReflect = false;
+    /**
+     * Whether the last resolved boundary's branch descriptor actually had a polarity vector, as
+     * opposed to {@link #lastPolarAlignment} defaulting to {@code 1.0} for "no polarity at all" —
+     * the two cases print identically as {@code polar=1.000} without this flag.
+     */
+    public boolean lastHasPolarity = false;
 
     /**
      * Running frustum footprint width (blocks). Advances only via {@link #applyFrustumStep}
@@ -183,6 +197,7 @@ public class Cast {
     public void raycast(@NotNull Vec3d position, @NotNull Vec3d vector, double power) {
         this.lastGrowthDeferred = false;
         this.lastFreeRefraction = false;
+        this.lastPeekReflect = false;
         //* access branch {
         final Vec3d normalized = normalize(position, vector);
         chunk = chunk.access((int) normalized.x >> 4, (int) normalized.z >> 4);
@@ -392,11 +407,53 @@ public class Cast {
         if (!emissionCast && reflectivity == 0) {
             double candidate = frustumSize + pConfig.frustumGrowthPerBlock * pdistance;
             Vec3d polar = branchDescriptor.polar();
-            if (FrustumLod.wouldDoubleCover(cellBase, cellSize, pposition, polar, candidate, frustumSize)) {
-                this.lastGrowthDeferred = true;
-                this.lastFreeRefraction = true;
-                if (polar != null && polar.lengthSquared() > 1e-12) {
-                    vector = Physics.grazeBend(vector, vector.normalize(), polar.normalize());
+            int nextLod = FrustumLod.stepForSize(candidate);
+            boolean lodEscalates = nextLod > cellSize;
+
+            // Task F2b: about to coarsen past this cell's own resolution -- peek the immediate
+            // next same-size octant first. If growing would silently skip over a real reflective
+            // boundary that finer resolution would have caught, reflect off it right now instead
+            // of growing past it. A plain impedance comparison (not a full polarized-blend
+            // resolve) is deliberate here -- this is a look-ahead heuristic, matching the rigor
+            // the plain size-1 reflectivity test above already uses.
+            if (lodEscalates) {
+                Vec3d peekVec = normalize(pposition, vector);
+                BlockPos peekPos = BlockPos.ofFloored(peekVec);
+                Branch peekResolved = tree.getAtLod(peekPos, cellSize);
+                Branch peekBranch = peekResolved;
+                if (peekResolved.size == 1) {
+                    Branch peekLive = getBlock(peekVec);
+                    if (peekLive != null) {
+                        peekBranch = peekLive;
+                    }
+                }
+                Material peekMaterial = resolveMaterial(peekBranch, peekPos);
+                double peekImpedance = peekMaterial.impedance();
+                if (!impedancesClose(newImpedance, peekImpedance)) {
+                    reflectivity = Physics.reflection(newImpedance, peekImpedance);
+                    transmission = transmissionForBoundary(reflectivity, interactionMaterial.permeation(), pdistance);
+                    this.lastPeekReflect = true;
+                }
+            }
+
+            // Task F3: don't collapse to a coarser parent that still literally has this exact
+            // node as a live (unpruned) child -- growing there would re-cover ground the tree
+            // hasn't actually given up resolution on yet. Orthogonal to (and combined with, via
+            // ||) the polarity double-cover check below -- either can independently justify a
+            // defer. `lodBranch` (the real tree-resolved node, pre-live-leaf-override) is used
+            // deliberately: a synthesized virtual/live-leaf cell is never `==` a real children[]
+            // entry, so this naturally only fires when the tree genuinely still has this node
+            // subdivided (an already-homogeneous pruned region correctly reads false here).
+            if (reflectivity == 0) {
+                boolean wouldEnvelop = lodEscalates
+                        && tree.getAtLod(BlockPos.ofFloored(pposition), nextLod).containsChild(lodBranch);
+                if (wouldEnvelop
+                        || FrustumLod.wouldDoubleCover(cellBase, cellSize, pposition, polar, candidate, frustumSize)) {
+                    this.lastGrowthDeferred = true;
+                    this.lastFreeRefraction = true;
+                    if (polar != null && polar.lengthSquared() > 1e-12) {
+                        vector = Physics.grazeBend(vector, vector.normalize(), polar.normalize());
+                    }
                 }
             }
         }
@@ -470,7 +527,8 @@ public class Cast {
         this.lastReflectivity = reflectivity;
         this.lastTransmission = transmission;
         this.lastBoundaryResolved = true;
-        this.lastPolarAlignment = (branchDescriptor.polar() != null && branchDescriptor.polar().lengthSquared() > 1e-12)
+        this.lastHasPolarity = branchDescriptor.polar() != null && branchDescriptor.polar().lengthSquared() > 1e-12;
+        this.lastPolarAlignment = this.lastHasPolarity
                 ? Physics.dualDerivedAlignment(vector.normalize(), pposition, octantCenter, branchDescriptor.polar().normalize())
                 : 1.0;
         this.lastMaterial = interactionMaterial;

@@ -39,7 +39,7 @@ final class KaptureLogger {
 		StringBuilder sb = new StringBuilder();
 		sb.append(String.format(Locale.ROOT,
 				"Resounding KAPTURE: ray #%d bounce #%d node=%d\u00b3 mode=%s start=%s end=%s "
-						+ "material=%s Zprev=%.1f Z=%.1f R=%.3f T=%.3f power=%.1f polar=%.3f frustum=%.2f",
+						+ "material=%s Zprev=%.1f Z=%.1f R=%.3f T=%.3f power=%.1f polar=%.3f%s frustum=%.2f",
 				bounce.rayIndex(),
 				bounce.bounceIndex(),
 				bounce.branchSize(),
@@ -53,8 +53,15 @@ final class KaptureLogger {
 				bounce.transmission(),
 				bounce.power(),
 				bounce.polarAlignment(),
+				// polarAlignment defaults to 1.0 for both "fully aligned" and "no polarity at
+				// all" -- disambiguate explicitly instead of leaving both print identically.
+				bounce.hasPolarity() ? "" : "/none",
 				bounce.frustumSize()
 		));
+		String growth = growthTag(bounce);
+		if (growth != null) {
+			sb.append(" growth=").append(growth);
+		}
 		if (bounce.blankReason() != null) {
 			sb.append(" blank=").append(bounce.blankReason());
 		}
@@ -62,6 +69,20 @@ final class KaptureLogger {
 			sb.append(" TERMINATED");
 		}
 		return sb.toString();
+	}
+
+	/** {@code null} when none of the growth-affecting flags fired this bounce. */
+	private static String growthTag(CaptureBuffer.CapturedRay bounce) {
+		if (bounce.peekReflect()) {
+			return "peek";
+		}
+		if (bounce.freeRefraction()) {
+			return "free";
+		}
+		if (bounce.growthDeferred()) {
+			return "deferred";
+		}
+		return null;
 	}
 
 	/** Mirrors {@code Engine.formatPos}'s style (4-decimal, comma-separated, locale-independent). */
