@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.10.0",
+  "checkpoint_id": "01M1TA96DMWG9JNVY3DCY742T1",
+  "session_id": "f6de8acd-1d8a-4cc2-bc8f-224ae5701c89",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-06T02:55:40.862223527Z",
+  "branch": "beam-tracing-frustums",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java",
+    "src/main/java/dev/thedocruby/resounding/debug/OctreeOverlay.java",
+    "src/test/java/dev/thedocruby/resounding/debug/OctreeLayerLiveRayTest.java"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "36131e2d408d",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 2,
+    "cache_creation_tokens": 24377,
+    "cache_read_tokens": 0,
+    "output_tokens": 109,
+    "api_call_count": 1
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-06T02:55:40.835860757Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 135,
+    "total_committed": 0,
+    "total_lines_changed": 135,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 265,
+      "user_lines_removed": 135,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java": 193,
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeOverlay.java": 30,
+        "src/test/java/dev/thedocruby/resounding/debug/OctreeLayerLiveRayTest.java": 42
+      },
+      "user_removed_per_file": {
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeLayer.java": 109,
+        "src/main/java/dev/thedocruby/resounding/debug/OctreeOverlay.java": 11,
+        "src/test/java/dev/thedocruby/resounding/debug/OctreeLayerLiveRayTest.java": 15
+      }
+    }
+  ]
+}
